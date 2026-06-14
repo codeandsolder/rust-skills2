@@ -63,11 +63,13 @@ for md in sorted(RULES.glob("*.md")):
                 name = f"{md.stem.replace('-', '_')}__{idx}"
                 has_main = re.search(r'\bfn\s+main\s*\(', block) is not None
                 has_inner_attr = "#![" in block
-                if has_main or has_inner_attr:
-                    body = block + ("\n" if not has_main else "")
-                    if not has_main:
-                        body += "\nfn main() {}\n"
-                    content = HEADER + body
+                # A block that defines a module is item-level: compile it at the
+                # crate root so `mod m { use super::* }` resolves correctly.
+                has_mod = re.search(r'(?m)^\s*(pub(\([^)]*\))?\s+)?mod\s+\w', block) is not None
+                if has_main:
+                    content = HEADER + block + "\n"
+                elif has_inner_attr or has_mod:
+                    content = HEADER + block + "\nfn main() {}\n"
                 else:
                     content = (HEADER +
                                "async fn __ex() -> Result<(), Box<dyn std::error::Error>> {\n" +

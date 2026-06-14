@@ -1,11 +1,11 @@
 # Rust Skills
 
-![rules](https://img.shields.io/badge/rules-233-blue)
-![categories](https://img.shields.io/badge/categories-20-blue)
+![rules](https://img.shields.io/badge/rules-246-blue)
+![categories](https://img.shields.io/badge/categories-22-blue)
 ![Rust](https://img.shields.io/badge/Rust-1.96%20%2F%202024%20edition-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-233 Rust rules your AI coding agent can use to write better code. Current for Rust 1.96 (2024 edition).
+246 Rust rules your AI coding agent can use to write better code. Current for Rust 1.96 (2024 edition).
 
 Works with Claude Code, Cursor, Windsurf, Copilot, Codex, Aider, Zed, Amp, Cline, and pretty much any other agent that supports skills.
 
@@ -66,7 +66,7 @@ fn first_word(s: &str) -> Option<&str> {
 
 ## What's in here
 
-233 rules split into 20 categories:
+246 rules split into 22 categories:
 
 | Category | Rules | What it covers |
 |----------|-------|----------------|
@@ -78,8 +78,10 @@ fn first_word(s: &str) -> Option<&str> {
 | **Async** | 18 | Tokio patterns, channels, async fn in traits, cancel safety |
 | **Concurrency** | 4 | rayon, scoped threads, atomic ordering, thread-locals |
 | **Optimization** | 12 | LTO, inlining, PGO, SIMD |
+| **Numeric & Arithmetic** | 5 | Overflow handling, `as` vs `TryFrom`, float compare, `NonZero` |
 | **Type Safety** | 13 | Newtypes, parse don't validate, `Deref`, `Display`/`Debug` |
 | **Conversions** | 3 | `TryFrom`, `FromStr`, `AsMut` |
+| **Serde** | 8 | rename_all, default, flatten, enum tagging, validate-on-deserialize |
 | **Pattern Matching** | 5 | `let-else`, `matches!`, if-let chains, exhaustive matches |
 | **Macros** | 8 | `macro_rules!` hygiene, fragment specifiers, proc-macros with syn/quote |
 | **Naming** | 16 | Following Rust API Guidelines |

@@ -12,6 +12,7 @@ api-builder-pattern.md :: Builder Variations :: E0428
 api-common-traits.md :: Manual Implementations :: E0404
 api-default-impl.md :: Builder with Default :: E0599
 api-extension-trait.md :: Ecosystem Examples :: E0599
+api-extension-trait.md :: Scoped Extensions :: P:expected item, found keyword `let`
 api-from-not-into.md :: Blanket Implementation :: E0210,P:non-item in item list
 api-impl-asref.md :: AsRef vs Into vs Borrow :: E0106,E0404
 api-impl-asref.md :: Common AsRef Implementations :: E0117,P:non-item in item list
@@ -22,7 +23,7 @@ api-must-use.md :: When to Apply :: P:expected one of `->`, `<`,,P:missing param
 api-newtype-safety.md :: Constructor Patterns :: E0204
 api-newtype-safety.md :: Good :: E0063,E0308
 api-newtype-safety.md :: Zero-Cost Abstraction :: E0308
-api-sealed-trait.md :: Full Pattern :: E0046,P:non-item in item list
+api-sealed-trait.md :: Full Pattern :: P:missing `fn` or `struct` for,P:non-item in item list
 api-serde-optional.md :: Multiple Optional Dependencies :: P:expected `;`, found `#`,P:expected `;`, found `borsh`,P:expected `;`, found `default`,P:expected `;`, found `rkyv`,P:expected `;`, found `serde`,P:expected one of `.`, `;`,
 api-serde-optional.md :: When to Make Serde Required :: P:expected `;`, found `serde`
 api-typestate.md :: Builder Typestate :: E0599
@@ -60,7 +61,6 @@ err-question-mark.md :: In main() :: E0428
 err-result-over-panic.md :: When Panic IS Appropriate :: E0428
 lint-deny-correctness.md :: Important Correctness Lints :: P:this file contains an unclosed
 lint-deny-correctness.md :: Setup :: P:expected item, found `[`
-lint-rustfmt-check.md :: Ignoring Files :: P:cannot declare a file module
 lint-unsafe-doc.md :: Good :: E0106
 lint-unsafe-doc.md :: Unchecked Operations :: E0424
 lint-warn-complexity.md :: Examples :: E0428
@@ -82,7 +82,7 @@ mem-compact-string.md :: When to Use :: E0428
 mem-drop-order.md :: Controlling Drop Order for Locals :: P:expected one of `!` or
 mem-reuse-collections.md :: Good :: E0107
 name-acronym-word.md :: Standard Library Examples :: P:expected `;`, found `std`
-name-funcs-snake.md :: Good :: P:cannot declare a file module
+name-funcs-snake.md :: Good :: P:expected item, found keyword `let`
 name-into-ownership.md :: Standard Library Examples :: E0308
 name-is-has-bool.md :: Standard Library Examples :: P:expected `;`, found `char`,P:expected `;`, found `iterator`,P:expected `;`, found `option`,P:expected `;`, found `path`,P:expected `;`, found `result`,P:expected `;`, found `str`
 name-iter-convention.md :: Standard Library Examples :: P:expected `;`, found `map`,P:expected `;`, found `vec`
@@ -108,13 +108,7 @@ perf-extend-batch.md :: Good :: E0107
 perf-extend-batch.md :: Pattern: Building Strings :: E0428
 proj-feature-additive.md :: Good :: P:`#[panic_handler]` function required, but not,P:unwinding panics are not supported
 proj-mod-rs-dir.md :: Consistency Rule :: P:expected `;`, found `mod_module_files`,P:expected one of `.`, `;`,
-proj-mod-rs-dir.md :: Example: Complex Module :: P:cannot declare a file module
-proj-pub-crate-internal.md :: Pattern: Internal Module :: P:cannot declare a file module
-proj-pub-super-parent.md :: Good :: E0308,P:cannot declare a file module
-proj-pub-super-parent.md :: Pattern: Layered Visibility :: P:cannot declare a file module
-proj-pub-super-parent.md :: Pattern: Test Helpers :: P:cannot declare a file module
-proj-pub-use-reexport.md :: Pattern: Feature-Gated Re-exports :: P:cannot declare a file module
-test-cfg-test-module.md :: Module Structure :: P:cannot declare a file module
+proj-pub-super-parent.md :: Good :: E0308
 test-mock-traits.md :: Good :: E0046
 type-enum-states.md :: Avoid Boolean Flags :: E0428
 type-generic-bounds.md :: Bound Placement :: P:non-item in item list

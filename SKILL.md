@@ -1,15 +1,16 @@
 ---
 name: rust-skills
 description: >
-  Comprehensive Rust coding guidelines with 233 rules across 20 categories.
+  Comprehensive Rust coding guidelines with 246 rules across 22 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
   error handling, async patterns, concurrency, unsafe code, API design, memory
-  optimization, performance, conversions, pattern matching, macros,
-  observability, testing, and common anti-patterns. Invoke with /rust-skills.
+  optimization, performance, numeric safety, conversions, serde, pattern
+  matching, macros, observability, testing, and common anti-patterns. Invoke
+  with /rust-skills.
 license: MIT
 metadata:
   author: leonardomso
-  version: "1.2.0"
+  version: "1.3.0"
   sources:
     - Rust API Guidelines
     - Rust Performance Book
@@ -20,7 +21,7 @@ metadata:
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 233 rules across 20 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.96 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 246 rules across 22 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.96 (2024 edition).
 
 ## When to Apply
 
@@ -46,18 +47,20 @@ Reference these guidelines when:
 | 6 | Async/Await | HIGH | `async-` | 18 |
 | 7 | Concurrency | HIGH | `conc-` | 4 |
 | 8 | Compiler Optimization | HIGH | `opt-` | 12 |
-| 9 | Type Safety | MEDIUM | `type-` | 13 |
-| 10 | Conversions | MEDIUM | `conv-` | 3 |
-| 11 | Pattern Matching | MEDIUM | `pat-` | 5 |
-| 12 | Macros | MEDIUM | `macro-` | 8 |
-| 13 | Naming Conventions | MEDIUM | `name-` | 16 |
-| 14 | Testing | MEDIUM | `test-` | 15 |
-| 15 | Documentation | MEDIUM | `doc-` | 12 |
-| 16 | Observability | MEDIUM | `obs-` | 7 |
-| 17 | Performance Patterns | MEDIUM | `perf-` | 13 |
-| 18 | Project Structure | LOW | `proj-` | 14 |
-| 19 | Clippy & Linting | LOW | `lint-` | 13 |
-| 20 | Anti-patterns | REFERENCE | `anti-` | 15 |
+| 9 | Numeric & Arithmetic | HIGH | `num-` | 5 |
+| 10 | Type Safety | MEDIUM | `type-` | 13 |
+| 11 | Conversions | MEDIUM | `conv-` | 3 |
+| 12 | Serde | MEDIUM | `serde-` | 8 |
+| 13 | Pattern Matching | MEDIUM | `pat-` | 5 |
+| 14 | Macros | MEDIUM | `macro-` | 8 |
+| 15 | Naming Conventions | MEDIUM | `name-` | 16 |
+| 16 | Testing | MEDIUM | `test-` | 15 |
+| 17 | Documentation | MEDIUM | `doc-` | 12 |
+| 18 | Observability | MEDIUM | `obs-` | 7 |
+| 19 | Performance Patterns | MEDIUM | `perf-` | 13 |
+| 20 | Project Structure | LOW | `proj-` | 14 |
+| 21 | Clippy & Linting | LOW | `lint-` | 13 |
+| 22 | Anti-patterns | REFERENCE | `anti-` | 15 |
 
 ---
 
@@ -186,7 +189,15 @@ Reference these guidelines when:
 - [`opt-simd-portable`](rules/opt-simd-portable.md) - Use portable SIMD for data-parallel ops
 - [`opt-cache-friendly`](rules/opt-cache-friendly.md) - Design cache-friendly data layouts (SoA)
 
-### 9. Type Safety (MEDIUM)
+### 9. Numeric & Arithmetic Safety (HIGH)
+
+- [`num-overflow-explicit`](rules/num-overflow-explicit.md) - Handle overflow with `checked`/`saturating`/`wrapping`/`overflowing`
+- [`num-cast-try-from`](rules/num-cast-try-from.md) - Avoid `as`; use `From` (widening) / `TryFrom` (narrowing)
+- [`num-float-compare`](rules/num-float-compare.md) - Don't `==` floats; use tolerance and `total_cmp`
+- [`num-saturating-clamp`](rules/num-saturating-clamp.md) - Bound values with `clamp` and saturating ops
+- [`num-nonzero`](rules/num-nonzero.md) - Use `NonZero*` to forbid zero and enable the niche
+
+### 10. Type Safety (MEDIUM)
 
 - [`type-newtype-ids`](rules/type-newtype-ids.md) - Wrap IDs in newtypes: `UserId(u64)`
 - [`type-newtype-validated`](rules/type-newtype-validated.md) - Newtypes for validated data: `Email`, `Url`
@@ -202,13 +213,24 @@ Reference these guidelines when:
 - [`type-display-vs-debug`](rules/type-display-vs-debug.md) - `Display` for users, `Debug` for diagnostics
 - [`type-numeric-fmt`](rules/type-numeric-fmt.md) - Implement `LowerHex`/`Octal`/`Binary` for numeric newtypes
 
-### 10. Conversions (MEDIUM)
+### 11. Conversions (MEDIUM)
 
 - [`conv-tryfrom-fallible`](rules/conv-tryfrom-fallible.md) - Implement `TryFrom` for fallible conversions
 - [`conv-fromstr-parsing`](rules/conv-fromstr-parsing.md) - Implement `FromStr` to enable `.parse()`
 - [`conv-asmut-mutable`](rules/conv-asmut-mutable.md) - Accept `impl AsMut<T>` for mutable borrowed inputs
 
-### 11. Pattern Matching (MEDIUM)
+### 12. Serde (MEDIUM)
+
+- [`serde-rename-all`](rules/serde-rename-all.md) - Match external naming with `#[serde(rename_all = ...)]`
+- [`serde-default-compat`](rules/serde-default-compat.md) - Use `#[serde(default)]` for optional/back-compat fields
+- [`serde-skip-empty`](rules/serde-skip-empty.md) - Omit empty fields with `skip_serializing_if`
+- [`serde-flatten`](rules/serde-flatten.md) - Inline structs / capture extras with `#[serde(flatten)]`
+- [`serde-enum-representation`](rules/serde-enum-representation.md) - Choose enum tagging deliberately
+- [`serde-deny-unknown-fields`](rules/serde-deny-unknown-fields.md) - Reject unexpected keys with `deny_unknown_fields`
+- [`serde-custom-with`](rules/serde-custom-with.md) - Customize a field with `with`/`serialize_with`/`deserialize_with`
+- [`serde-try-from-validate`](rules/serde-try-from-validate.md) - Validate on deserialize via `#[serde(try_from)]`
+
+### 13. Pattern Matching (MEDIUM)
 
 - [`pat-let-else`](rules/pat-let-else.md) - Use `let ... else` for early-return extraction
 - [`pat-matches-macro`](rules/pat-matches-macro.md) - Use `matches!()` for boolean pattern tests
@@ -216,7 +238,7 @@ Reference these guidelines when:
 - [`pat-exhaustive-enum`](rules/pat-exhaustive-enum.md) - Match owned enums exhaustively, avoid catch-all `_`
 - [`pat-at-bindings`](rules/pat-at-bindings.md) - Use `@` bindings to capture while matching
 
-### 12. Macros (MEDIUM)
+### 14. Macros (MEDIUM)
 
 - [`macro-prefer-functions`](rules/macro-prefer-functions.md) - Reach for a macro only when a function/generic can't express it
 - [`macro-rules-hygiene`](rules/macro-rules-hygiene.md) - Rely on hygiene; use `$crate` for crate-local paths
@@ -227,7 +249,7 @@ Reference these guidelines when:
 - [`macro-proc-syn-quote`](rules/macro-proc-syn-quote.md) - Build proc-macros with `syn`, `quote`, `proc-macro2`
 - [`macro-proc-error-spans`](rules/macro-proc-error-spans.md) - Report proc-macro errors as spanned compile errors
 
-### 13. Naming Conventions (MEDIUM)
+### 15. Naming Conventions (MEDIUM)
 
 - [`name-types-camel`](rules/name-types-camel.md) - Use `UpperCamelCase` for types, traits, enums
 - [`name-variants-camel`](rules/name-variants-camel.md) - Use `UpperCamelCase` for enum variants
@@ -246,7 +268,7 @@ Reference these guidelines when:
 - [`name-acronym-word`](rules/name-acronym-word.md) - Treat acronyms as words: `Uuid` not `UUID`
 - [`name-crate-no-rs`](rules/name-crate-no-rs.md) - Crate names: no `-rs` suffix
 
-### 14. Testing (MEDIUM)
+### 16. Testing (MEDIUM)
 
 - [`test-cfg-test-module`](rules/test-cfg-test-module.md) - Use `#[cfg(test)] mod tests { }`
 - [`test-use-super`](rules/test-use-super.md) - Use `use super::*;` in test modules
@@ -264,7 +286,7 @@ Reference these guidelines when:
 - [`test-loom-concurrency`](rules/test-loom-concurrency.md) - Use `loom` to exhaustively test concurrent code
 - [`test-snapshot-testing`](rules/test-snapshot-testing.md) - Use `insta` for snapshot testing of complex output
 
-### 15. Documentation (MEDIUM)
+### 17. Documentation (MEDIUM)
 
 - [`doc-all-public`](rules/doc-all-public.md) - Document all public items with `///`
 - [`doc-module-inner`](rules/doc-module-inner.md) - Use `//!` for module-level documentation
@@ -279,7 +301,7 @@ Reference these guidelines when:
 - [`doc-cargo-metadata`](rules/doc-cargo-metadata.md) - Fill `Cargo.toml` metadata
 - [`doc-crate-readme`](rules/doc-crate-readme.md) - Unify README and crate docs with `include_str!`
 
-### 16. Observability (MEDIUM)
+### 18. Observability (MEDIUM)
 
 - [`obs-tracing-over-log`](rules/obs-tracing-over-log.md) - Use `tracing` for structured, span-aware diagnostics
 - [`obs-library-facade`](rules/obs-library-facade.md) - Libraries emit via the facade; only binaries install a subscriber
@@ -289,7 +311,7 @@ Reference these guidelines when:
 - [`obs-error-chain`](rules/obs-error-chain.md) - Log the full error source chain, once at the handling boundary
 - [`obs-no-sensitive-data`](rules/obs-no-sensitive-data.md) - Never log secrets or PII; redact or skip
 
-### 17. Performance Patterns (MEDIUM)
+### 19. Performance Patterns (MEDIUM)
 
 - [`perf-iter-over-index`](rules/perf-iter-over-index.md) - Prefer iterators over manual indexing
 - [`perf-iter-lazy`](rules/perf-iter-lazy.md) - Keep iterators lazy, collect() only when needed
@@ -305,7 +327,7 @@ Reference these guidelines when:
 - [`perf-ahash`](rules/perf-ahash.md) - Use `ahash`/`FxHashMap` when DoS resistance isn't needed
 - [`perf-io-buffering`](rules/perf-io-buffering.md) - Wrap I/O in `BufReader`/`BufWriter`
 
-### 18. Project Structure (LOW)
+### 20. Project Structure (LOW)
 
 - [`proj-lib-main-split`](rules/proj-lib-main-split.md) - Keep `main.rs` minimal, logic in `lib.rs`
 - [`proj-mod-by-feature`](rules/proj-mod-by-feature.md) - Organize modules by feature, not type
@@ -322,7 +344,7 @@ Reference these guidelines when:
 - [`proj-msrv-declare`](rules/proj-msrv-declare.md) - Declare `rust-version` (MSRV) and test it in CI
 - [`proj-build-rs-minimal`](rules/proj-build-rs-minimal.md) - Keep `build.rs` minimal and deterministic
 
-### 19. Clippy & Linting (LOW)
+### 21. Clippy & Linting (LOW)
 
 - [`lint-deny-correctness`](rules/lint-deny-correctness.md) - `#![deny(clippy::correctness)]`
 - [`lint-warn-suspicious`](rules/lint-warn-suspicious.md) - `#![warn(clippy::suspicious)]`
@@ -338,7 +360,7 @@ Reference these guidelines when:
 - [`lint-cfg-check`](rules/lint-cfg-check.md) - Enable `unexpected_cfgs` to catch cfg typos
 - [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Enable high-value `clippy::nursery` lints selectively
 
-### 20. Anti-patterns (REFERENCE)
+### 22. Anti-patterns (REFERENCE)
 
 - [`anti-unwrap-abuse`](rules/anti-unwrap-abuse.md) - Don't use `.unwrap()` in production code
 - [`anti-expect-lazy`](rules/anti-expect-lazy.md) - Don't use `.expect()` for recoverable errors
@@ -403,6 +425,8 @@ This skill provides rule identifiers for quick reference. When generating or rev
 | Unsafe code | `unsafe-`, `type-`, `test-` |
 | Error handling | `err-`, `api-`, `pat-` |
 | Type conversions | `conv-`, `api-` |
+| Serialization (serde) | `serde-`, `type-`, `api-` |
+| Numeric / arithmetic | `num-`, `type-` |
 | Macros / code generation | `macro-`, `anti-` |
 | Logging / observability | `obs-`, `err-` |
 | Memory optimization | `mem-`, `own-`, `perf-` |
