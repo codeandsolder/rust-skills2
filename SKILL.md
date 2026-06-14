@@ -10,7 +10,7 @@ description: >
 license: MIT
 metadata:
   author: leonardomso
-  version: "1.5.0"
+  version: "1.5.1"
   sources:
     - Rust API Guidelines
     - Rust Performance Book

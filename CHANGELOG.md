@@ -4,6 +4,16 @@ All notable changes to this skill are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning for the rule set.
 
+## [1.5.1]
+
+### Changed
+- Depth pass: expanded `own-rc-single-thread` (breaking cycles with `Weak`, the
+  `Rc::clone` idiom, `strong_count`/`weak_count`, `!Send`/`!Sync`) and
+  `own-refcell-interior` (`Cell` for `Copy` types).
+- Added cross-references from ~18 foundational rules to the newer categories
+  (`conc-`, `conv-`, `num-`, `serde-`, `trait-`, `closure-`, `coll-`, `pat-`)
+  for better navigation between related rules.
+
 ## [1.5.0]
 
 ### Added

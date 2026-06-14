@@ -136,3 +136,5 @@ impl Shape {
 - [anti-over-abstraction](./anti-over-abstraction.md) - Excessive generics
 - [type-generic-bounds](./type-generic-bounds.md) - Generic constraints
 - [mem-box-large-variant](./mem-box-large-variant.md) - Boxing enum variants
+- [trait-dyn-vs-generic](./trait-dyn-vs-generic.md) - Choose dispatch deliberately
+- [closure-static-vs-dyn](./closure-static-vs-dyn.md) - Same tradeoff for closures
