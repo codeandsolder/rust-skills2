@@ -1,11 +1,11 @@
 # Rust Skills
 
-![rules](https://img.shields.io/badge/rules-246-blue)
-![categories](https://img.shields.io/badge/categories-22-blue)
+![rules](https://img.shields.io/badge/rules-251-blue)
+![categories](https://img.shields.io/badge/categories-23-blue)
 ![Rust](https://img.shields.io/badge/Rust-1.96%20%2F%202024%20edition-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-246 Rust rules your AI coding agent can use to write better code. Current for Rust 1.96 (2024 edition).
+251 Rust rules your AI coding agent can use to write better code. Current for Rust 1.96 (2024 edition).
 
 Works with Claude Code, Cursor, Windsurf, Copilot, Codex, Aider, Zed, Amp, Cline, and pretty much any other agent that supports skills.
 
@@ -66,7 +66,7 @@ fn first_word(s: &str) -> Option<&str> {
 
 ## What's in here
 
-246 rules split into 22 categories:
+251 rules split into 23 categories:
 
 | Category | Rules | What it covers |
 |----------|-------|----------------|
@@ -84,6 +84,7 @@ fn first_word(s: &str) -> Option<&str> {
 | **Serde** | 8 | rename_all, default, flatten, enum tagging, validate-on-deserialize |
 | **Pattern Matching** | 5 | `let-else`, `matches!`, if-let chains, exhaustive matches |
 | **Macros** | 8 | `macro_rules!` hygiene, fragment specifiers, proc-macros with syn/quote |
+| **Closures** | 5 | Fn/FnMut/FnOnce bounds, returning `impl Fn`, move & disjoint capture |
 | **Naming** | 16 | Following Rust API Guidelines |
 | **Testing** | 15 | Proptest, mockall, criterion, loom, snapshot tests |
 | **Docs** | 12 | Doc examples, intra-doc links, README/crate-doc unification |

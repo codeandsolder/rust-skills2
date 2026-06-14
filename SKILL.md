@@ -1,16 +1,16 @@
 ---
 name: rust-skills
 description: >
-  Comprehensive Rust coding guidelines with 246 rules across 22 categories.
+  Comprehensive Rust coding guidelines with 251 rules across 23 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
-  matching, macros, observability, testing, and common anti-patterns. Invoke
-  with /rust-skills.
+  matching, macros, closures, observability, testing, and common anti-patterns.
+  Invoke with /rust-skills.
 license: MIT
 metadata:
   author: leonardomso
-  version: "1.3.0"
+  version: "1.4.0"
   sources:
     - Rust API Guidelines
     - Rust Performance Book
@@ -21,7 +21,7 @@ metadata:
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 246 rules across 22 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.96 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 251 rules across 23 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.96 (2024 edition).
 
 ## When to Apply
 
@@ -53,14 +53,15 @@ Reference these guidelines when:
 | 12 | Serde | MEDIUM | `serde-` | 8 |
 | 13 | Pattern Matching | MEDIUM | `pat-` | 5 |
 | 14 | Macros | MEDIUM | `macro-` | 8 |
-| 15 | Naming Conventions | MEDIUM | `name-` | 16 |
-| 16 | Testing | MEDIUM | `test-` | 15 |
-| 17 | Documentation | MEDIUM | `doc-` | 12 |
-| 18 | Observability | MEDIUM | `obs-` | 7 |
-| 19 | Performance Patterns | MEDIUM | `perf-` | 13 |
-| 20 | Project Structure | LOW | `proj-` | 14 |
-| 21 | Clippy & Linting | LOW | `lint-` | 13 |
-| 22 | Anti-patterns | REFERENCE | `anti-` | 15 |
+| 15 | Closures | MEDIUM | `closure-` | 5 |
+| 16 | Naming Conventions | MEDIUM | `name-` | 16 |
+| 17 | Testing | MEDIUM | `test-` | 15 |
+| 18 | Documentation | MEDIUM | `doc-` | 12 |
+| 19 | Observability | MEDIUM | `obs-` | 7 |
+| 20 | Performance Patterns | MEDIUM | `perf-` | 13 |
+| 21 | Project Structure | LOW | `proj-` | 14 |
+| 22 | Clippy & Linting | LOW | `lint-` | 13 |
+| 23 | Anti-patterns | REFERENCE | `anti-` | 15 |
 
 ---
 
@@ -249,7 +250,15 @@ Reference these guidelines when:
 - [`macro-proc-syn-quote`](rules/macro-proc-syn-quote.md) - Build proc-macros with `syn`, `quote`, `proc-macro2`
 - [`macro-proc-error-spans`](rules/macro-proc-error-spans.md) - Report proc-macro errors as spanned compile errors
 
-### 15. Naming Conventions (MEDIUM)
+### 15. Closures (MEDIUM)
+
+- [`closure-fn-trait-bounds`](rules/closure-fn-trait-bounds.md) - Require the least restrictive `Fn`/`FnMut`/`FnOnce` bound
+- [`closure-impl-fn-return`](rules/closure-impl-fn-return.md) - Return `impl Fn` for static dispatch, not `Box<dyn Fn>`
+- [`closure-move-capture`](rules/closure-move-capture.md) - Use `move` for escaping closures; clone before moving
+- [`closure-static-vs-dyn`](rules/closure-static-vs-dyn.md) - Generic `impl Fn` for hot paths; `dyn Fn` to store/shrink
+- [`closure-disjoint-capture`](rules/closure-disjoint-capture.md) - Capture only the fields you use (2021 edition)
+
+### 16. Naming Conventions (MEDIUM)
 
 - [`name-types-camel`](rules/name-types-camel.md) - Use `UpperCamelCase` for types, traits, enums
 - [`name-variants-camel`](rules/name-variants-camel.md) - Use `UpperCamelCase` for enum variants
@@ -268,7 +277,7 @@ Reference these guidelines when:
 - [`name-acronym-word`](rules/name-acronym-word.md) - Treat acronyms as words: `Uuid` not `UUID`
 - [`name-crate-no-rs`](rules/name-crate-no-rs.md) - Crate names: no `-rs` suffix
 
-### 16. Testing (MEDIUM)
+### 17. Testing (MEDIUM)
 
 - [`test-cfg-test-module`](rules/test-cfg-test-module.md) - Use `#[cfg(test)] mod tests { }`
 - [`test-use-super`](rules/test-use-super.md) - Use `use super::*;` in test modules
@@ -286,7 +295,7 @@ Reference these guidelines when:
 - [`test-loom-concurrency`](rules/test-loom-concurrency.md) - Use `loom` to exhaustively test concurrent code
 - [`test-snapshot-testing`](rules/test-snapshot-testing.md) - Use `insta` for snapshot testing of complex output
 
-### 17. Documentation (MEDIUM)
+### 18. Documentation (MEDIUM)
 
 - [`doc-all-public`](rules/doc-all-public.md) - Document all public items with `///`
 - [`doc-module-inner`](rules/doc-module-inner.md) - Use `//!` for module-level documentation
@@ -301,7 +310,7 @@ Reference these guidelines when:
 - [`doc-cargo-metadata`](rules/doc-cargo-metadata.md) - Fill `Cargo.toml` metadata
 - [`doc-crate-readme`](rules/doc-crate-readme.md) - Unify README and crate docs with `include_str!`
 
-### 18. Observability (MEDIUM)
+### 19. Observability (MEDIUM)
 
 - [`obs-tracing-over-log`](rules/obs-tracing-over-log.md) - Use `tracing` for structured, span-aware diagnostics
 - [`obs-library-facade`](rules/obs-library-facade.md) - Libraries emit via the facade; only binaries install a subscriber
@@ -311,7 +320,7 @@ Reference these guidelines when:
 - [`obs-error-chain`](rules/obs-error-chain.md) - Log the full error source chain, once at the handling boundary
 - [`obs-no-sensitive-data`](rules/obs-no-sensitive-data.md) - Never log secrets or PII; redact or skip
 
-### 19. Performance Patterns (MEDIUM)
+### 20. Performance Patterns (MEDIUM)
 
 - [`perf-iter-over-index`](rules/perf-iter-over-index.md) - Prefer iterators over manual indexing
 - [`perf-iter-lazy`](rules/perf-iter-lazy.md) - Keep iterators lazy, collect() only when needed
@@ -327,7 +336,7 @@ Reference these guidelines when:
 - [`perf-ahash`](rules/perf-ahash.md) - Use `ahash`/`FxHashMap` when DoS resistance isn't needed
 - [`perf-io-buffering`](rules/perf-io-buffering.md) - Wrap I/O in `BufReader`/`BufWriter`
 
-### 20. Project Structure (LOW)
+### 21. Project Structure (LOW)
 
 - [`proj-lib-main-split`](rules/proj-lib-main-split.md) - Keep `main.rs` minimal, logic in `lib.rs`
 - [`proj-mod-by-feature`](rules/proj-mod-by-feature.md) - Organize modules by feature, not type
@@ -344,7 +353,7 @@ Reference these guidelines when:
 - [`proj-msrv-declare`](rules/proj-msrv-declare.md) - Declare `rust-version` (MSRV) and test it in CI
 - [`proj-build-rs-minimal`](rules/proj-build-rs-minimal.md) - Keep `build.rs` minimal and deterministic
 
-### 21. Clippy & Linting (LOW)
+### 22. Clippy & Linting (LOW)
 
 - [`lint-deny-correctness`](rules/lint-deny-correctness.md) - `#![deny(clippy::correctness)]`
 - [`lint-warn-suspicious`](rules/lint-warn-suspicious.md) - `#![warn(clippy::suspicious)]`
@@ -360,7 +369,7 @@ Reference these guidelines when:
 - [`lint-cfg-check`](rules/lint-cfg-check.md) - Enable `unexpected_cfgs` to catch cfg typos
 - [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Enable high-value `clippy::nursery` lints selectively
 
-### 22. Anti-patterns (REFERENCE)
+### 23. Anti-patterns (REFERENCE)
 
 - [`anti-unwrap-abuse`](rules/anti-unwrap-abuse.md) - Don't use `.unwrap()` in production code
 - [`anti-expect-lazy`](rules/anti-expect-lazy.md) - Don't use `.expect()` for recoverable errors
@@ -428,6 +437,7 @@ This skill provides rule identifiers for quick reference. When generating or rev
 | Serialization (serde) | `serde-`, `type-`, `api-` |
 | Numeric / arithmetic | `num-`, `type-` |
 | Macros / code generation | `macro-`, `anti-` |
+| Closures / callbacks | `closure-`, `type-` |
 | Logging / observability | `obs-`, `err-` |
 | Memory optimization | `mem-`, `own-`, `perf-` |
 | Performance tuning | `opt-`, `mem-`, `perf-` |
