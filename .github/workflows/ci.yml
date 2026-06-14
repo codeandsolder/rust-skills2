@@ -9,40 +9,21 @@ permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Validate rules & index
+  checks:
+    name: Validate & compile-check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
-      - name: Structure, links, and index parity
-        run: python3 checks/validate.py
-      - name: Index is up to date (SKILL.md / README counts)
-        run: python3 checks/gen_index.py --check
-
-  examples:
-    name: Compile-check examples
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-      # Pinned to the toolchain the baseline was generated on. When bumping,
-      # regenerate checks/baseline.txt on the same version (see checks/README.md).
+      # Toolchain/target are pinned by checks/rust-toolchain.toml (Rust 1.95.0).
       - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: x86_64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: checks
-      - name: Generate example files from rules
-        working-directory: checks
-        run: python3 gen.py
-      - name: Type-check examples
-        working-directory: checks
-        # cargo exits non-zero on fragment snippets; the baseline gate decides.
-        run: cargo check --examples --keep-going --message-format=json > check.json || true
-      - name: Gate on new compile regressions
-        working-directory: checks
-        run: python3 analyze.py check.json --check-baseline baseline.txt
+      # The exact same command contributors run locally.
+      - name: Run checks
+        run: bash checks/check.sh

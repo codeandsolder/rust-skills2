@@ -95,7 +95,6 @@ name-type-param-single.md :: Trait Bounds :: E0404,E0428,P:free function without
 name-types-camel.md :: Good :: P:non-item in item list
 opt-cache-friendly.md :: Avoid Pointer Chasing :: E0308
 opt-inline-never-cold.md :: Pattern: Extract Cold Code :: E0428
-opt-target-cpu.md :: Feature Detection at Runtime :: E0308,P:the feature named `avx2` is
 own-clone-explicit.md :: When to Avoid Clone :: E0428
 own-lifetime-elision.md :: Common Patterns :: P:expected one of `!`, `(`,
 own-lifetime-elision.md :: The Three Elision Rules :: P:expected one of `!`, `(`,
