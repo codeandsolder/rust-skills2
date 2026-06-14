@@ -19,6 +19,8 @@ jobs:
           python-version: "3.x"
       - name: Structure, links, and index parity
         run: python3 checks/validate.py
+      - name: Index is up to date (SKILL.md / README counts)
+        run: python3 checks/gen_index.py --check
 
   examples:
     name: Compile-check examples
