@@ -2,6 +2,6 @@
 /examples
 Cargo.lock
 manifest.json
-check.json
-check.err
+check*.json
+check*.err
 suspects.txt

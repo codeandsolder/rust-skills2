@@ -7,11 +7,34 @@ published skill.
 ## Run
 
 ```bash
+# structural / link / index checks (no toolchain needed)
+python3 checks/validate.py
+
+# compile-check the examples
 cd checks
 python3 gen.py                                              # extract blocks -> examples/
 cargo check --examples --keep-going --message-format=json > check.json
 python3 analyze.py check.json                               # classify results
+python3 analyze.py check.json --check-baseline baseline.txt # CI gate: fail on NEW suspects
 ```
+
+Both run in CI (`.github/workflows/ci.yml`): `validate` (Python only) and
+`examples` (pinned to Rust 1.95.0, the toolchain `baseline.txt` was generated on).
+
+## Updating the baseline
+
+`baseline.txt` lists the currently-accepted suspects (fragments/pseudocode the
+heuristics can't auto-classify). The CI gate fails only on signatures *not* in
+it. After intentionally adding/changing examples, regenerate it on the pinned
+toolchain and review the diff:
+
+```bash
+rustup run 1.95.0 cargo check --examples --keep-going --message-format=json > check.json
+python3 analyze.py check.json --emit-baseline > baseline.txt
+```
+
+When bumping the pinned toolchain in `ci.yml`, regenerate `baseline.txt` on the
+same version in the same commit.
 
 ## How it works
 
