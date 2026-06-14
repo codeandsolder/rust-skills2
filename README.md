@@ -1,11 +1,11 @@
 # Rust Skills
 
-![rules](https://img.shields.io/badge/rules-218-blue)
-![categories](https://img.shields.io/badge/categories-18-blue)
+![rules](https://img.shields.io/badge/rules-233-blue)
+![categories](https://img.shields.io/badge/categories-20-blue)
 ![Rust](https://img.shields.io/badge/Rust-1.96%20%2F%202024%20edition-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-218 Rust rules your AI coding agent can use to write better code. Current for Rust 1.96 (2024 edition).
+233 Rust rules your AI coding agent can use to write better code. Current for Rust 1.96 (2024 edition).
 
 Works with Claude Code, Cursor, Windsurf, Copilot, Codex, Aider, Zed, Amp, Cline, and pretty much any other agent that supports skills.
 
@@ -66,7 +66,7 @@ fn first_word(s: &str) -> Option<&str> {
 
 ## What's in here
 
-218 rules split into 18 categories:
+233 rules split into 20 categories:
 
 | Category | Rules | What it covers |
 |----------|-------|----------------|
@@ -81,9 +81,11 @@ fn first_word(s: &str) -> Option<&str> {
 | **Type Safety** | 13 | Newtypes, parse don't validate, `Deref`, `Display`/`Debug` |
 | **Conversions** | 3 | `TryFrom`, `FromStr`, `AsMut` |
 | **Pattern Matching** | 5 | `let-else`, `matches!`, if-let chains, exhaustive matches |
+| **Macros** | 8 | `macro_rules!` hygiene, fragment specifiers, proc-macros with syn/quote |
 | **Naming** | 16 | Following Rust API Guidelines |
 | **Testing** | 15 | Proptest, mockall, criterion, loom, snapshot tests |
 | **Docs** | 12 | Doc examples, intra-doc links, README/crate-doc unification |
+| **Observability** | 7 | tracing over log, spans, structured fields, redacting secrets |
 | **Performance** | 13 | Iterators, entry API, faster hashers, I/O buffering |
 | **Project Structure** | 14 | Workspaces, module layout, features, MSRV |
 | **Linting** | 13 | Clippy config, CI setup, `unexpected_cfgs` |

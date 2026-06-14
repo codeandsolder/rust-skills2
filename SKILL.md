@@ -1,15 +1,15 @@
 ---
 name: rust-skills
 description: >
-  Comprehensive Rust coding guidelines with 218 rules across 18 categories.
+  Comprehensive Rust coding guidelines with 233 rules across 20 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
   error handling, async patterns, concurrency, unsafe code, API design, memory
-  optimization, performance, conversions, pattern matching, testing, and common
-  anti-patterns. Invoke with /rust-skills.
+  optimization, performance, conversions, pattern matching, macros,
+  observability, testing, and common anti-patterns. Invoke with /rust-skills.
 license: MIT
 metadata:
   author: leonardomso
-  version: "1.1.1"
+  version: "1.2.0"
   sources:
     - Rust API Guidelines
     - Rust Performance Book
@@ -20,7 +20,7 @@ metadata:
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 218 rules across 18 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.96 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 233 rules across 20 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.96 (2024 edition).
 
 ## When to Apply
 
@@ -49,13 +49,15 @@ Reference these guidelines when:
 | 9 | Type Safety | MEDIUM | `type-` | 13 |
 | 10 | Conversions | MEDIUM | `conv-` | 3 |
 | 11 | Pattern Matching | MEDIUM | `pat-` | 5 |
-| 12 | Naming Conventions | MEDIUM | `name-` | 16 |
-| 13 | Testing | MEDIUM | `test-` | 15 |
-| 14 | Documentation | MEDIUM | `doc-` | 12 |
-| 15 | Performance Patterns | MEDIUM | `perf-` | 13 |
-| 16 | Project Structure | LOW | `proj-` | 14 |
-| 17 | Clippy & Linting | LOW | `lint-` | 13 |
-| 18 | Anti-patterns | REFERENCE | `anti-` | 15 |
+| 12 | Macros | MEDIUM | `macro-` | 8 |
+| 13 | Naming Conventions | MEDIUM | `name-` | 16 |
+| 14 | Testing | MEDIUM | `test-` | 15 |
+| 15 | Documentation | MEDIUM | `doc-` | 12 |
+| 16 | Observability | MEDIUM | `obs-` | 7 |
+| 17 | Performance Patterns | MEDIUM | `perf-` | 13 |
+| 18 | Project Structure | LOW | `proj-` | 14 |
+| 19 | Clippy & Linting | LOW | `lint-` | 13 |
+| 20 | Anti-patterns | REFERENCE | `anti-` | 15 |
 
 ---
 
@@ -214,7 +216,18 @@ Reference these guidelines when:
 - [`pat-exhaustive-enum`](rules/pat-exhaustive-enum.md) - Match owned enums exhaustively, avoid catch-all `_`
 - [`pat-at-bindings`](rules/pat-at-bindings.md) - Use `@` bindings to capture while matching
 
-### 12. Naming Conventions (MEDIUM)
+### 12. Macros (MEDIUM)
+
+- [`macro-prefer-functions`](rules/macro-prefer-functions.md) - Reach for a macro only when a function/generic can't express it
+- [`macro-rules-hygiene`](rules/macro-rules-hygiene.md) - Rely on hygiene; use `$crate` for crate-local paths
+- [`macro-fragment-specifiers`](rules/macro-fragment-specifiers.md) - Use precise fragment specifiers, not raw `:tt`
+- [`macro-export-crate-path`](rules/macro-export-crate-path.md) - Export with `#[macro_export]` and a clean import path
+- [`macro-private-helpers`](rules/macro-private-helpers.md) - Hide macro internals in a `#[doc(hidden)] __private` module
+- [`macro-proc-two-crate`](rules/macro-proc-two-crate.md) - Put proc-macros in a dedicated `proc-macro = true` crate
+- [`macro-proc-syn-quote`](rules/macro-proc-syn-quote.md) - Build proc-macros with `syn`, `quote`, `proc-macro2`
+- [`macro-proc-error-spans`](rules/macro-proc-error-spans.md) - Report proc-macro errors as spanned compile errors
+
+### 13. Naming Conventions (MEDIUM)
 
 - [`name-types-camel`](rules/name-types-camel.md) - Use `UpperCamelCase` for types, traits, enums
 - [`name-variants-camel`](rules/name-variants-camel.md) - Use `UpperCamelCase` for enum variants
@@ -233,7 +246,7 @@ Reference these guidelines when:
 - [`name-acronym-word`](rules/name-acronym-word.md) - Treat acronyms as words: `Uuid` not `UUID`
 - [`name-crate-no-rs`](rules/name-crate-no-rs.md) - Crate names: no `-rs` suffix
 
-### 13. Testing (MEDIUM)
+### 14. Testing (MEDIUM)
 
 - [`test-cfg-test-module`](rules/test-cfg-test-module.md) - Use `#[cfg(test)] mod tests { }`
 - [`test-use-super`](rules/test-use-super.md) - Use `use super::*;` in test modules
@@ -251,7 +264,7 @@ Reference these guidelines when:
 - [`test-loom-concurrency`](rules/test-loom-concurrency.md) - Use `loom` to exhaustively test concurrent code
 - [`test-snapshot-testing`](rules/test-snapshot-testing.md) - Use `insta` for snapshot testing of complex output
 
-### 14. Documentation (MEDIUM)
+### 15. Documentation (MEDIUM)
 
 - [`doc-all-public`](rules/doc-all-public.md) - Document all public items with `///`
 - [`doc-module-inner`](rules/doc-module-inner.md) - Use `//!` for module-level documentation
@@ -266,7 +279,17 @@ Reference these guidelines when:
 - [`doc-cargo-metadata`](rules/doc-cargo-metadata.md) - Fill `Cargo.toml` metadata
 - [`doc-crate-readme`](rules/doc-crate-readme.md) - Unify README and crate docs with `include_str!`
 
-### 15. Performance Patterns (MEDIUM)
+### 16. Observability (MEDIUM)
+
+- [`obs-tracing-over-log`](rules/obs-tracing-over-log.md) - Use `tracing` for structured, span-aware diagnostics
+- [`obs-library-facade`](rules/obs-library-facade.md) - Libraries emit via the facade; only binaries install a subscriber
+- [`obs-structured-fields`](rules/obs-structured-fields.md) - Record structured key-value fields, not interpolated messages
+- [`obs-instrument-spans`](rules/obs-instrument-spans.md) - Use `#[instrument]`/spans; never hold a span guard across `.await`
+- [`obs-levels-filter`](rules/obs-levels-filter.md) - Use meaningful levels and filter with `EnvFilter`/`RUST_LOG`
+- [`obs-error-chain`](rules/obs-error-chain.md) - Log the full error source chain, once at the handling boundary
+- [`obs-no-sensitive-data`](rules/obs-no-sensitive-data.md) - Never log secrets or PII; redact or skip
+
+### 17. Performance Patterns (MEDIUM)
 
 - [`perf-iter-over-index`](rules/perf-iter-over-index.md) - Prefer iterators over manual indexing
 - [`perf-iter-lazy`](rules/perf-iter-lazy.md) - Keep iterators lazy, collect() only when needed
@@ -282,7 +305,7 @@ Reference these guidelines when:
 - [`perf-ahash`](rules/perf-ahash.md) - Use `ahash`/`FxHashMap` when DoS resistance isn't needed
 - [`perf-io-buffering`](rules/perf-io-buffering.md) - Wrap I/O in `BufReader`/`BufWriter`
 
-### 16. Project Structure (LOW)
+### 18. Project Structure (LOW)
 
 - [`proj-lib-main-split`](rules/proj-lib-main-split.md) - Keep `main.rs` minimal, logic in `lib.rs`
 - [`proj-mod-by-feature`](rules/proj-mod-by-feature.md) - Organize modules by feature, not type
@@ -299,7 +322,7 @@ Reference these guidelines when:
 - [`proj-msrv-declare`](rules/proj-msrv-declare.md) - Declare `rust-version` (MSRV) and test it in CI
 - [`proj-build-rs-minimal`](rules/proj-build-rs-minimal.md) - Keep `build.rs` minimal and deterministic
 
-### 17. Clippy & Linting (LOW)
+### 19. Clippy & Linting (LOW)
 
 - [`lint-deny-correctness`](rules/lint-deny-correctness.md) - `#![deny(clippy::correctness)]`
 - [`lint-warn-suspicious`](rules/lint-warn-suspicious.md) - `#![warn(clippy::suspicious)]`
@@ -315,7 +338,7 @@ Reference these guidelines when:
 - [`lint-cfg-check`](rules/lint-cfg-check.md) - Enable `unexpected_cfgs` to catch cfg typos
 - [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Enable high-value `clippy::nursery` lints selectively
 
-### 18. Anti-patterns (REFERENCE)
+### 20. Anti-patterns (REFERENCE)
 
 - [`anti-unwrap-abuse`](rules/anti-unwrap-abuse.md) - Don't use `.unwrap()` in production code
 - [`anti-expect-lazy`](rules/anti-expect-lazy.md) - Don't use `.expect()` for recoverable errors
@@ -380,6 +403,8 @@ This skill provides rule identifiers for quick reference. When generating or rev
 | Unsafe code | `unsafe-`, `type-`, `test-` |
 | Error handling | `err-`, `api-`, `pat-` |
 | Type conversions | `conv-`, `api-` |
+| Macros / code generation | `macro-`, `anti-` |
+| Logging / observability | `obs-`, `err-` |
 | Memory optimization | `mem-`, `own-`, `perf-` |
 | Performance tuning | `opt-`, `mem-`, `perf-` |
 | Code review | `anti-`, `lint-` |
