@@ -1,6 +1,6 @@
 # Rust Skills
 
-179 Rust rules your AI coding agent can use to write better code.
+218 Rust rules your AI coding agent can use to write better code. Current for Rust 1.96 (2024 edition).
 
 Works with Claude Code, Cursor, Windsurf, Copilot, Codex, Aider, Zed, Amp, Cline, and pretty much any other agent that supports skills.
 
@@ -32,23 +32,27 @@ The agent loads the relevant rules and applies them to your code.
 
 ## What's in here
 
-179 rules split into 14 categories:
+218 rules split into 18 categories:
 
 | Category | Rules | What it covers |
 |----------|-------|----------------|
 | **Ownership & Borrowing** | 12 | When to borrow vs clone, Arc/Rc, lifetimes |
 | **Error Handling** | 12 | thiserror for libs, anyhow for apps, the `?` operator |
-| **Memory** | 15 | SmallVec, arenas, avoiding allocations |
-| **API Design** | 15 | Builder pattern, newtypes, sealed traits |
-| **Async** | 15 | Tokio patterns, channels, spawn_blocking |
+| **Memory** | 17 | SmallVec, arenas, avoiding allocations, `mem::take`, drop order |
+| **Unsafe Code** | 7 | `SAFETY:` comments, Miri, `MaybeUninit`, 2024-edition unsafe |
+| **API Design** | 17 | Builder pattern, newtypes, sealed traits, `FromIterator` |
+| **Async** | 18 | Tokio patterns, channels, async fn in traits, cancel safety |
+| **Concurrency** | 4 | rayon, scoped threads, atomic ordering, thread-locals |
 | **Optimization** | 12 | LTO, inlining, PGO, SIMD |
+| **Type Safety** | 13 | Newtypes, parse don't validate, `Deref`, `Display`/`Debug` |
+| **Conversions** | 3 | `TryFrom`, `FromStr`, `AsMut` |
+| **Pattern Matching** | 5 | `let-else`, `matches!`, if-let chains, exhaustive matches |
 | **Naming** | 16 | Following Rust API Guidelines |
-| **Type Safety** | 10 | Newtypes, parse don't validate |
-| **Testing** | 13 | Proptest, mockall, criterion |
-| **Docs** | 11 | Doc examples, intra-doc links |
-| **Performance** | 11 | Iterators, entry API, collect patterns |
-| **Project Structure** | 11 | Workspaces, module layout |
-| **Linting** | 11 | Clippy config, CI setup |
+| **Testing** | 15 | Proptest, mockall, criterion, loom, snapshot tests |
+| **Docs** | 12 | Doc examples, intra-doc links, README/crate-doc unification |
+| **Performance** | 13 | Iterators, entry API, faster hashers, I/O buffering |
+| **Project Structure** | 14 | Workspaces, module layout, features, MSRV |
+| **Linting** | 13 | Clippy config, CI setup, `unexpected_cfgs` |
 | **Anti-patterns** | 15 | Common mistakes and how to fix them |
 
 Each rule has:

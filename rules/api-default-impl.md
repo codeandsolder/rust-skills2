@@ -36,11 +36,15 @@ let timeout = settings.get("timeout").unwrap_or_default();  // Won't work
 ```rust
 #[derive(Default)]
 struct Config {
-    #[default = Duration::from_secs(30)]  // Nightly, or implement manually
-    timeout: Duration,
-    retries: u32,     // Defaults to 0 with derive
-    verbose: bool,    // Defaults to false with derive
+    timeout: Duration,  // derive uses Duration::ZERO; for a non-zero
+                        // default, implement Default manually (below)
+    retries: u32,       // defaults to 0 with derive
+    verbose: bool,      // defaults to false with derive
 }
+
+// (Per-field defaults like `timeout: Duration = Duration::from_secs(30)`
+// require the nightly `default_field_values` feature; on stable, implement
+// Default manually as shown next.)
 
 // Or implement manually for custom defaults
 impl Default for Config {
