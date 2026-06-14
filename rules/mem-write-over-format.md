@@ -155,6 +155,8 @@ depends on string length, allocator, and hardware — measure with
 [criterion](https://crates.io/crates/criterion) in your own workload.
 
 ```rust
+use std::fmt::Write; // brings the write! target trait into scope
+
 // format! in loop: new heap allocation on every iteration
 for i in 0..1000 {
     let s = format!("item-{}", i);
