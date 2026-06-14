@@ -386,14 +386,29 @@ This skill provides rule identifiers for quick reference. When generating or rev
 
 ---
 
-## Sources
+## Sources & Attribution
 
-This skill synthesizes best practices from:
+This skill is an independent synthesis of official Rust guidance, well-known books, and patterns from widely-used crates. It is not affiliated with or endorsed by the Rust project or any crate author; the text and code examples are original.
+
+**Official Rust documentation**
+- [The Rust Reference](https://doc.rust-lang.org/reference/)
 - [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
-- [Rust Performance Book](https://nnethercote.github.io/perf-book/)
-- [Rust Design Patterns](https://rust-unofficial.github.io/patterns/)
-- [The Rustonomicon](https://doc.rust-lang.org/nomicon/)
+- [The Rustonomicon](https://doc.rust-lang.org/nomicon/) (unsafe code)
 - [Rust 2024 Edition Guide](https://doc.rust-lang.org/edition-guide/rust-2024/)
-- Production codebases: ripgrep, tokio, serde, polars, axum, cargo
-- Clippy lint documentation
-- Community conventions (2024-2026)
+- [The Cargo Book](https://doc.rust-lang.org/cargo/)
+- [Standard library docs](https://doc.rust-lang.org/std/) and [release notes](https://doc.rust-lang.org/releases.html)
+
+**Books & guides**
+- [The Rust Performance Book](https://nnethercote.github.io/perf-book/) — Nicholas Nethercote
+- [Rust Design Patterns](https://rust-unofficial.github.io/patterns/) — rust-unofficial
+- [Rust Atomics and Locks](https://marabos.nl/atomics/) — Mara Bos
+- [Effective Rust](https://effective-rust.com/) — David Drysdale
+
+**Tooling**
+- [Clippy lint documentation](https://rust-lang.github.io/rust-clippy/)
+- [Miri](https://github.com/rust-lang/miri)
+
+**Real-world codebases studied for idioms**
+- ripgrep, tokio, serde, clap, polars, axum, cargo, hyper, bevy, rayon, and dtolnay's crates (thiserror, anyhow, syn)
+
+This project is MIT-licensed. Referenced upstream materials remain under their own licenses (the official Rust docs and API Guidelines are dual MIT / Apache-2.0).
