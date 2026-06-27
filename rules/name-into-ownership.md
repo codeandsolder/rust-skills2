@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-The `into_` prefix signals "this method consumes self and returns something else." The original value is moved and no longer usable. This ownership transfer is usually cheap (no allocation), but the caller loses access to the original. Clear naming prevents "use after move" confusion.
+The `into_` prefix signals "this method consumes self and returns something else." The original value is moved and no longer usable. This ownership transfer cost is **variable** (the API Guidelines label it as "Variable" cost — e.g., `BufWriter::into_inner()` may flush), but the caller loses access to the original. Clear naming prevents "use after move" confusion.
 
 ## Bad
 
@@ -104,7 +104,8 @@ impl Buffer {
         self.data.clone()
     }
     
-    // into_ : consumes self, usually cheap
+    // into_ : consumes self, cost varies (not "usually free")
+    // e.g., BufWriter::into_inner() may flush pending data
     fn into_inner(self) -> Vec<u8> {
         self.data
     }
@@ -113,6 +114,21 @@ impl Buffer {
     fn into_parts(self) -> (Vec<u8>, String) {
         (self.data, self.name)
     }
+}
+```
+
+## Convention: `into_` Should Not Panic
+
+`into_` methods should not panic in normal usage. If the conversion can always succeed, `into_` is appropriate. If it can fail, prefer `try_into()` returning `Result`.
+
+## Clippy Enforcement
+
+`clippy::wrong_self_convention` (style group) enforces that `into_*` methods take `self` by value:
+
+```rust
+impl MyType {
+    // Clippy will warn: into_ methods should take self by value
+    pub fn into_inner(&self) -> Inner { ... }  // Should take self!
 }
 ```
 

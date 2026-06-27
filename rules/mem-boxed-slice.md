@@ -6,6 +6,8 @@
 
 `Vec<T>` stores three words: pointer, length, and capacity. When you know a collection won't grow, `Box<[T]>` stores only pointer and length (2 words), saving 8 bytes per instance. More importantly, it communicates intent: "this data is fixed-size." For large numbers of fixed collections, this adds up.
 
+**Rust 1.87+** guarantees that `Vec::with_capacity(N).capacity() == N` exactly, making `into_boxed_slice()` more predictable — you know the exact allocation size before shrinking.
+
 ## Bad
 
 ```rust
@@ -72,6 +74,31 @@ vec.shrink_to_fit();  // Reduce capacity to length
 let boxed = vec.into_boxed_slice();  // Now no wasted allocation
 ```
 
+## Anti-Pattern: Vec Round-Trip
+
+Avoid converting `Box<[T]>` back to `Vec<T>` just for temporary mutation:
+
+```rust
+// ❌ Bad: converts back and forth, wastes allocation
+fn update(boxed: &mut Box<[i32]>, add: i32) {
+    let mut vec = boxed.clone().into_vec();  // allocates + copies
+    vec.push(add);
+    *boxed = vec.into_boxed_slice();         // allocates again
+}
+
+// ✅ Better: collect into a new Box<[T]> directly
+fn update(boxed: &[i32], add: i32) -> Box<[i32]> {
+    let mut vec = boxed.to_vec();  // must copy, but one allocation
+    vec.push(add);
+    vec.into_boxed_slice()
+}
+
+// ✅ Best: use Vec when you need mutation
+struct Document {
+    paragraphs: Vec<Paragraph>,  // Use Vec directly if you'll modify
+}
+```
+
 ## When to Use What
 
 | Type | Use When |
@@ -135,5 +162,6 @@ impl Cache {
 ## See Also
 
 - [mem-with-capacity](./mem-with-capacity.md) - Pre-allocating when size is known
+- [mem-arc-str](./mem-arc-str.md) — `Arc<str>` over `Arc<String>` (same rationale, thread-safe)
 - [own-slice-over-vec](./own-slice-over-vec.md) - Using slices in function parameters
 - [mem-compact-string](./mem-compact-string.md) - Compact string alternatives

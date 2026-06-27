@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-`format!()` always allocates a new String, even for constant text. In hot paths, these allocations add up. Use string literals, `write!()`, or pre-allocated buffers instead.
+`format!()` always allocates a new String, even for constant text. In hot paths, these allocations add up. Use string literals, `write!()`, or pre-allocated buffers instead. For clone-heavy workloads, `EcoString` (from `ecow` 0.3.0) makes `clone()` O(1), reducing the cost of defensive copies.
 
 ## Bad
 
@@ -114,12 +114,34 @@ fn build_message(parts: &[&str]) -> String {
 ## CompactString for Small Strings
 
 ```rust
-use compact_str::CompactString;
+use compact_str::{CompactString, ToCompactString, format_compact};
 
-// Stack-allocated for strings <= 24 bytes
+// Stack-allocated for strings <= 24 bytes (compact_str 0.9.0+ branchless)
 fn format_code(code: u32) -> CompactString {
-    compact_str::format_compact!("ERR-{:04}", code)
+    format_compact!("ERR-{:04}", code)
     // Stack-allocated if result is small enough
+}
+
+// ToCompactString trait for any Display type
+let s: CompactString = 42.to_compact_string();
+let t: CompactString = format_compact!("value: {}", 42);
+```
+
+## EcoString for Clone-Heavy Workloads
+
+```rust
+use ecow::EcoString;
+
+// 16 bytes, O(1) clone — ideal for caches, templates, shared config
+fn build_template(values: &[&str]) -> Vec<EcoString> {
+    values.iter().map(|&v| EcoString::from(v)).collect()
+}
+
+fn process(items: Vec<EcoString>) {
+    for item in &items {
+        let cloned = item.clone();  // O(1) — just bump refcount
+        spawn_worker(cloned);
+    }
 }
 ```
 
@@ -144,4 +166,6 @@ return Err(format!("Invalid value: {}", value).into());
 
 - [mem-write-over-format](mem-write-over-format.md) - Use write!() instead of format!()
 - [mem-with-capacity](mem-with-capacity.md) - Pre-allocate strings
+- [mem-compact-string](mem-compact-string.md) — Compact string alternatives
+- [mem-ecow-clone-heavy](mem-ecow-clone-heavy.md) — EcoString for clone-heavy workloads
 - [own-cow-conditional](own-cow-conditional.md) - Use Cow for mixed static/dynamic

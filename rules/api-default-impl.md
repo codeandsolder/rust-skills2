@@ -34,22 +34,7 @@ let timeout = settings.get("timeout").unwrap_or_default();  // Won't work
 ## Good
 
 ```rust
-use std::time::Duration;
-
-// Simple case: derive uses each field type's Default (Duration::ZERO, 0, false)
-#[derive(Default)]
-struct Config {
-    timeout: Duration,
-    retries: u32,
-    verbose: bool,
-}
-```
-
-For a non-zero default, implement `Default` by hand instead of deriving. (Per-field defaults like `timeout: Duration = Duration::from_secs(30)` require the nightly `default_field_values` feature.)
-
-```rust
-use std::time::Duration;
-
+// Manual implementation for types with custom defaults
 struct Config {
     timeout: Duration,
     retries: u32,
@@ -129,6 +114,25 @@ let server = ServerBuilder::default()
     .port(3000)
     .build();
 ```
+
+## Enum Default
+
+Since Rust 1.62 (June 2022), `#[derive(Default)]` works on enums by marking a variant with `#[default]`:
+
+```rust
+#[derive(Debug, Default)]
+pub enum State {
+    #[default]
+    Idle,
+    Processing,
+    Failed(String),
+}
+
+// State::default() returns State::Idle
+assert!(matches!(State::default(), State::Idle));
+```
+
+This is useful for state machines where one state is the initial state. The `#[default]` variant determines the value returned by `Default::default()`.
 
 ## Default with Required Fields
 

@@ -1,29 +1,26 @@
 # lint-warn-suspicious
 
+**Rule**: `lint-warn-suspicious`
+
 > Enable clippy::suspicious for likely bugs
 
 ## Why It Matters
 
-The `clippy::suspicious` lint group catches code patterns that are syntactically valid but almost always wrong. These are potential bugs that deserve investigation. Enabling this group as a warning helps catch mistakes early.
+The `clippy::suspicious` lint group catches code patterns that are syntactically valid but almost always wrong. These are potential bugs that deserve investigation. Enabling this group as a warning helps catch mistakes early. Several related lints have also been uplifted to rustc.
 
 ## Configuration
 
-```rust
-// In lib.rs or main.rs
-#![warn(clippy::suspicious)]
-```
-
-Or in `Cargo.toml`:
-
 ```toml
+# Cargo.toml — canonical configuration
 [lints.clippy]
 suspicious = "warn"
 ```
 
-Or in `clippy.toml`:
+Or stricter:
 
 ```toml
-warn = ["clippy::suspicious"]
+[lints.clippy]
+suspicious = { level = "deny", priority = -1 }
 ```
 
 ## What It Catches
@@ -101,6 +98,27 @@ else {  // Weird formatting, might be a mistake
 }
 ```
 
+## Uplifted Rustc Lints (Suspicious Category)
+
+Several rustc lints complement the `clippy::suspicious` group. Configure them under `[lints.rust]`:
+
+```toml
+[lints.rust]
+semicolon_in_expressions_from_macros = "deny"  # 1.91
+dangerous_implicit_autorefs           = "deny"  # 1.89
+integer_to_ptr_transmutes             = "warn"  # 1.91
+const_item_interior_mutations         = "warn"  # 1.93
+function_casts_as_integer             = "warn"  # 1.93
+```
+
+| Lint | Since | Level | What It Catches |
+|------|-------|-------|-----------------|
+| `semicolon_in_expressions_from_macros` | 1.91 | deny | Semicolon in macro expression position |
+| `dangerous_implicit_autorefs` | 1.89 | deny | Unexpected implicit autoref creates surprising borrows |
+| `integer_to_ptr_transmutes` | 1.91 | warn | Transmuting integer to pointer |
+| `const_item_interior_mutations` | 1.93 | warn | Mutable reference to const item |
+| `function_casts_as_integer` | 1.93 | warn | Casting function pointer to integer |
+
 ## When to Allow
 
 Rarely. If you need to suppress, document why:
@@ -117,6 +135,7 @@ impl Mul for Matrix {
 
 ## See Also
 
-- [lint-deny-correctness](./lint-deny-correctness.md) - Deny definite bugs
-- [lint-warn-style](./lint-warn-style.md) - Style warnings
-- [lint-warn-complexity](./lint-warn-complexity.md) - Complexity warnings
+- [lint-deny-correctness](./lint-deny-correctness.md) — Deny definite bugs
+- [lint-warn-style](./lint-warn-style.md) — Style warnings
+- [lint-warn-complexity](./lint-warn-complexity.md) — Complexity warnings
+- [lint-uplifted](./lint-uplifted.md) — Tracking clippy lints uplifted to rustc

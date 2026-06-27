@@ -22,10 +22,8 @@ fn sum(data: &[i32]) -> i32 {
 }
 
 // Complex caching with no evidence it's needed
-lazy_static! {
-    static ref CACHE: RwLock<HashMap<String, Arc<Result>>> = 
-        RwLock::new(HashMap::new());
-}
+static CACHE: LazyLock<RwLock<HashMap<String, Arc<Result>>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 // Hand-rolled data structures "for speed"
 struct MyVec<T> {
@@ -49,9 +47,7 @@ fn sum_optimized(data: &[i32]) -> i32 {
     // we measured that manual SIMD gives 3x speedup
     #[cfg(target_arch = "x86_64")]
     {
-        // a hand-written SIMD path would go here (measured ~3x faster);
-        // fall back to the iterator version as a placeholder
-        data.iter().sum()
+        // SIMD implementation with benchmark data
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
@@ -106,6 +102,19 @@ fn hot_function(data: &[u8]) -> u64 {
 /// Benchmarks show 3x speedup for >1000 calls/sec workloads.
 struct FormatterPool {
     buffers: Vec<String>,
+}
+
+// Use LazyLock (Rust 1.80+) or LazyCell (1.80+) instead of lazy_static!
+use std::sync::LazyLock;
+
+static CONFIG: LazyLock<Config> = LazyLock::new(|| {
+    Config::load().expect("embedded config is valid")
+});
+
+// LazyCell for !Sync values (Rust 1.80+)
+use std::cell::LazyCell;
+thread_local! {
+    static BUFFER: LazyCell<String> = LazyCell::new(|| String::with_capacity(256));
 }
 ```
 

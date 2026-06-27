@@ -156,6 +156,100 @@ fn load_config(path: &Path) -> Result<Config, ConfigError> {
 }
 ```
 
+## no_std Support (thiserror 2.0+)
+
+thiserror 2.0+ supports `no_std` with `core::error::Error` (Rust 1.81+):
+
+```toml
+# Cargo.toml
+[dependencies]
+thiserror = { version = "2", default-features = false }
+```
+
+```rust
+#![no_std]
+
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum SpiError {
+    #[error("DMA transfer failed on channel {channel}")]
+    DmaFailed {
+        channel: u8,
+        #[source]
+        source: DmaError,
+    },
+
+    #[error("CS assertion failed")]
+    CsAssert(#[from] GpioError),
+}
+
+// core::error::Error is automatically derived
+```
+
+## #[error(transparent)]
+
+Delegates both Display and source to the inner error:
+
+```rust
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum AppError {
+    // Transparent — passes through Display and source
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+
+    // Without transparent, you'd need to specify both
+    #[error("io failure")]
+    Io(#[from] std::io::Error),
+}
+```
+
+This is especially useful for wrapping `anyhow::Error` or other dynamic error types in your thiserror enum.
+
+## #[diagnostic::do_not_recommend] (Rust 1.85+)
+
+Hide blanket error conversion impls from compiler suggestions:
+
+```rust
+#[diagnostic::do_not_recommend]
+impl<T: std::error::Error + 'static> From<T> for Box<dyn std::error::Error> {
+    fn from(err: T) -> Self {
+        Box::new(err)
+    }
+}
+```
+
+This prevents the compiler from suggesting `Box<dyn Error>` conversions when users don't want them.
+
+## Alternative: snafu 0.9
+
+`snafu` 0.9 (March 2026) is an alternative to thiserror with context selectors and a `Report` macro:
+
+```rust
+use snafu::prelude::*;
+
+#[derive(Debug, Snafu)]
+pub enum ConfigError {
+    #[snafu(display("failed to read config at {path}"))]
+    ReadFailed {
+        path: String,
+        source: std::io::Error,
+    },
+}
+
+// snafu's Report macro for unified error reporting
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("{}", Report::from_error(e));
+        std::process::exit(1);
+    }
+}
+```
+
+Choose thiserror for simplicity and ecosystem maturity; choose snafu when you need context selectors or prefer its API.
+
 ## Library vs Application
 
 | Context | Crate | Why |

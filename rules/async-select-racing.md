@@ -79,7 +79,8 @@ select! {
         handle_message(msg);
     }
     
-    // else branch for when all futures are disabled
+    // else branch: fires only when ALL if-guards evaluate to false,
+    // making every branch unavailable (not when futures just aren't ready yet)
     else => {
         println!("All branches disabled");
     }
@@ -187,6 +188,24 @@ loop {
         _ = interval.tick() => {
             do_periodic_work().await;
         }
+    }
+}
+```
+
+## better_tokio_select Crate
+
+For advanced `select!` patterns, consider the [`better_tokio_select`](https://crates.io/crates/better-tokio-select) crate. It provides ergonomic improvements:
+
+```rust
+// better_tokio_select simplifies complex select patterns
+use better_tokio_select::select;
+
+loop {
+    select! {
+        msg = rx.recv() => handle(msg),
+        _ = interval.tick() => tick(),
+        _ = shutdown.cancelled() => break,
+        // No else branch needed - supports empty-select gracefully
     }
 }
 ```

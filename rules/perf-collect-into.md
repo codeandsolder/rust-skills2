@@ -4,9 +4,7 @@
 
 ## Why It Matters
 
-`collect_into()` allows collecting iterator results into an existing collection, reusing its allocation. This avoids the allocation that `collect()` would make for a new collection.
-
-> **Note:** `collect_into` is currently **nightly-only** (requires `#![feature(iter_collect_into)]`, tracking issue [#94780](https://github.com/rust-lang/rust/issues/94780)). On stable Rust, use `extend()` instead — see the Stable Alternative section below.
+`collect_into()` (stabilized in Rust 1.83) allows collecting iterator results into an existing collection, reusing its allocation. This avoids the allocation that `collect()` would make for a new collection.
 
 ## Bad
 
@@ -34,32 +32,11 @@ fn filter_loop(data: &[Vec<i32>]) {
 }
 ```
 
-## Good (Stable: extend)
+## Good
 
 ```rust
-// Stable approach: reuse buffer with extend
+// Reuse buffer with collect_into
 fn filter_loop(data: &[Vec<i32>]) {
-    let mut buffer = Vec::new();
-    
-    for batch in data {
-        buffer.clear();  // Keep allocation
-        buffer.extend(
-            batch.iter()
-                .filter(|&&x| x > 0)
-                .copied()
-        );
-        process(&buffer);
-    }
-}
-```
-
-## Nightly: collect_into
-
-```rust
-#![feature(iter_collect_into)]
-
-// Reuse buffer with collect_into (nightly only)
-fn filter_loop_nightly(data: &[Vec<i32>]) {
     let mut buffer = Vec::new();
     
     for batch in data {
@@ -72,11 +49,56 @@ fn filter_loop_nightly(data: &[Vec<i32>]) {
     }
 }
 
+// Also works with extend pattern
+fn filter_loop_extend(data: &[Vec<i32>]) {
+    let mut buffer = Vec::new();
+    
+    for batch in data {
+        buffer.clear();
+        buffer.extend(
+            batch.iter()
+                .filter(|&&x| x > 0)
+                .copied()
+        );
+        process(&buffer);
+    }
+}
 ```
 
-## Stable Alternative: extend
+## Complementary: extract_if for Conditional Collection
 
-On stable Rust, `extend()` is equivalent and idiomatic:
+Combine `collect_into()` with `Vec::extract_if` (Rust 1.88+) for efficient conditional collection without double iteration:
+
+```rust
+let mut items: Vec<Item> = get_items();
+let mut extracted = Vec::with_capacity(items.len());
+let mut kept = Vec::with_capacity(items.len());
+
+// Drain-splice: extract matching items, keep non-matching
+for mut item in items.extract_if(|i| i.should_extract()) {
+    item.transform();
+    extracted.push(item);
+}
+
+// items now contains only non-extracted items
+// extract_if and drain did the move without cloning
+```
+
+## Vec push_mut and insert_mut (Rust 1.95+)
+
+Since Rust 1.95, `Vec::push_mut` and `Vec::insert_mut` provide extension-like semantics for single elements with controlled capacity checks:
+
+```rust
+let mut vec = Vec::with_capacity(5);
+vec.push_mut(item);   // Like push but returns Result if no capacity
+vec.insert_mut(0, item); // Like insert but returns Result if no capacity
+```
+
+These are useful in constrained environments where you want explicit capacity management without the allocation that `reserve` might trigger.
+
+## Pre-1.83 Alternative: extend
+
+Before `collect_into()` was stabilized, use `extend()`:
 
 ```rust
 fn reuse_buffer(data: &[Vec<i32>]) {
@@ -138,5 +160,6 @@ let mut deque = VecDeque::new();
 ## See Also
 
 - [perf-drain-reuse](./perf-drain-reuse.md) - Drain for reuse
+- [perf-extract-if](./perf-extract-if.md) - Conditional extraction
 - [mem-reuse-collections](./mem-reuse-collections.md) - Collection reuse
 - [perf-extend-batch](./perf-extend-batch.md) - Batch extensions

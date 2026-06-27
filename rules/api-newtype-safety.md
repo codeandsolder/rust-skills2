@@ -155,8 +155,55 @@ struct Seconds(u64);
 struct X(i32);  // Just use i32
 ```
 
+## Recommended Derive Bundle for ID Types
+
+```rust
+// Standard derive bundle for public ID types
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct UserId(u64);
+
+// Add Display for user-facing output
+impl std::fmt::Display for UserId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "USR-{:08}", self.0)
+    }
+}
+
+// Add serde for serialization (behind feature flag)
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProductId(u64);
+
+// For FFI: #[repr(transparent)] ensures ABI compatibility
+// See [type-repr-transparent](./type-repr-transparent.md)
+```
+
+## nutype: Automating Newtype Boilerplate
+
+For newtypes with validation (not just wrappers), the `nutype` crate (v0.7.0, `greyblake/nutype`) generates sanitization, validation, error types, and trait impls from a single macro:
+
+```rust
+use nutype::nutype;
+
+#[nutype(
+    sanitize(trim, lowercase),
+    validate(not_empty, len_char_max = 50),
+    derive(Debug, Clone, Display, AsRef, Deref, FromStr, Into)
+)]
+pub struct Username(String);
+
+// Generates: Username::new(String) -> Result<Username, UsernameError>
+//           + Display, AsRef<str>, Deref<Target=str>, FromStr, Into<String>
+//           + automatic error enum with Empty, TooLong variants
+```
+
+See [api-nutype-validated](./api-nutype-validated.md) for the full reference.
+
 ## See Also
 
+- [api-nutype-validated](./api-nutype-validated.md) - nutype validated newtypes
 - [type-newtype-ids](./type-newtype-ids.md) - Newtype pattern for IDs
+- [type-repr-transparent](./type-repr-transparent.md) - FFI newtypes
 - [api-parse-dont-validate](./api-parse-dont-validate.md) - Type-driven validation
 - [own-copy-small](./own-copy-small.md) - Making newtypes Copy

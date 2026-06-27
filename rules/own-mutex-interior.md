@@ -1,10 +1,15 @@
 # own-mutex-interior
 
-> Use `Mutex<T>` for interior mutability across threads
+> Use the right `Mutex<T>` for the execution model: `std`/`parking_lot` for synchronous code, `tokio::sync::Mutex` for async code
 
 ## Why It Matters
 
-When you need shared mutable state across threads, `Mutex<T>` provides safe interior mutability with synchronization. Unlike `RefCell`, `Mutex` is `Send + Sync` and uses OS-level locking to ensure only one thread can access the data at a time.
+When you need shared mutable state across threads, `Mutex<T>` provides safe interior mutability with synchronization. Unlike `RefCell`, `Mutex` is `Send + Sync` and ensures only one task or thread mutates the data at a time.
+
+The lock choice depends on where the data is used:
+
+- `std::sync::Mutex` or `parking_lot::Mutex` for synchronous code
+- `tokio::sync::Mutex` for async code that must acquire the lock from async tasks
 
 ## Bad
 
@@ -67,9 +72,29 @@ match mutex.lock() {
 let guard = mutex.lock().unwrap_or_else(|e| e.into_inner());
 ```
 
-## Prefer parking_lot::Mutex
+## Async code needs tokio::sync::Mutex
 
-For better performance, consider `parking_lot::Mutex`:
+```rust
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+struct State {
+    counter: usize,
+}
+
+async fn increment(state: Arc<Mutex<State>>) {
+    let mut guard = state.lock().await;
+    guard.counter += 1;
+}
+```
+
+Do not default to `std::sync::Mutex` or `parking_lot::Mutex` in async code unless the critical section is tiny, fully synchronous, and you are sure no `.await` can occur while the guard is live.
+
+Note: `std::sync::Mutex` has improved significantly, but the general rule remains — prefer `tokio::sync::Mutex` when the guard will span `.await` boundaries.
+
+## parking_lot::Mutex for synchronous code
+
+For synchronous multi-threaded code, `parking_lot::Mutex` can be a good choice:
 
 ```rust
 use parking_lot::Mutex;
@@ -83,24 +108,64 @@ data.push(42);
 // Lock automatically released when guard drops
 ```
 
-Benefits of `parking_lot`:
+Benefits of `parking_lot` in synchronous code:
 - No poisoning (returns guard directly)
 - Smaller size (1 byte vs 40+ bytes)
 - Better performance under contention
 - Fair locking option available
+
+**Note:** The performance gap between `std::sync::Mutex` and `parking_lot::Mutex` has narrowed significantly in recent Rust versions. For most synchronous code, `std::sync::Mutex` is sufficient. Consider `parking_lot` only when profiling shows contention is a bottleneck.
+
+## Recent Additions
+
+### `RwLockWriteGuard::downgrade` (1.92)
+
+Atomically downgrade a write lock to a read lock without releasing the lock:
+
+```rust
+use std::sync::RwLock;
+
+let lock = RwLock::new(42);
+
+// 1.92+: write then read without releasing the lock
+let write_guard = lock.write().unwrap();
+*write_guard += 1;
+let read_guard = RwLockWriteGuard::downgrade(write_guard);
+println!("Value: {}", *read_guard);
+// Lock is still held as read — no race window
+```
+
+See [own-rwlock-readers](own-rwlock-readers.md) for more details.
+
+### `From<T>` for `AssertUnwindSafe<T>` (1.96)
+
+```rust
+use std::panic::{AssertUnwindSafe, UnwindSafe};
+use std::sync::Mutex;
+
+// 1.96+: AssertUnwindSafe<T> now implements From<T>
+let mutex = Mutex::new(42);
+let safe = AssertUnwindSafe::from(mutex);  // Cleaner than wrapping
+```
+
+### Tokio Mutex vs std Mutex — Clarification
+
+- `std::sync::Mutex` locks block the current thread. Never hold these across `.await`.
+- `tokio::sync::Mutex` locks are async — they yield the task instead of blocking. Use when the guard spans `.await`.
+- For short, synchronous critical sections that do not cross `.await`, `std::sync::Mutex` is faster even in async code.
 
 ## When to Use What
 
 | Type | Threading | Overhead | Use Case |
 |------|-----------|----------|----------|
 | `RefCell<T>` | Single | Minimal | Interior mutability, same thread |
-| `Mutex<T>` | Multi | Locking | Shared mutable state across threads |
+| `std::sync::Mutex<T>` | Multi | Locking | Shared mutable state in synchronous code |
+| `tokio::sync::Mutex<T>` | Async multi-task | Awaitable lock | Shared mutable state in async code |
 | `RwLock<T>` | Multi | Locking | Many readers, few writers |
-| `parking_lot::Mutex` | Multi | Less | Drop-in std::Mutex replacement |
+| `parking_lot::Mutex<T>` | Multi | Less (narrowed gap) | Synchronous code with contention-sensitive locks |
 
 ## See Also
 
 - [own-rwlock-readers](./own-rwlock-readers.md) - When reads dominate writes
 - [own-refcell-interior](./own-refcell-interior.md) - Single-threaded alternative
 - [async-no-lock-await](./async-no-lock-await.md) - Avoiding locks across await points
-- [conc-atomic-ordering](./conc-atomic-ordering.md) - Lock-free alternative for simple state

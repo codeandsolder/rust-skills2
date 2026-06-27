@@ -145,9 +145,34 @@ impl From<std::io::Error> for AppError { ... }
 impl From<ParseIntError> for AppError { ... }
 ```
 
+## #[from] in no_std
+
+Since thiserror 2.0+ and Rust 1.81+, `#[from]` works in `no_std` environments:
+
+```toml
+# Cargo.toml
+[dependencies]
+thiserror = { version = "2", default-features = false }
+```
+
+```rust
+#![no_std]
+
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum UsbError {
+    #[error("descriptor read failed")]
+    DescriptorRead(#[from] DescriptorError),
+
+    #[error("transfer failed")]
+    Transfer(#[from] TransferError),
+}
+```
+
 ## See Also
 
 - [err-thiserror-lib](./err-thiserror-lib.md) - Using thiserror for libraries
+- [err-no-std-error](./err-no-std-error.md) - no_std error patterns
 - [err-source-chain](./err-source-chain.md) - Preserving error chains
 - [err-question-mark](./err-question-mark.md) - The ? operator
-- [conv-tryfrom-fallible](./conv-tryfrom-fallible.md) - TryFrom for fallible conversions

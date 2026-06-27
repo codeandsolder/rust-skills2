@@ -172,6 +172,8 @@ use_data(&data);  // Safe
 let data = rx.borrow_and_update().clone();
 ```
 
+> **Critical**: The `Ref` guard returned by `borrow()` and `borrow_and_update()` must **never** be held across an `.await` point. The `Ref` prevents the sender from modifying the value, which would cause a deadlock if held across await. Always clone the value or drop the `Ref` before any async operation.
+
 ## watch vs broadcast vs mpsc
 
 | Feature | watch | broadcast | mpsc |

@@ -158,6 +158,42 @@ tokio::select! {
 }
 ```
 
+## Racing Multiple Responses
+
+Use `select!` to race a oneshot receiver against a timeout or another response source:
+
+```rust
+use tokio::select;
+use tokio::sync::oneshot;
+use tokio::time::{sleep, Duration};
+
+async fn race_responses() -> Result<Data, Error> {
+    let (tx1, rx1) = oneshot::channel();
+    let (tx2, rx2) = oneshot::channel();
+    
+    // Send requests concurrently
+    tokio::spawn(async move { tx1.send(fetch_from_server_a().await); });
+    tokio::spawn(async move { tx2.send(fetch_from_server_b().await); });
+    
+    // Return whichever responds first
+    select! {
+        result = rx1 => result.unwrap_or_else(|_| Err(Error::Cancelled)),
+        result = rx2 => result.unwrap_or_else(|_| Err(Error::Cancelled)),
+    }
+}
+
+// Or race against a timeout
+async fn race_with_timeout() -> Result<Response, Error> {
+    let (tx, rx) = oneshot::channel();
+    tokio::spawn(async move { tx.send(fetch_data().await); });
+    
+    select! {
+        result = rx => result.unwrap_or_else(|_| Err(Error::Cancelled)),
+        _ = sleep(Duration::from_secs(5)) => Err(Error::Timeout),
+    }
+}
+```
+
 ## Response Type Wrapper
 
 ```rust

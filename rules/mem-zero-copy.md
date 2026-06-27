@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-Zero-copy means working with data without copying it. Instead of allocating new memory and copying bytes, you work with references to the original data. This dramatically reduces memory usage and improves performance, especially for large data.
+Zero-copy means working with data without copying it. Instead of allocating new memory and copying bytes, you work with references to the original data. This dramatically reduces memory usage and improves performance, especially for large data. The `memchr` crate (2.8+) adds portable SIMD substring search on aarch64, x86_64, and wasm32.
 
 ## Bad
 
@@ -57,20 +57,42 @@ let world = data.slice(6..11); // Zero-copy!
 // Memory is freed when all references are dropped
 ```
 
-## Common Pattern: Cow for Static Strings
+## memchr 2.8+ SIMD Substring Search
 
-A common pattern — seen in HTTP servers and similar code — returns
-`Cow<'static, str>` to avoid allocating for well-known static values:
+`memchr` 2.8+ provides portable SIMD-accelerated substring search:
 
 ```rust
-fn method_to_cow(method: &http::Method) -> Cow<'static, str> {
-    match *method {
-        Method::GET => Cow::Borrowed("GET"),      // Zero-copy
-        Method::POST => Cow::Borrowed("POST"),    // Zero-copy
-        Method::PUT => Cow::Borrowed("PUT"),      // Zero-copy
-        _ => Cow::Owned(method.to_string()),      // Only copies for rare methods
+use memchr::memmem;
+
+// Pre-compiled finder for repeated searches (SIMD)
+let finder = memmem::Finder::new("needle");
+for haystack in haystacks {
+    if let Some(pos) = finder.find(haystack.as_bytes()) {
+        // Found at pos — no allocation, SIMD-accelerated
+        process(&haystack[pos..]);
     }
 }
+
+// One-shot search
+use memchr::memchr;
+fn find_newline(data: &[u8]) -> Option<usize> {
+    memchr(b'\n', data)  // SIMD on aarch64/x86_64/wasm32
+}
+
+// Find all occurrences
+use memchr::memchr_iter;
+fn count_newlines(data: &[u8]) -> usize {
+    memchr_iter(b'\n', data).count()
+}
+```
+
+## stringzilla (Alternative)
+
+For workloads where `memchr` isn't fast enough, `stringzilla` provides even faster SIMD string operations:
+
+```rust
+// stringzilla offers SIMD-accelerated contains, find, count, etc.
+// https://github.com/ashvardanian/stringzilla
 ```
 
 ## Zero-Copy Parsing
@@ -116,24 +138,6 @@ fn normalize<'a>(input: &'a str) -> Cow<'a, str> {
         // Zero-copy reference
         Cow::Borrowed(input)
     }
-}
-```
-
-## memchr for Fast Searching
-
-```rust
-use memchr::memchr;
-
-// Fast byte search using SIMD
-fn find_newline(data: &[u8]) -> Option<usize> {
-    memchr(b'\n', data)  // SIMD-accelerated, no allocation
-}
-
-// Find all occurrences
-use memchr::memchr_iter;
-
-fn count_newlines(data: &[u8]) -> usize {
-    memchr_iter(b'\n', data).count()
 }
 ```
 

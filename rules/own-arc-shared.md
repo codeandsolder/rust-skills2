@@ -110,6 +110,71 @@ fn set_cached(cache: &Cache, key: String, value: String) {
 }
 ```
 
+## Recent Additions
+
+### `Arc::new_zeroed` / `Arc::new_zeroed_slice` (1.92)
+
+Allocate an `Arc` with zeroed memory, avoiding the cost of initializing then overwriting:
+
+```rust
+use std::sync::Arc;
+
+// Before 1.92: allocate, zero, then initialize
+let mut buf = Arc::new([0u8; 4096]);
+Arc::get_mut(&mut buf).unwrap().copy_from_slice(&data);
+
+// 1.92+: allocate already-zeroed
+let buf = unsafe { Arc::new_zeroed::<[u8; 4096]>() };
+let mut buf = unsafe { buf.assume_init() };
+buf.copy_from_slice(&data);
+
+// Zeroed slice variant
+let slice = unsafe { Arc::new_zeroed_slice::<u8>(4096) };
+```
+
+### `Pin<Arc<T>>` Default (1.91)
+
+```rust
+use std::pin::Pin;
+use std::sync::Arc;
+
+// 1.91+: Pin<Arc<T>> implements Default when T: Default
+fn spawn_task() -> Pin<Arc<MyActor>> {
+    Default::default()  // Creates Pin<Arc<MyActor>>::default()
+}
+```
+
+### `LazyLock<Arc<T>>` Global Singleton Pattern
+
+```rust
+use std::sync::{Arc, LazyLock};
+
+static GLOBAL_CONFIG: LazyLock<Arc<AppConfig>> = LazyLock::new(|| {
+    Arc::new(AppConfig::load())
+});
+
+// First access initializes; subsequent accesses are fast Arc clones
+fn get_config() -> Arc<AppConfig> {
+    GLOBAL_CONFIG.clone()
+}
+```
+
+### Atomic Pointer Operations on Arc (1.91)
+
+`Arc` supports atomic pointer operations through `core::sync::atomic::AtomicPtr`:
+
+```rust
+use std::sync::Arc;
+use std::sync::atomic::{AtomicPtr, Ordering};
+
+// Atomic swap of managed Arc data (conceptually)
+fn atomic_replace(data: &AtomicPtr<MyData>, new: Arc<MyData>) -> Arc<MyData> {
+    let ptr = Arc::into_raw(new) as *mut MyData;
+    let old = data.swap(ptr, Ordering::AcqRel);
+    unsafe { Arc::from_raw(old) }
+}
+```
+
 ## Performance Considerations
 
 ```rust
@@ -139,5 +204,3 @@ for item in items {
 - [own-rc-single-thread](own-rc-single-thread.md) - Use Rc for single-threaded sharing
 - [own-mutex-interior](own-mutex-interior.md) - Use Mutex for interior mutability
 - [async-clone-before-await](async-clone-before-await.md) - Clone Arc before await points
-- [conc-scoped-threads](conc-scoped-threads.md) - Borrow stack data instead of Arc
-- [unsafe-send-sync-manual](unsafe-send-sync-manual.md) - Document manual Send/Sync impls

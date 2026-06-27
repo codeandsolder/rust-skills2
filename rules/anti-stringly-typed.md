@@ -121,6 +121,8 @@ fn handle_request(status_str: &str) -> Result<(), Error> {
 
 ## With Serde
 
+Serde provides built-in enum representation options that eliminate string matching at the boundary:
+
 ```rust
 use serde::{Serialize, Deserialize};
 
@@ -134,7 +136,20 @@ enum Status {
 
 // JSON: {"status": "in_progress"}
 // Deserialization validates automatically
+
+// Use adjacently tagged or internally tagged enums for richer representations:
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+enum Message {
+    Text { body: String },
+    Image { url: String, alt: String },
+}
+
+// JSON: {"type": "text", "payload": {"body": "hello"}}
+// Compiler checks exhaustiveness; no manual string dispatch
 ```
+
+> **Why this matters**: Stringly-typed serde patterns (manual `match` on string fields, `serde_json::Value` soup, runtime error handling on every access) negate the type-safety benefits of Rust. Use serde's derive and enum representations to parse validated types at the boundary.
 
 ## Error Messages
 

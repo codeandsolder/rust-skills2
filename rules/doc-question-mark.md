@@ -103,6 +103,23 @@ Or use the implicit wrapper (Rust 2021+):
 /// ```
 ```
 
+The `Ok::<(), Error>(())` tail pattern is useful when you want to avoid
+wrapping in `fn main() -> Result`.
+
+### Async Doc Tests with ?
+
+For async functions, wrap in an async block:
+
+```rust
+/// ```
+/// # async fn wrapper() -> Result<(), my_crate::Error> {
+/// let result = my_crate::fetch_data().await?;
+/// println!("{result}");
+/// # Ok(())
+/// # }
+/// ```
+```
+
 ## When to Use `.unwrap()`
 
 There are specific cases where `.unwrap()` is acceptable in examples:
@@ -129,8 +146,21 @@ But still prefer `?` when demonstrating error handling patterns.
 | `.expect()` | Panics with custom message | Slightly better |
 | `?` | Propagates error, test fails | Best practices |
 
+## Lints
+
+Enable `clippy::needless_doctest_main` to catch doc tests with unnecessary
+explicit `fn main()` wrappers:
+
+```rust
+#![warn(clippy::needless_doctest_main)]
+```
+
+This helps keep examples clean by removing boilerplate that rustdoc
+generates automatically.
+
 ## See Also
 
 - [doc-examples-section](./doc-examples-section.md) - Writing examples
 - [doc-hidden-setup](./doc-hidden-setup.md) - Hiding setup code
 - [err-question-mark](./err-question-mark.md) - Error propagation
+- [doc-test-edition-2024](./doc-test-edition-2024.md) - Edition 2024 doctest migration

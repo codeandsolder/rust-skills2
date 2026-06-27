@@ -6,6 +6,8 @@
 
 When you know (or can estimate) the final size of a collection, pre-allocating avoids multiple reallocations as it grows. Each reallocation copies all existing elements, so avoiding them can dramatically improve performance.
 
+**Rust 1.87+** guarantees that `Vec::with_capacity(N).capacity() == N` exactly. This makes pre-allocation contracts stricter and `reserve_exact()` less critical — you can rely on exact capacity without an extra call.
+
 ## Bad
 
 ```rust
@@ -62,7 +64,7 @@ for (k, v) in pairs {
 // Vec
 let mut v = Vec::with_capacity(100);
 v.reserve(50);        // Ensure at least 50 more slots
-v.reserve_exact(50);  // Ensure exactly 50 more (no extra)
+v.reserve_exact(50);  // Ensure exactly 50 more (less critical with 1.87+)
 v.shrink_to_fit();    // Release unused capacity
 
 // String
@@ -116,26 +118,6 @@ fn join_with_sep(parts: &[&str], sep: &str) -> String {
 }
 ```
 
-## Evidence from Production Code
-
-From fd (file finder):
-```rust
-// https://github.com/sharkdp/fd/blob/master/src/walk.rs
-struct ReceiverBuffer<'a, W> {
-    buffer: Vec<DirEntry>,
-    // ...
-}
-
-impl<'a, W: Write> ReceiverBuffer<'a, W> {
-    fn new(...) -> Self {
-        Self {
-            buffer: Vec::with_capacity(MAX_BUFFER_LENGTH),
-            // ...
-        }
-    }
-}
-```
-
 ## When to Skip
 
 ```rust
@@ -154,4 +136,3 @@ let mut rarely_used = Vec::new();  // OK if rarely grown
 - [mem-reuse-collections](mem-reuse-collections.md) - Reuse collections with clear()
 - [mem-smallvec](mem-smallvec.md) - Use SmallVec for usually-small collections
 - [perf-extend-batch](perf-extend-batch.md) - Use extend() for batch insertions
-- [coll-seq-choice](coll-seq-choice.md) - Pick the right sequence type

@@ -158,9 +158,23 @@ pub struct MyType { ... }
 // + Serialize      → for serialization
 ```
 
+## Standard Library Additions (Rust 1.85+)
+
+Rust 1.85 stabilized `FromIterator` and `Extend` implementations for tuples of arity 1-12:
+
+```rust
+// Collect into a tuple of collections
+let (evens, odds): (Vec<i32>, Vec<i32>) = (1..=10)
+    .into_iter()
+    .partition(|n| n % 2 == 0);
+
+// Extend multiple collections at once
+let mut names = (vec!["Alice".to_string()], vec!["Bob".to_string()]);
+names.extend([("Charlie".to_string(), "Diana".to_string())]);
+```
+
 ## See Also
 
 - [own-copy-small](./own-copy-small.md) - When to implement Copy
 - [api-default-impl](./api-default-impl.md) - Implementing Default
 - [doc-examples-section](./doc-examples-section.md) - Documenting trait implementations
-- [type-display-vs-debug](./type-display-vs-debug.md) - Display vs Debug responsibilities

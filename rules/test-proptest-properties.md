@@ -110,6 +110,85 @@ struct Point {
 | Identity | `f(x, identity) == x` |
 | Invariants | `len(push(v, x)) == len(v) + 1` |
 
+## Using assert_matches! (Rust 1.96+)
+
+```rust
+use std::assert_matches;
+
+proptest! {
+    #[test]
+    fn test_parse_result(input in "[a-z0-9]*") {
+        let result = parse(&input);
+        // Better diagnostics than prop_assert!(matches!(..))
+        assert_matches!(result, Ok(_) | Err(ParseError::InvalidSyntax { .. }));
+    }
+
+    #[test]
+    fn test_response_status(code in any::<u16>()) {
+        let response = build_response(code);
+        // Clear failure messages during shrinking
+        assert_matches!(response.status(), 200..=599);
+    }
+}
+```
+
+## Deriving Arbitrary
+
+```rust
+use proptest::prelude::*;
+use proptest_derive::Arbitrary;
+
+#[derive(Debug, Arbitrary)]
+struct User {
+    name: String,
+    age: u8,
+    email: String,
+}
+
+proptest! {
+    #[test]
+    fn test_user_roundtrip(user: User) {
+        let json = serde_json::to_string(&user).unwrap();
+        let deserialized: User = serde_json::from_str(&json).unwrap();
+        assert_eq!(user.name, deserialized.name);
+    }
+}
+```
+
+## Stateful Testing (proptest-stateful)
+
+```rust
+use proptest::prelude::*;
+use proptest_stateful::*;
+
+// Define state machine for a stack
+#[derive(Default, Clone)]
+struct StackModel {
+    values: Vec<i32>,
+}
+
+#[derive(Clone)]
+enum StackOp {
+    Push(i32),
+    Pop,
+}
+
+fn stack_transition(model: &mut StackModel, op: &StackOp) {
+    match op {
+        StackOp::Push(v) => model.values.push(*v),
+        StackOp::Pop => { model.values.pop(); }
+    }
+}
+
+proptest! {
+    #[test]
+    fn test_stack_operations(ops in prop::collection::vec(any::<StackOp>(), 0..50)) {
+        // proptest-stateful generates random sequences of operations
+        // and verifies the implementation matches the model
+    }
+}
+```
+
 ## Example: Parser Roundtrip
 
 ```rust
@@ -156,6 +235,8 @@ proptest! {
 
 ## See Also
 
+- [test-assert-matches](./test-assert-matches.md) - Pattern-based assertions
 - [test-criterion-bench](./test-criterion-bench.md) - Benchmarking
 - [test-mockall-mocking](./test-mockall-mocking.md) - Mocking
 - [test-arrange-act-assert](./test-arrange-act-assert.md) - Test structure
+- [test-fuzzing-minimal](./test-fuzzing-minimal.md) - Fuzz testing alternative

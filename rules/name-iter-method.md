@@ -1,8 +1,10 @@
 # name-iter-method
 
-> Name iterator methods `iter()`, `iter_mut()`, and `into_iter()` consistently
+> Implement `IntoIterator` delegation for `for` loop support
 
 ## Why It Matters
+
+While `name-iter-convention.md` covers the three-method pattern (`iter()`, `iter_mut()`, `into_iter()`), this rule covers `IntoIterator` trait delegation. Implementing `IntoIterator` for `&C`, `&mut C`, and `C` enables idiomatic `for` loop syntax. The standard library convention is clear: `IntoIterator for &C` delegates to `iter()`, and `IntoIterator for &mut C` delegates to `iter_mut()`.
 
 Rust has a strong convention for iterator method names. Following these conventions makes your types work predictably with `for` loops and iterator adapters. Users expect `iter()` for shared references, `iter_mut()` for mutable references, and `into_iter()` for owned iteration.
 

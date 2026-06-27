@@ -12,6 +12,12 @@ PGO uses real runtime behavior to guide compiler optimization decisions. By prof
 2. **Profile**: Run representative workloads
 3. **Optimize**: Rebuild using collected profile data
 
+> **Step 0**: Install [`cargo-pgo`](https://crates.io/crates/cargo-pgo) — the recommended tool for managing PGO workflows:
+> ```bash
+> cargo install cargo-pgo
+> cargo pgo build  # Automates instrument → profile → optimize
+> ```
+
 ## Step-by-Step
 
 ```bash
@@ -106,7 +112,7 @@ fn profile_bad() {
 
 ## BOLT Post-Link Optimization
 
-For even more gains, combine PGO with BOLT:
+For even more gains, combine PGO with BOLT (Linux-only — ELF binaries):
 
 ```bash
 # After PGO build, apply BOLT
@@ -156,9 +162,15 @@ jobs:
 | Use PGO | Skip PGO |
 |---------|----------|
 | Production deployments | Development builds |
-| Performance-critical apps | Libraries (users can PGO) |
+| Performance-critical apps | Libraries (users can PGO; not distributable with `cargo install`) |
 | Stable workload patterns | Highly variable workloads |
 | Sufficient profiling data | Quick iteration cycles |
+
+## Limitations
+
+- **AutoFDO** (automatic feedback-directed optimization) is **not supported for Rust** ([tracking issue #64892](https://github.com/rust-lang/rust/issues/64892)).
+- PGO cannot be used for `cargo install` — distributed crates cannot ship profile data.
+- PGO is used to optimize the rustc compiler itself: ThinLTO + PGO on AArch64 (since Rust 1.86) gives ~30% faster compiles.
 
 ## See Also
 

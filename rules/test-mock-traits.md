@@ -33,7 +33,7 @@ async fn test_get_user() {
 
 ```rust
 // Define trait for dependency
-#[async_trait]
+// Edition 2024: native async fn in traits — no #[async_trait] needed!
 trait UserRepository: Send + Sync {
     async fn find_by_id(&self, id: u64) -> Result<Option<User>, DbError>;
     async fn save(&self, user: &User) -> Result<(), DbError>;
@@ -44,7 +44,6 @@ struct PostgresUserRepo {
     pool: PgPool,
 }
 
-#[async_trait]
 impl UserRepository for PostgresUserRepo {
     async fn find_by_id(&self, id: u64) -> Result<Option<User>, DbError> {
         sqlx::query_as("SELECT * FROM users WHERE id = $1")
@@ -111,8 +110,8 @@ use mockall::*;
 use mockall::predicate::*;
 
 #[automock]
-#[async_trait]
 trait Database: Send + Sync {
+    // Edition 2024: no #[async_trait] needed for async fn in traits
     async fn query(&self, sql: &str) -> Result<Vec<Row>, Error>;
 }
 
@@ -130,17 +129,45 @@ async fn test_with_mockall() {
 }
 ```
 
+## wiremock-rs (HTTP Mocking)
+
+```rust
+use wiremock::{MockServer, Mock, ResponseTemplate};
+use wiremock::matchers::{method, path};
+
+#[tokio::test]
+async fn test_http_client() {
+    // Start a mock HTTP server
+    let mock_server = MockServer::start().await;
+    
+    // Set up expected request and response
+    Mock::given(method("GET"))
+        .and(path("/api/users/1"))
+        .respond_with(ResponseTemplate::new(200)
+            .set_body_json(serde_json::json!({
+                "id": 1,
+                "name": "Alice"
+            })))
+        .mount(&mock_server)
+        .await;
+    
+    // Client uses the mock server URL
+    let client = ApiClient::new(&mock_server.uri());
+    let user = client.get_user(1).await.unwrap();
+    
+    assert_eq!(user.name, "Alice");
+}
+```
+
 ## Testing Error Paths
 
 ```rust
-#[async_trait]
 trait HttpClient: Send + Sync {
     async fn get(&self, url: &str) -> Result<Response, HttpError>;
 }
 
 struct FailingClient;
 
-#[async_trait]
 impl HttpClient for FailingClient {
     async fn get(&self, _url: &str) -> Result<Response, HttpError> {
         Err(HttpError::Timeout)  // Always fails
@@ -178,12 +205,13 @@ impl UserService {
 
 ```toml
 [dev-dependencies]
-mockall = "0.11"
-async-trait = "0.1"  # For async trait mocking
+mockall = "0.14"
+wiremock = "0.7"  # HTTP mocking
 ```
 
 ## See Also
 
 - [api-sealed-trait](./api-sealed-trait.md) - Trait design
+- [test-mockall-mocking](./test-mockall-mocking.md) - Mockall details
 - [test-proptest-properties](./test-proptest-properties.md) - Property-based testing
 - [proj-lib-main-split](./proj-lib-main-split.md) - Testable architecture

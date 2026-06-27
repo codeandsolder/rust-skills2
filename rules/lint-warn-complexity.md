@@ -1,10 +1,12 @@
 # lint-warn-complexity
 
+**Rule**: `lint-warn-complexity`
+
 > Enable clippy::complexity for simpler code
 
 ## Why It Matters
 
-The `clippy::complexity` lint group identifies unnecessarily complex code that can be simplified. Complex code is harder to read, maintain, and often hides bugs. Clippy suggests cleaner alternatives.
+The `clippy::complexity` lint group identifies unnecessarily complex code that can be simplified. Complex code is harder to read, maintain, and often hides bugs. Clippy suggests cleaner alternatives. Edition 2024 stabilizes `let_chains` and `if let` guards, enabling further complexity reduction.
 
 ## Configuration
 
@@ -124,8 +126,56 @@ let value = if x.is_some() { x.unwrap() } else { y.unwrap_or(z) };
 let value = x.unwrap_or_else(|| y.unwrap_or(z));
 ```
 
+## `let_chains` (Edition 2024)
+
+Edition 2024 stabilizes `let_chains`, enabling chained `if let` expressions that reduce nesting complexity:
+
+```rust
+// Before — nested if let statements
+if let Some(a) = x {
+    if let Some(b) = y {
+        if a < b {
+            do_something();
+        }
+    }
+}
+
+// After — flat chain with let_chains (Edition 2024)
+if let Some(a) = x
+    && let Some(b) = y
+    && a < b
+{
+    do_something();
+}
+```
+
+## `if let` Guards (1.95)
+
+Rust 1.95 stabilizes `if let` guards in match arms, reducing match complexity:
+
+```rust
+// Before — nested match
+match x {
+    Some(val) if val.is_valid() => {
+        if let Ok(parsed) = val.parse() {
+            process(parsed);
+        }
+    }
+    _ => {}
+}
+
+// After — if let guard (1.95)
+match x {
+    Some(val) if val.is_valid()
+        && let Ok(parsed) = val.parse() => {
+        process(parsed);
+    }
+    _ => {}
+}
+```
+
 ## See Also
 
-- [lint-warn-style](./lint-warn-style.md) - Style warnings
-- [lint-warn-perf](./lint-warn-perf.md) - Performance warnings
-- [lint-pedantic-selective](./lint-pedantic-selective.md) - Pedantic lints
+- [lint-warn-style](./lint-warn-style.md) — Style warnings
+- [lint-warn-perf](./lint-warn-perf.md) — Performance warnings
+- [lint-pedantic-selective](./lint-pedantic-selective.md) — Pedantic lints

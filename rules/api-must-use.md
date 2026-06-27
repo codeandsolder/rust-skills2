@@ -109,13 +109,27 @@ fn replace(&mut self, new: T) -> T { ... }
 async fn fetch() -> Data { ... }
 ```
 
+## Exceptions: Uninhabited Types (Rust 1.92)
+
+Since Rust 1.92 (December 2025), `unused_must_use` no longer warns on `Result<(), Uninhabited>` or `ControlFlow<Uninhabited, ()>` — because an uninhabited return (e.g., `!`, `Infallible`) can never actually occur, the warning would be noise:
+
+```rust
+// No warning in 1.92+ — ! type means Err can never be constructed
+fn always_ok() -> Result<(), !> {
+    Ok(())
+}
+
+always_ok();  // No warning — this is an infallible operation
+```
+
 ## Clippy Lints
 
 ```toml
 [lints.clippy]
-must_use_candidate = "warn"      # Suggests where to add #[must_use]
-unused_must_use = "deny"          # Built-in, treat warnings as errors
-double_must_use = "warn"          # Redundant #[must_use]
+must_use_candidate = "warn"           # Suggests where to add #[must_use]
+return_self_not_must_use = "warn"     # Warns -> Self without #[must_use]
+unused_must_use = "deny"               # Built-in, treat warnings as errors
+double_must_use = "warn"               # Redundant #[must_use]
 ```
 
 ## See Also

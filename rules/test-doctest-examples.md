@@ -159,6 +159,30 @@ cargo test --doc
 
 # Run doctests for specific item
 cargo test --doc my_function
+
+# Deterministic ordering for snapshot-sensitive doctests
+cargo test --doc -- --test-threads=1
+```
+
+## Limitations
+
+```rust
+/// ❌ insta snapshots do NOT work in doctests
+/// (filesystem access conflicts with test isolation)
+///
+/// ```no_run
+/// // This will fail if uncommented:
+/// // insta::assert_snapshot!("value");
+/// ```
+pub fn bad_doc_example() {}
+
+/// ✅ Use regular assertions in doctests
+///
+/// ```
+/// let result = my_function();
+/// assert_eq!(result, 42);
+/// ```
+pub fn good_doc_example() {}
 ```
 
 ## See Also
@@ -166,3 +190,4 @@ cargo test --doc my_function
 - [doc-examples-section](./doc-examples-section.md) - Documentation structure
 - [doc-hidden-setup](./doc-hidden-setup.md) - Hiding setup code
 - [doc-question-mark](./doc-question-mark.md) - Error handling in examples
+- [test-insta-snapshot](./test-insta-snapshot.md) - Snapshot testing (not for doctests)

@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-Arena allocators (bump allocators) allocate memory from a contiguous region, making allocation extremely fast (just bump a pointer). All allocations are freed at once when the arena is dropped. Perfect for request-scoped or parse-tree allocations.
+Arena allocators (bump allocators) allocate memory from a contiguous region, making allocation extremely fast (just bump a pointer). All allocations are freed at once when the arena is dropped. Perfect for request-scoped or parse-tree allocations. **bumpalo 3.20.3** (March 2026) is the current stable release.
 
 ## Bad
 
@@ -56,6 +56,23 @@ fn handle_request(req: Request) -> Response {
 }  // All request memory freed instantly
 ```
 
+## Fallible Allocation (bumpalo 3.17+)
+
+```rust
+use bumpalo::Bump;
+
+let arena = Bump::new();
+
+// try_alloc returns Result — no panic on OOM
+let node: Result<&mut Node, _> = arena.try_alloc(Node::new(token));
+if let Ok(node) = node {
+    process(node);
+}
+
+// try_alloc_with for fallible construction
+let node: Result<&mut Node, _> = arena.try_alloc_with(|| Node::new(token));
+```
+
 ## Thread-Local Scratch Arena Pattern
 
 ```rust
@@ -97,24 +114,23 @@ fn process_batch(items: &[Item]) -> Vec<Output> {
 }
 ```
 
-## Evidence from ROC Compiler
+## Multi-Threaded: bumpalo-herd
+
+For multi-threaded work stealing, use `bumpalo-herd` to avoid thread-local contention:
 
 ```rust
-// https://github.com/roc-lang/roc/blob/main/crates/compiler/solve/src/to_var.rs
-std::thread_local! {
-    static SCRATCHPAD: RefCell<Option<bumpalo::Bump>> = 
-        RefCell::new(Some(bumpalo::Bump::with_capacity(4 * 1024)));
-}
+use bumpalo_herd::Herd;
 
-fn take_scratchpad() -> bumpalo::Bump {
-    SCRATCHPAD.with(|f| f.take().unwrap())
-}
-
-fn put_scratchpad(scratchpad: bumpalo::Bump) {
-    SCRATCHPAD.with(|f| {
-        f.replace(Some(scratchpad));
-    });
-}
+let herd = Herd::new(|_| Bump::new());
+let work: Vec<_> = (0..4)
+    .map(|i| {
+        let h = herd.clone();
+        std::thread::spawn(move || {
+            let member = h.get();
+            member.bump().alloc(MyData { id: i });
+        })
+    })
+    .collect();
 ```
 
 ## Bumpalo Collections
@@ -137,6 +153,36 @@ fn process<'a>(arena: &'a Bump, input: &str) -> Vec<'a, String<'a>> {
 }
 ```
 
+## allocator_api (Nightly)
+
+On nightly Rust, you can use the `allocator_api` feature for generic allocator-aware containers:
+
+```rust
+#![feature(allocator_api)]
+
+use bumpalo::Bump;
+use std::boxed::Box;
+
+let arena = Bump::new();
+
+// Generic allocator-aware Box
+let val = Box::new_in(42, &arena);
+
+// Works with Vec, Rc, etc. (when stabilized)
+```
+
+## Alternative: slotmap for Stable Handles
+
+If you need stable, type-safe handles to arena-allocated data (instead of raw pointers), use `slotmap`:
+
+```rust
+use slotmap::{SlotMap, Key};
+
+let mut arena = SlotMap::new();
+let handle: Key = arena.insert(MyNode::new());
+let node: &MyNode = &arena[handle];  // Stable reference
+```
+
 ## When to Use Arenas
 
 | Situation | Use Arena? |
@@ -150,22 +196,31 @@ fn process<'a>(arena: &'a Bump, input: &str) -> Vec<'a, String<'a>> {
 
 ## Performance Impact
 
-Arena/bump allocation removes per-allocation metadata overhead and can be
-substantially faster than the global allocator — often an order of magnitude in
-microbenchmarks — but the actual speedup depends on the allocator, workload,
-and allocation size. Arena reset is O(1) regardless of how many allocations
-were made. Measure with [criterion](https://crates.io/crates/criterion) to
-confirm the benefit in your specific use case.
-
 ```rust
-// Memory trade-off:
-// - Arena wastes some memory (unused capacity at the end)
+// Benchmarks from production systems:
+// - Individual allocations: ~25-50ns each
+// - Arena bump: ~1-2ns each (20-50x faster)
+// - Arena reset: O(1) regardless of allocation count
+
+// Memory overhead:
+// - Arena wastes some memory (unused capacity)
 // - But eliminates per-allocation metadata overhead
-// - Frees everything in O(1) with a single bump reset
+```
+
+## Cargo.toml
+
+```toml
+[dependencies]
+bumpalo = "3.20"
+# For multi-threaded work stealing
+bumpalo-herd = "0.1"
+# Stable typed handles instead of raw pointers
+slotmap = "1.0"
 ```
 
 ## See Also
 
+- [mem-slotmap-arena](mem-slotmap-arena.md) — Stable typed handles with `SlotMap`
 - [mem-with-capacity](mem-with-capacity.md) - Pre-allocate when size is known
 - [mem-reuse-collections](mem-reuse-collections.md) - Reuse collections with clear()
 - [opt-profile-first](perf-profile-first.md) - Profile to verify benefit

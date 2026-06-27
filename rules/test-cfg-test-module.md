@@ -144,8 +144,34 @@ mod tests {
 }
 ```
 
+## With Mockall
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mockall::predicate::*;
+
+    // mockall's #[automock] generates the mock inside #[cfg(test)]
+    #[automock]
+    trait Database {
+        fn query(&self, sql: &str) -> Result<Vec<Row>, Error>;
+    }
+
+    #[test]
+    fn test_with_mock() {
+        let mut mock = MockDatabase::new();
+        mock.expect_query()
+            .with(eq("SELECT 1"))
+            .returning(|_| Ok(vec![]));
+        // ...
+    }
+}
+```
+
 ## See Also
 
 - [test-use-super](./test-use-super.md) - Importing from parent module
 - [test-integration-dir](./test-integration-dir.md) - Integration tests
+- [test-mockall-mocking](./test-mockall-mocking.md) - Mocking with mockall
 - [test-descriptive-names](./test-descriptive-names.md) - Test naming

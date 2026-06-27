@@ -192,8 +192,71 @@ impl Transaction<InProgress> {
 }
 ```
 
+## bon: Practical Production Typestate
+
+The `bon` crate implements typestate using human-readable trait names, making it the most practical way to get compile-time safety for builders in 2025-2026.
+
+```rust
+use bon::Builder;
+
+#[derive(Builder)]
+struct Query {
+    #[builder(into)]
+    table: String,       // required — enforced at compile time
+    #[builder(into)]
+    filter: Option<String>,  // optional
+    #[builder(default = 100)]
+    limit: usize,
+}
+
+// Typestate guarantees `table` is set before building:
+let query = Query::builder()
+    .table("users")      // required
+    .filter("active")    // optional
+    .limit(50)           // optional
+    .build();
+
+// Query::builder().filter("x").build();
+// Compile error: `table` is missing — bon's typestate catches it
+```
+
+Unlike hand-rolled typestate (which requires phantom types, separate state structs, and complex impl blocks per state), `bon` generates descriptive, human-readable types automatically.
+
+## Trait Object Upcasting (Rust 1.86)
+
+Rust 1.86.0 (April 2025) stabilized implicit upcasting of trait objects. This simplifies some typestate designs where you return `Box<dyn State>` or `&dyn State`:
+
+```rust
+#![feature(trait_upcasting)]  // → stable in 1.86, no feature gate needed
+
+trait Base {}
+trait Derived: Base {}
+// &dyn Derived can now implicitly coerce to &dyn Base
+```
+
+## Anti-pattern: Hand-rolling Typestate for Simple Builders
+
+```rust
+// ❌ Over-engineering: hand-rolled typestate when bon suffices
+struct Builder<State> { /* phantom types */ }
+struct NoUrl;
+struct HasUrl;
+impl Builder<NoUrl> { fn url(self, ...) -> Builder<HasUrl> { ... } }
+impl Builder<HasUrl> { fn build(self) -> Request { ... } }
+
+// ✅ Better: let bon generate the typestate
+#[derive(Bon::Builder)]
+struct Request {
+    #[builder(into)]
+    url: String,
+}
+```
+
+For complex state machines beyond builders, hand-rolled typestate is still appropriate.
+
 ## See Also
 
+- [api-bon-builder](./api-bon-builder.md) - bon crate builder (practical typestate)
 - [api-builder-pattern](./api-builder-pattern.md) - Basic builder pattern
 - [api-parse-dont-validate](./api-parse-dont-validate.md) - Type-driven invariants
 - [api-sealed-trait](./api-sealed-trait.md) - Restricting trait implementations

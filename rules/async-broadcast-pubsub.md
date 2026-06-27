@@ -178,6 +178,74 @@ use std::sync::Arc;
 let (tx, _) = broadcast::channel::<Arc<LargeNonClone>>(100);
 ```
 
+## Scale Limits
+
+Tokio's `broadcast` channel has **quadratic degradation** beyond ~100 receivers ([tokio #5923](https://github.com/tokio-rs/tokio/issues/5923)). Each `send` clones the message to every active receiver, so subscriber count directly impacts throughput:
+
+```rust
+// BAD: One channel with 500 subscribers - quadratic write path
+let (tx, _) = broadcast::channel::<Event>(1024);
+
+// GOOD: Partition by topic into multiple channels
+// Each partition has fewer subscribers -> no quadratic hit
+let (user_tx, _) = broadcast::channel::<UserEvent>(64);
+let (order_tx, _) = broadcast::channel::<OrderEvent>(64);
+let (sys_tx, _) = broadcast::channel::<SystemEvent>(64);
+```
+
+## Topic Partitioning
+
+For high-subscriber scenarios, partition events by topic:
+
+```rust
+use std::collections::HashMap;
+
+struct PartitionedBus {
+    topics: HashMap<&'static str, broadcast::Sender<Event>>,
+}
+
+impl PartitionedBus {
+    fn new() -> Self {
+        Self { topics: HashMap::new() }
+    }
+    
+    fn add_topic(&mut self, name: &'static str, capacity: usize) {
+        let (tx, _) = broadcast::channel(capacity);
+        self.topics.insert(name, tx);
+    }
+    
+    fn publish(&self, topic: &str, event: Event) -> Result<(), Error> {
+        match self.topics.get(topic) {
+            Some(tx) => tx.send(event).map(|_| ()),
+            None => Ok(()),  // Unknown topic, drop
+        }
+    }
+    
+    fn subscribe(&self, topic: &str) -> Option<broadcast::Receiver<Event>> {
+        self.topics.get(topic).map(|tx| tx.subscribe())
+    }
+}
+
+// Each topic channel has few subscribers -> O(n) per send with small n
+```
+
+## Inspecting Channel State
+
+```rust
+let (tx, _) = broadcast::channel::<Event>(100);
+
+// Number of queued messages (stable since Tokio 1.x)
+let len = tx.len();
+
+// Number of active receivers
+let receivers = tx.receiver_count();
+
+// Monitor for backpressure
+if tx.len() > 80 {
+    warn!("Broadcast channel nearing capacity");
+}
+```
+
 ## See Also
 
 - [async-mpsc-queue](./async-mpsc-queue.md) - Single-consumer channels

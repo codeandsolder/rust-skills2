@@ -113,8 +113,31 @@ fn process_orders(db: &PostgresDb, orders: Vec<Order>) { }
 pub fn process_orders<S: Storage>(storage: &S, orders: Vec<Order>) { }
 ```
 
+## Special Case: Deref Overuse
+
+Using `Deref<Target = InnerType>` solely for method delegation is over-abstraction — it leaks the inner type's full API and is a form of over-engineering:
+
+```rust
+// BAD: Deref to delegate methods — leaks Email as &str everywhere
+struct Email(String);
+impl std::ops::Deref for Email {
+    type Target = str;
+    fn deref(&self) -> &str { &self.0 }
+}
+// Now &Email coerces to &str anywhere — unintended access to String methods
+
+// GOOD: Explicit delegation — control what you expose
+impl Email {
+    fn as_str(&self) -> &str { &self.0 }
+    fn validate(&self) -> bool { /* ... */ }
+}
+```
+
+See [anti-deref-overuse](./anti-deref-overuse.md) for the full rule.
+
 ## See Also
 
 - [type-generic-bounds](./type-generic-bounds.md) - Minimal bounds
 - [api-sealed-trait](./api-sealed-trait.md) - Controlled extension
 - [anti-type-erasure](./anti-type-erasure.md) - When Box<dyn> is wrong
+- [anti-deref-overuse](./anti-deref-overuse.md) - Deref anti-pattern

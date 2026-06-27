@@ -132,26 +132,22 @@ fn large_complex_function(data: &mut [u8]) {
 // DON'T assume inlining always helps - measure!
 // Sometimes the compiler makes better decisions
 
-// Cross-crate inlining requires #[inline] on each function
-// Without LTO, a function body is not available to other crates unless
-// it carries #[inline]. Within a single crate (or with LTO enabled),
-// the compiler may still inline `inner` transitively after inlining
-// `outer`, but this is not guaranteed — verify hot code with assembly.
+// Inlining is non-transitive
 #[inline]
 fn outer() {
-    inner();
+    inner();  // inner() also needs #[inline] to be inlined together
 }
 
-fn inner() { }  // May not be inlined at outer's call sites across crate boundaries without #[inline]
+fn inner() { }  // Won't be inlined at outer's call sites
 ```
 
 ## Verifying Inlining
 
 ```bash
-# Check if function was inlined using Cachegrind
-# Non-inlined functions show entry/exit counts
+# Check if function was inlined using cargo-show-asm
+cargo show-asm --rust --release my_crate::hot_function
 
-# Or examine assembly
+# Or examine assembly directly
 cargo rustc --release -- --emit=asm
 # Look for call instructions vs inlined code
 ```

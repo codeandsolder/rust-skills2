@@ -24,8 +24,8 @@ edition = "2021"
 [package]
 name = "my-awesome-crate"
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.70"
+edition = "2024"
+rust-version = "1.85"
 
 # Required for crates.io
 description = "A fast, ergonomic HTTP client for Rust"
@@ -37,15 +37,17 @@ documentation = "https://docs.rs/my-awesome-crate"
 readme = "README.md"
 keywords = ["http", "client", "async", "networking"]
 categories = ["network-programming", "web-programming::http-client"]
-authors = ["Your Name <you@example.com>"]
 homepage = "https://my-awesome-crate.dev"
 
 # Optional but helpful
 include = ["src/**/*", "Cargo.toml", "LICENSE*", "README.md"]
 exclude = ["tests/fixtures/*", ".github/*"]
 
-[badges]
-maintenance = { status = "actively-developed" }
+# docs.rs configuration
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+features = ["unstable-doc-cfg"]
 
 [dependencies]
 # ...
@@ -69,7 +71,7 @@ maintenance = { status = "actively-developed" }
 | `readme` | Path to README | `README.md` |
 | `keywords` | Search terms (max 5) | `["http", "async"]` |
 | `categories` | crates.io categories | `["network-programming"]` |
-| `rust-version` | MSRV | `"1.70"` |
+| `rust-version` | MSRV | `"1.85"` |
 
 ## Keywords Best Practices
 
@@ -105,6 +107,25 @@ license = "MIT OR Apache-2.0"
 # Custom license file
 license-file = "LICENSE"
 ```
+
+## docs.rs Configuration
+
+Configure how your docs are built on docs.rs:
+
+```toml
+[package.metadata.docs.rs]
+# Build docs with all features enabled
+all-features = true
+
+# Pass --cfg docsrs so you can annotate feature-gated items
+rustdoc-args = ["--cfg", "docsrs"]
+
+# Enable specific features for doc builds
+features = ["unstable-doc-cfg"]
+```
+
+This enables `#[doc(cfg(feature = "..." ))]` annotations on docs.rs,
+showing users exactly which features gate each item.
 
 ## Include/Exclude
 
@@ -143,5 +164,6 @@ cargo publish --dry-run
 ## See Also
 
 - [doc-module-inner](./doc-module-inner.md) - Crate-level documentation
+- [doc-cfg-patterns](./doc-cfg-patterns.md) - Feature/platform attributes in docs
 - [lint-cargo-metadata](./lint-cargo-metadata.md) - Linting Cargo.toml
 - [proj-workspace-deps](./proj-workspace-deps.md) - Workspace management

@@ -95,8 +95,9 @@ let port = config.get("port")
 ```toml
 # Cargo.toml
 [lints.clippy]
-unwrap_used = "warn"      # Warn on unwrap()
-expect_used = "warn"       # Also warn on expect() (stricter)
+unwrap_used = "deny"      # Deny unwrap() in production code
+expect_used = "warn"       # Warn on expect() (stricter)
+unwrap_in_result = "deny"  # Avoid unwrap inside Result-returning functions
 ```
 
 ```rust
@@ -108,8 +109,75 @@ fn definitely_safe() {
 }
 ```
 
+## Prefer #[expect] Over #[allow] (Rust 1.80+)
+
+Since Rust 1.80, use `#[expect(clippy::unwrap_used)]` instead of `#[allow(clippy::unwrap_used)]`:
+
+```rust
+// Good: warns when unwrap is removed and annotation is stale
+#[expect(clippy::unwrap_used, reason = "validated input")]
+fn process(value: Option<i32>) -> i32 {
+    value.unwrap()
+}
+
+// After value becomes infallible, clippy warns:
+// "expected lint clippy::unwrap_used has been fulfilled"
+// → prompts you to delete the annotation
+```
+
+## Rust 1.92+ Changes
+
+### `unused_must_use` with `Infallible`
+
+Since Rust 1.92, `unused_must_use` no longer warns on `Result<(), Infallible>`:
+
+```rust
+fn always_ok() -> Result<(), Infallible> {
+    Ok(())
+}
+
+// No more false positive about unused Result
+let _ = always_ok();
+```
+
+### `unwrap_used` Catches Fully-Qualified Syntax
+
+Since clippy PR #16489 (Rust 1.93), both forms are caught:
+
+```rust
+let a = some_result.unwrap();           // caught
+let b = Result::unwrap(some_result);    // also caught since 1.93
+```
+
+### `unwrap_in_result` with `Infallible`
+
+Since clippy PR #16711, `unwrap_in_result` correctly handles `Infallible`:
+
+```rust
+// No false positive: unwrapping Infallible is safe
+fn helper() -> Result<i32, Infallible> {
+    let value = Some(42).unwrap(); // no warning
+    Ok(value)
+}
+```
+
+## Clippy `allow-unwrap-types` Config
+
+Whitelist `Mutex::lock().unwrap()` while keeping `unwrap_used` = "deny":
+
+```toml
+# clippy.toml
+allow-unwrap-types = [
+    "std::sync::LockResult<std::sync::MutexGuard<_>>",
+    "std::sync::LockResult<std::sync::RwLockReadGuard<_>>",
+    "std::sync::LockResult<std::sync::RwLockWriteGuard<_>>",
+]
+```
+
 ## See Also
 
 - [err-result-over-panic](./err-result-over-panic.md) - Return Result instead of panicking
 - [err-expect-bugs-only](./err-expect-bugs-only.md) - When expect() is appropriate
+- [err-expect-not-allow](./err-expect-not-allow.md) - Prefer #[expect] over #[allow]
+- [err-clippy-unwrap-types](./err-clippy-unwrap-types.md) - Configure allow-unwrap-types
 - [anti-unwrap-abuse](./anti-unwrap-abuse.md) - Patterns for avoiding unwrap

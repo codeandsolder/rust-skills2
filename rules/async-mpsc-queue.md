@@ -164,6 +164,30 @@ permit.send(message);  // Never fails
 // and you don't want to create it if channel is full
 ```
 
+## PollSender for Stream Integration
+
+Use `PollSender` from `tokio-util` to bridge mpsc channels with the `Sink` trait for stream combinators:
+
+```rust
+use tokio_util::sync::PollSender;
+use futures::stream::{Stream, StreamExt};
+
+let (tx, rx) = mpsc::channel::<Message>(100);
+let mut poll_sender = PollSender::new(tx);
+
+// poll_sender implements Sink for seamless Stream integration
+let results: Vec<Message> = some_stream()
+    .map(Ok::<_, Error>)
+    .map(|item| poll_sender.start_send(item))
+    .collect()
+    .await;
+```
+
+`PollSender` is useful when:
+- Bridging sync and async code through a `Sink` interface
+- Integrating with stream combinators like `map`, `filter`, `forward`
+- You need non-async send capability to a bounded channel
+
 ## See Also
 
 - [async-bounded-channel](./async-bounded-channel.md) - Why bounded channels

@@ -116,6 +116,30 @@ let count = valid_items(&items).count();  // No collection
 let vec: Vec<_> = valid_items(&items).collect();  // Collection when needed
 ```
 
+## Pattern: collect_into() (Rust 1.85+)
+
+When you already have an allocated collection, reuse it with `collect_into()` to avoid unnecessary allocations:
+
+```rust
+// BAD: allocates new Vec on every call
+fn get_active(items: &[Item]) -> Vec<&Item> {
+    items.iter().filter(|i| i.is_active()).collect()
+}
+
+// GOOD: let caller provide buffer for reuse
+fn get_active<'a>(items: &'a [Item], buf: &mut Vec<&'a Item>) {
+    buf.clear();
+    items.iter().filter(|i| i.is_active()).collect_into(buf);
+}
+
+// In a hot loop — zero allocations after first iteration
+let mut buf = Vec::new();
+for batch in batches {
+    get_active(&batch, &mut buf);
+    process(&buf);
+}
+```
+
 ## Comparison
 
 | Pattern | Allocations | Passes |
@@ -123,6 +147,7 @@ let vec: Vec<_> = valid_items(&items).collect();  // Collection when needed
 | `.collect()` each step | N | N |
 | Single chain, one `.collect()` | 1 | 1 |
 | No collection (streaming) | 0 | 1 |
+| `collect_into()` (reuse) | 0 after first | 1 |
 
 ## See Also
 

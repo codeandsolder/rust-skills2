@@ -153,8 +153,33 @@ let config = Config::new("myapp")
     .path("/etc/myapp");
 ```
 
+## Builder Pattern: Into Opt-In
+
+In builder patterns, prefer opt-in `Into` conversions (e.g., `bon`'s `#[builder(into)]`) over implicit ones. This gives callers ergonomic flexibility without hiding the conversion cost:
+
+```rust
+use bon::Builder;
+
+#[derive(Builder)]
+pub struct Config {
+    #[builder(into)]  // Opt-in: callers can pass &str, String, Cow, etc.
+    name: String,
+
+    #[builder(default = 8080)]
+    port: u16,
+}
+
+// Callers get ergonomic conversion
+let config = Config::builder()
+    .name("my-service")  // &str auto-converts via Into<String>
+    .build();
+```
+
+Without `#[builder(into)]`, callers must convert explicitly. With it, the conversion is visible in the builder definition and callers benefit from ergonomic usage. This is preferable to using `impl Into<String>` in every setter, which makes the conversion implicit at the call site.
+
 ## See Also
 
 - [api-impl-asref](./api-impl-asref.md) - When to use AsRef instead
 - [api-from-not-into](./api-from-not-into.md) - Why From is preferred
+- [api-bon-builder](./api-bon-builder.md) - bon crate builder with Into support
 - [err-from-impl](./err-from-impl.md) - From for error conversion

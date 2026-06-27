@@ -102,6 +102,84 @@ async fn test_timeout_triggers() {
 }
 ```
 
+## rstest Async Fixtures
+
+```rust
+use rstest::*;
+
+#[fixture]
+async fn db_pool() -> PgPool {
+    PgPool::connect("postgres://localhost/test").await.unwrap()
+}
+
+#[fixture]
+async fn client(db_pool: PgPool) -> ApiClient {
+    ApiClient::new(db_pool)
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_query_users(client: ApiClient) {
+    let users = client.get_users().await.unwrap();
+    assert!(!users.is_empty());
+}
+```
+
+## Time Manipulation
+
+```rust
+use tokio::time::{self, Duration};
+
+#[tokio::test(start_paused = true)]
+async fn test_timeout_with_paused_time() {
+    // Time is paused — operations complete instantly
+    let handle = tokio::spawn(async {
+        time::sleep(Duration::from_secs(3600)).await;
+        42
+    });
+
+    // Advance time manually
+    time::advance(Duration::from_secs(3600)).await;
+
+    assert_eq!(handle.await.unwrap(), 42);
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_timer_with_advance() {
+    let interval = time::interval(Duration::from_secs(10));
+    // Test without waiting real time
+}
+```
+
+## Tracing Test (Capturing Logs)
+
+```rust
+use tracing_test::traced_test;
+
+// Captures all tracing output during the test
+#[traced_test]
+#[tokio::test]
+async fn test_logs_are_emitted() {
+    my_async_function().await;
+
+    // Assert on captured logs
+    assert!(logs_contain("processing completed"));
+    assert!(!logs_contain("ERROR"));
+}
+
+// Alternative: use tracing-subscriber directly
+#[tokio::test]
+async fn test_with_tracing_subscriber() {
+    let subscriber = tracing_subscriber::fmt()
+        .with_test_writer()
+        .with_env_filter("my_crate=debug")
+        .finish();
+    tracing::subscriber::with_default(subscriber, || async {
+        my_async_function().await;
+    }).await;
+}
+```
+
 ## Testing Channels
 
 ```rust
@@ -128,8 +206,8 @@ async fn test_channel_communication() {
 use mockall::*;
 
 #[automock]
-#[async_trait::async_trait]
 trait Database {
+    // Edition 2024: native async fn in traits
     async fn get_user(&self, id: u64) -> Option<User>;
 }
 
@@ -149,6 +227,7 @@ async fn test_with_mock_database() {
 
 ## See Also
 
+- [test-rstest-fixtures](./test-rstest-fixtures.md) - rstest async fixtures
 - [async-tokio-runtime](./async-tokio-runtime.md) - Runtime configuration
 - [test-mock-traits](./test-mock-traits.md) - Mocking async traits
 - [test-fixture-raii](./test-fixture-raii.md) - Async test cleanup

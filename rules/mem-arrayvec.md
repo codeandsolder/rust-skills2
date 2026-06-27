@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-`ArrayVec` from the `arrayvec` crate provides Vec-like API with a compile-time maximum capacity, storing all elements inline on the stack. Unlike `SmallVec` which can spill to heap, `ArrayVec` guarantees no heap allocation—if you exceed capacity, it returns an error or panics. This is ideal for embedded systems, real-time code, or when you have a hard upper bound.
+`ArrayVec` from the `arrayvec` crate (currently **0.7.7**) provides Vec-like API with a compile-time maximum capacity, storing all elements inline on the stack. Unlike `SmallVec` which can spill to heap, `ArrayVec` guarantees no heap allocation—if you exceed capacity, it returns an error or panics. This is ideal for embedded systems, real-time code, or when you have a hard upper bound.
 
 ## Bad
 
@@ -32,7 +32,7 @@ fn get_flags() -> SmallVec<[Flag; 4]> {
 use arrayvec::ArrayVec;
 
 // Guaranteed no heap allocation
-fn parse_options(input: &str) -> ArrayVec<Option<u32>, 8> {
+fn parse_options(input: &str) -> ArrayVec<Option, 8> {
     let mut options = ArrayVec::new();
     for part in input.split(',') {
         if options.try_push(parse_option(part)).is_err() {
@@ -100,7 +100,6 @@ let arr: ArrayVec<_, 10> = (0..100)
 
 ```rust
 use arrayvec::ArrayString;
-use std::fmt::Write; // brings the write! target trait into scope
 
 // Stack-allocated string with max capacity
 let mut s: ArrayString<64> = ArrayString::new();
@@ -133,7 +132,7 @@ let big: ArrayVec<u8, 1_000_000> = ArrayVec::new();  // 1MB on stack = bad
 
 ```toml
 [dependencies]
-arrayvec = "0.7"
+arrayvec = "0.7.7"
 ```
 
 ## See Also

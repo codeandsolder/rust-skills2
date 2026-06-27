@@ -76,14 +76,49 @@ fn main() {
 }
 ```
 
+## Divan's black_box
+
+Divan (modern Rust benchmarking) re-exports `black_box` and integrates with CodSpeed CI:
+
+```rust
+use divan::black_box;
+
+fn benchmark() {
+    divan::black_box(compute(divan::black_box(input)));
+}
+```
+
+Divan benchmarks work with CodSpeed CI (hardware-counter-based) without changes.
+
 ## Criterion's black_box
 
-Criterion re-exports `std::hint::black_box`:
+Criterion also re-exports `std::hint::black_box`:
 
 ```rust
 use criterion::black_box;
 
 // Equivalent to std::hint::black_box
+```
+
+## Pattern: cold_path + black_box for Unlikely Branches
+
+Since Rust 1.95, combine `std::hint::cold_path` with `black_box` to prevent the compiler from optimizing away unlikely branches in benchmarks:
+
+```rust
+use std::hint::{black_box, cold_path};
+
+fn bench_error_path(c: &mut Criterion) {
+    c.bench_function("error_on_empty", |b| {
+        b.iter(|| {
+            let data = black_box(empty_data());
+            if data.is_empty() {
+                cold_path();  // Hint: this branch is cold
+                return Err(black_box("empty"));
+            }
+            Ok(compute(black_box(&data)))
+        });
+    });
+}
 ```
 
 ## Pattern: Benchmark with Setup
@@ -151,3 +186,4 @@ black_box(expensive(black_box(42)));
 - [test-criterion-bench](./test-criterion-bench.md) - Using Criterion
 - [perf-profile-first](./perf-profile-first.md) - Profile before optimize
 - [perf-release-profile](./perf-release-profile.md) - Release settings
+- [perf-hint-apis](./perf-hint-apis.md) - cold_path and other hint APIs

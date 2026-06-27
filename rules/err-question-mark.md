@@ -144,8 +144,46 @@ fn run() -> anyhow::Result<()> {
 }
 ```
 
+## try Blocks (Experimental)
+
+`try {}` blocks (tracking issue #154391) provide scoped `?` propagation but remain experimental as of Rust 1.96:
+
+```rust
+#![feature(try_blocks)]
+
+fn process_items(items: &[Item]) -> Result<Vec<Output>, Error> {
+    let results: Vec<Output> = items
+        .iter()
+        .filter_map(|item| {
+            // try block allows ? inside a closure
+            try { process(item)? }
+        })
+        .collect();
+    Ok(results)
+}
+```
+
+For stable Rust, use `Iterator::collect` with `Result` or nested functions instead. See [err-try-block-experimental](./err-try-block-experimental.md) for details.
+
+## #[diagnostic::do_not_recommend] (Rust 1.85+)
+
+On blanket `From` impls, this attribute prevents the compiler from suggesting unwanted conversions:
+
+```rust
+#[diagnostic::do_not_recommend]
+impl<T: std::error::Error + 'static> From<T> for Box<dyn std::error::Error> {
+    fn from(err: T) -> Self {
+        Box::new(err)
+    }
+}
+```
+
+This keeps compiler diagnostics focused on the actual problem rather than suggesting `Box<dyn Error>` conversions.
+
 ## See Also
 
 - [err-context-chain](err-context-chain.md) - Add context with .context()
 - [err-from-impl](err-from-impl.md) - Use #[from] for automatic conversion
+- [err-try-block-experimental](err-try-block-experimental.md) - Experimental try blocks
+- [err-diagnostic-do-not-recommend](err-diagnostic-do-not-recommend.md) - Cleaner compiler diagnostics
 - [err-anyhow-app](err-anyhow-app.md) - Use anyhow for applications

@@ -106,8 +106,70 @@ Or in `Cargo.toml` for workspace-wide enforcement:
 missing_docs = "warn"
 ```
 
+For crate-level documentation, also enable:
+
+```rust
+#![warn(missing_crate_level_docs)]  // Warns if crate root is undocumented
+```
+
+### Clippy Configuration
+
+Clippy provides additional doc lint configuration in `clippy.toml`:
+
+```toml
+# Require docs on all public items (default: false)
+missing-docs-in-crate-items = true
+
+# Allow missing docs on re-exports and trivial items (default: false)
+missing-docs-allow-unused = false
+```
+
+### Documenting Private Items
+
+Use `cargo doc --document-private-items` to generate docs for private items
+during development:
+
+```bash
+cargo doc --document-private-items --open
+```
+
+### Suppressing False Positives
+
+Use `#[allow(missing_docs)]` on items where docs are not useful:
+
+```rust
+/// Trivial newtype — purpose is clear from the type name.
+#[allow(missing_docs)]
+pub struct UserId(pub u64);
+
+// FFI bindings where the C API is the canonical reference.
+#[allow(missing_docs)]
+pub mod ffi;
+```
+
+### Hiding Internal Details
+
+Use `#[doc(hidden)]` to omit implementation details from public docs without
+making them private:
+
+```rust
+/// Public-facing error type.
+pub enum ApiError {
+    /// ...
+}
+
+// Internal conversion — users don't need to see this.
+#[doc(hidden)]
+impl From<InternalError> for ApiError {
+    fn from(e: InternalError) -> Self {
+        // ...
+    }
+}
+```
+
 ## See Also
 
 - [doc-module-inner](./doc-module-inner.md) - Module-level documentation
 - [doc-examples-section](./doc-examples-section.md) - Adding examples
 - [lint-missing-docs](./lint-missing-docs.md) - Enforcing documentation
+- [doc-hidden-public](./doc-hidden-public.md) - Hiding internal impl details

@@ -137,6 +137,27 @@ fn load_config(path: &str) -> Result<Config, AppError> {
 }
 ```
 
+## Edition 2024: Closure Capture Note
+
+In Edition 2024, RPIT (return position impl Trait) captures all lifetime parameters by default. When using `.with_context(|| ...)` in async code, use `move ||` closures to ensure owned data is captured correctly:
+
+```rust
+use anyhow::{Context, Result};
+
+async fn fetch_user(id: u64) -> Result<User> {
+    let url = format!("https://api.example.com/users/{}", id);
+
+    // ✅ Edition 2024: use move || to capture owned data
+    http_client::get(&url)
+        .with_context(move || format!("failed to fetch user from {url}"))
+        .await?;
+
+    // ℹ️ With non-move closures, the borrow checker may complain
+    // about captured lifetimes across .await points
+    Ok(user)
+}
+```
+
 ## See Also
 
 - [err-anyhow-app](err-anyhow-app.md) - Use anyhow for applications

@@ -75,6 +75,15 @@ str.is_ascii()
 path.is_file()
 path.is_dir()
 
+// Option/Result idioms
+let opt: Option<i32> = Some(42);
+assert!(opt.is_some());
+assert!(!opt.is_none());
+
+let res: Result<i32, &str> = Ok(42);
+assert!(res.is_ok());
+assert!(!res.is_err());
+
 // has_ prefix (less common in std)
 iterator.has_next()  // conceptual
 
@@ -82,6 +91,20 @@ iterator.has_next()  // conceptual
 str.contains("foo")      // Not is_ because takes argument
 str.starts_with("bar")   // Descriptive verb phrase
 str.ends_with("baz")
+```
+
+## `is_` with `&mut self`
+
+Since clippy 1.62 (PR #8738), `is_*` methods may take `&mut self` in addition to `&self`:
+
+```rust
+impl MyType {
+    // Allowed: is_ with &mut self
+    fn is_empty(&mut self) -> bool {
+        self.buffer.clear();  // Side effect during check
+        self.items.is_empty()
+    }
+}
 ```
 
 ## Negation

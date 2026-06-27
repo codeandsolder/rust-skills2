@@ -126,7 +126,14 @@ let handle = shared.clone(); // Cheap: just increments counter
 
 // 4. Passing by value when caller is done with it
 fn consume(data: MyType) { } // Caller moves, no clone
+
+// 5. Cell::update for Copy types — avoids clone+set
+use std::cell::Cell;
+let counter = Cell::new(0);
+counter.update(|x| x + 1); // No clone, no set — pure update
 ```
+
+See [own-cell-update](own-cell-update.md) for details on `Cell::update`.
 
 ## See Also
 

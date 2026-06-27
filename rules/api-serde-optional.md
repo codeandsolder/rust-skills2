@@ -175,10 +175,32 @@ serde = "1.0"
 // ❌ Optional: Most libraries!
 ```
 
+## nutype Integration
+
+The `nutype` crate (v0.7.0) provides built-in serde support with validation on deserialization, making it a modern ergonomic alternative to manual `#[derive(Serialize, Deserialize)]` for validated types:
+
+```rust
+use nutype::nutype;
+
+#[nutype(
+    sanitize(trim),
+    validate(not_empty, len_char_max = 100),
+    derive(Debug, Clone, Serialize, Deserialize)
+)]
+pub struct Email(String);
+
+// Deserializing from JSON runs validation
+let email: Email = serde_json::from_str(r#""user@example.com""#)?;
+// Invalid data gets rejected at deserialization time
+```
+
+When using `nutype` in a library, gate the `nutype` dependency behind a feature flag following the same pattern.
+
+See [api-nutype-validated](./api-nutype-validated.md) for details.
+
 ## See Also
 
+- [api-nutype-validated](./api-nutype-validated.md) - nutype validated newtypes with serde
 - [proj-lib-main-split](./proj-lib-main-split.md) - Library structure
 - [api-common-traits](./api-common-traits.md) - Core trait implementations
 - [lint-deny-correctness](./lint-deny-correctness.md) - Feature testing
-- [serde-try-from-validate](./serde-try-from-validate.md) - Validate while deserializing
-- [serde-rename-all](./serde-rename-all.md) - Match external naming conventions

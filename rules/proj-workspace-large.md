@@ -42,22 +42,25 @@ my-app/
 └── README.md
 ```
 
-## Workspace Cargo.toml
+## Workspace Root: Modern Template (Rust 1.90+)
 
 ```toml
-# Root Cargo.toml
+# Root Cargo.toml — virtual workspace (no [package])
 [workspace]
-resolver = "3"  # default for the 2024 edition; use "2" for 2021
-members = [
-    "crates/core",
-    "crates/cli",
-    "crates/server",
-    "crates/common",
-]
+resolver = "3"
+members = ["crates/*"]
 
-# Shared dependencies - all crates use same versions
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.85"
+repository = "https://github.com/user/repo"
+authors = ["My Team <team@example.com>"]
+
+# Shared dependencies — all crates use same versions
 [workspace.dependencies]
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.32", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1"
 anyhow = "1.0"
@@ -68,6 +71,7 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = "warn"
+unwrap_used = "deny"
 ```
 
 ## Member Crate Cargo.toml
@@ -76,23 +80,102 @@ all = "warn"
 # crates/core/Cargo.toml
 [package]
 name = "my-app-core"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
 
 [dependencies]
 # Inherit from workspace
-tokio = { workspace = true }
-serde = { workspace = true }
+tokio.workspace = true
+serde.workspace = true
 
 # Crate-specific dependencies
 uuid = "1.0"
 
-# Internal dependency
-my-app-common = { path = "../common" }
+# Internal dependency via workspace deps
+my-app-common.workspace = true
 
 [lints]
 workspace = true  # Inherit workspace lints
 ```
+
+## `crates/*` Layout: Flat over Nested
+
+Prefer flat `crates/*` over deeply nested directories:
+
+```toml
+# ❌ Nested (harder to navigate, glob patterns break)
+members = [
+    "backend/core",
+    "backend/cli",
+    "backend/server",
+    "frontend/app",
+    "frontend/shared",
+]
+
+# ✅ Flat (clear structure, simple glob)
+members = ["crates/*"]
+
+# Or explicit list
+members = [
+    "crates/core",
+    "crates/cli",
+    "crates/server",
+    "crates/app",
+]
+```
+
+```
+# Flat layout
+my-app/
+├── Cargo.toml          # Virtual workspace root
+├── Cargo.lock
+├── crates/
+│   ├── core/           # my-app-core
+│   ├── cli/            # my-app-cli
+│   ├── server/         # my-app-server
+│   └── common/         # my-app-common
+└── README.md
+```
+
+## Pattern: Virtual Workspace
+
+Root `Cargo.toml` has only `[workspace]`, no `[package]`:
+
+```toml
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+# ...metadata inherited by all members
+
+[workspace.dependencies]
+# ...shared dependencies
+
+[workspace.lints]
+# ...shared lints
+```
+
+Virtual workspaces prevent accidental publication of a root crate and keep the root focused on orchestration.
+
+## Pattern: Crate Interdependencies with Version Fallback
+
+```toml
+# Root Cargo.toml
+[workspace.dependencies]
+my-app-core = { path = "crates/core", version = "0.1" }  # version = fallback for publish
+my-app-common = { path = "crates/common", version = "0.1" }
+
+# crates/server/Cargo.toml
+[dependencies]
+my-app-core.workspace = true
+my-app-common.workspace = true
+```
+
+Using `path + version` in workspace deps means published crates resolve via version, local builds use path.
 
 ## When to Use Workspaces
 
@@ -113,7 +196,7 @@ workspace = true  # Inherit workspace lints
 | Dependency versions | Per-crate | Synchronized |
 | Compile times | Full rebuild | Incremental |
 | Modularity | Files/modules | Crate boundaries |
-| Publishing | Single crate | Independent |
+| Publishing | Single crate | Independent or `--workspace` |
 
 ## Commands
 
@@ -128,32 +211,20 @@ cargo build -p my-app-core
 cargo test --workspace
 
 # Run specific binary
-cargo run -p my-app-cli
+cargo run -p my-app-cli --bin server
 
 # Check all
 cargo check --workspace
+
+# Publish all (Rust 1.90+)
+cargo publish --workspace --dry-run
 ```
 
-## Pattern: Virtual Workspace
+## Known Pitfalls
 
-Root Cargo.toml is workspace-only (no `[package]`):
-
-```toml
-[workspace]
-members = ["crates/*"]
-
-[workspace.dependencies]
-# ...
-```
-
-## Pattern: Crate Interdependencies
-
-```toml
-# crates/server/Cargo.toml
-[dependencies]
-my-app-core = { path = "../core" }
-my-app-common = { path = "../common" }
-```
+- **Feature unification** — workspace members share feature activation. `crate-a` enabling `tokio/full` activates it for all members. See [proj-workspace-deps](./proj-workspace-deps.md) for mitigations.
+- **`default-features = false`** — does not compose with `{dep}.workspace = true` (cargo#12162). Define minimal-feature variants in workspace deps instead.
+- **`resolver = "3"`** — required for Edition 2024. Workspaces created with older editions should update explicitly.
 
 ## See Also
 

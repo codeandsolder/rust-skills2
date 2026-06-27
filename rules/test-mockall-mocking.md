@@ -11,7 +11,7 @@ Unit tests should isolate the code under test from external dependencies (databa
 ```toml
 # Cargo.toml
 [dev-dependencies]
-mockall = "0.12"
+mockall = "0.14"
 ```
 
 ## Basic Usage
@@ -174,8 +174,8 @@ fn mock_client() -> MockHttpClient {
 
 ```rust
 #[automock]
-#[async_trait]
 trait AsyncDatabase {
+    // Edition 2024: native async fn in traits
     async fn fetch(&self, id: u64) -> Option<Data>;
 }
 
@@ -189,6 +189,51 @@ async fn test_async() {
     let result = mock.fetch(1).await;
     assert!(result.is_some());
 }
+```
+
+## HTTP Mocking Alternatives
+
+```rust
+// wiremock-rs — spin up a real mock HTTP server
+use wiremock::{MockServer, Mock, ResponseTemplate};
+use wiremock::matchers::{method, path};
+
+#[tokio::test]
+async fn test_with_wiremock() {
+    let mock_server = MockServer::start().await;
+    
+    Mock::given(method("GET"))
+        .and(path("/api/data"))
+        .respond_with(ResponseTemplate::new(200)
+            .set_body_json(serde_json::json!({"key": "value"})))
+        .mount(&mock_server)
+        .await;
+
+    let client = MyClient::new(mock_server.uri());
+    let result = client.fetch_data().await.unwrap();
+    assert_eq!(result.key, "value");
+}
+```
+
+## Anti-Patterns
+
+```rust
+// ❌ Over-mocking — mocking simple data transformations
+#[automock]
+trait Math {
+    fn double(&self, x: i32) -> i32;
+}
+// Just call x * 2 directly — no need to mock
+
+// ❌ Mocking types you don't own (std types)
+#[automock]
+trait StringProcessor {
+    fn process(&self, s: String) -> String;
+}
+// Wrap in your own trait instead
+
+// ✅ Mock at architectural boundaries only
+// Database, network, filesystem — these are worth mocking
 ```
 
 ## Design for Testability
@@ -224,3 +269,5 @@ fn main() {
 - [test-mock-traits](./test-mock-traits.md) - Mock trait design
 - [test-proptest-properties](./test-proptest-properties.md) - Property testing
 - [test-arrange-act-assert](./test-arrange-act-assert.md) - Test structure
+- [wiremock-rs](https://github.com/LukeMathWalker/wiremock-rs) — HTTP mocking
+- [httpmock](https://crates.io/crates/httpmock) — Alternative HTTP mocking

@@ -106,17 +106,62 @@ struct Transform {
 }
 ```
 
+## Newly Copy Types (Recent Rust)
+
+Recent Rust versions have made several standard library types `Copy`:
+
+### `IntErrorKind` (1.90)
+
+```rust
+// 1.90+: IntErrorKind is Copy
+match "abc".parse::<i32>().unwrap_err().kind() {
+    IntErrorKind::InvalidDigit => { /* handle */ }
+    // Previously needed clone or explicit handling
+}
+```
+
+### `core::range::Range<usize>` (1.96)
+
+```rust
+use core::range::Range;
+
+// 1.96+: Range is Copy, enabling Copy on containing types
+#[derive(Clone, Copy)]
+struct Span(Range<usize>);
+```
+
+### `clippy::copy_iterator` Lint (1.95+)
+
+Clippy warns when a type implements `Iterator` but is `Copy` — iterating by value on a `Copy` iterator won't consume it, which is almost certainly a bug:
+
+```rust
+#[derive(Clone, Copy)]
+struct Countdown(u8);
+
+impl Iterator for Countdown {
+    type Item = u8;
+    fn next(&mut self) -> Option<u8> {
+        let current = self.0;
+        self.0 = self.0.checked_sub(1)?;
+        Some(current)
+    }
+}
+// Warning: clippy::copy_iterator — Copy iterator likely unintended
+```
+
 ## Common Copy Types
 
 Standard library types that are `Copy`:
 - All primitives: `i32`, `f64`, `bool`, `char`, etc.
-- Shared references: `&T` (note: `&mut T` is NOT `Copy` — copying a mutable reference would alias it, so it is reborrowed instead)
+- References: `&T`, `&mut T`
 - Raw pointers: `*const T`, `*mut T`
 - Function pointers: `fn(T) -> U`
 - Tuples of `Copy` types: `(i32, f64)`
 - Arrays of `Copy` types: `[u8; 32]`
 - `Option<T>` where `T: Copy`
 - `PhantomData<T>`
+- `core::range::Range<T>` where `T: Copy` (1.96+)
+- `IntErrorKind` (1.90+)
 
 ## See Also
 

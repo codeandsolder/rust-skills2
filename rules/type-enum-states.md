@@ -2,6 +2,8 @@
 
 > Use enums for mutually exclusive states
 
+**Rule**: `type-enum-states`
+
 ## Why It Matters
 
 When a value can be in exactly one of several states, an enum makes invalid states unrepresentable. The compiler ensures all states are handled. Contrast with boolean flags or optional fields that can represent impossible combinations.
@@ -47,21 +49,13 @@ struct Connection {
 ```rust
 fn handle_connection(conn: &Connection) {
     match &conn.state {
-        ConnectionState::Disconnected => {
-            println!("Not connected");
-        }
-        ConnectionState::Connecting { address } => {
-            println!("Connecting to {}", address);
-        }
-        ConnectionState::Connected { socket } => {
-            println!("Connected, not authenticated");
-        }
+        ConnectionState::Disconnected => println!("Not connected"),
+        ConnectionState::Connecting { address } => println!("Connecting to {}", address),
+        ConnectionState::Connected { socket } => println!("Connected, not authenticated"),
         ConnectionState::Authenticated { socket, session } => {
             println!("Authenticated as {}", session.user);
         }
-        ConnectionState::Failed { error } => {
-            println!("Failed: {}", error);
-        }
+        ConnectionState::Failed { error } => println!("Failed: {}", error),
     }
     // Compiler error if any state is missing
 }
@@ -80,13 +74,7 @@ impl Connection {
             _ => Err(Error::AlreadyConnected),
         }
     }
-    
-    fn on_connected(&mut self, socket: TcpStream) {
-        if let ConnectionState::Connecting { .. } = &self.state {
-            self.state = ConnectionState::Connected { socket };
-        }
-    }
-    
+
     fn authenticate(&mut self, creds: Credentials) -> Result<(), Error> {
         match std::mem::replace(&mut self.state, ConnectionState::Disconnected) {
             ConnectionState::Connected { socket } => {
@@ -103,30 +91,84 @@ impl Connection {
 }
 ```
 
+## `let_chains` for Peeling Nested States (Rust 1.88+)
+
+When enums are nested (e.g., `Option<Result<T, E>>` or multi-level enums), `let_chains` eliminates deep nesting:
+
+```rust
+// Before let_chains: deeply nested
+fn process(response: Option<Result<Data, Error>>) {
+    if let Some(result) = response {
+        if let Ok(data) = result {
+            handle_data(data);
+        }
+    }
+}
+
+// After let_chains (Rust 1.88+): flat and readable
+fn process(response: Option<Result<Data, Error>>) {
+    if let Some(Ok(data)) = response {
+        handle_data(data);
+    }
+}
+
+// Multiple let patterns in a chain
+if let Some(user) = find_user(id)
+    && let Some(address) = user.address
+    && let Some(country) = address.country
+{
+    println!("User is in {}", country);
+}
+```
+
+## `cfg_select!` for Compile-Time State Selection (Rust 1.95+)
+
+```rust
+use core::cfg_select;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Platform {
+    Linux,
+    MacOs,
+    Windows,
+    Other,
+}
+
+// Select state based on target platform at compile time
+const CURRENT_PLATFORM: Platform = cfg_select! {
+    target_os = "linux" => Platform::Linux,
+    target_os = "macos" => Platform::MacOs,
+    target_os = "windows" => Platform::Windows,
+    _ => Platform::Other,
+};
+// CURRENT_PLATFORM is a compile-time constant — dead code
+// elimination removes unused platform branches.
+
+fn platform_specific_work() {
+    match CURRENT_PLATFORM {
+        Platform::Linux => /* linux-specific */,
+        Platform::MacOs => /* macOS-specific */,
+        Platform::Windows => /* windows-specific */,
+        Platform::Other => /* fallback */,
+    }
+}
+```
+
 ## Result and Option as State Enums
 
 ```rust
 // Option<T> is an enum for "might not exist"
-enum Option<T> {
-    Some(T),
-    None,
-}
-
 // Result<T, E> is an enum for "might have failed"
-enum Result<T, E> {
-    Ok(T),
-    Err(E),
-}
-
 // Use these instead of nullable/sentinel values
-fn find_user(id: u64) -> Option<User> { ... }
-fn parse_config(s: &str) -> Result<Config, ParseError> { ... }
+
+fn find_user(id: u64) -> Option<User> { todo!() }
+fn parse_config(s: &str) -> Result<Config, ParseError> { todo!() }
 ```
 
 ## Avoid Boolean Flags
 
 ```rust
-// Bad: boolean flags
+// Bad: boolean flags can represent impossible combinations
 struct Task {
     is_running: bool,
     is_completed: bool,
@@ -134,7 +176,7 @@ struct Task {
     error: Option<Error>,
 }
 
-// Good: enum state
+// Good: enum — each state has exactly the data it needs
 enum TaskState {
     Pending,
     Running { started_at: Instant },
@@ -149,8 +191,8 @@ struct Task {
 
 ## See Also
 
-- [api-typestate](./api-typestate.md) - Type-level state machines
-- [api-non-exhaustive](./api-non-exhaustive.md) - Forward-compatible enums
-- [type-option-nullable](./type-option-nullable.md) - Option for optional values
-- [pat-exhaustive-enum](./pat-exhaustive-enum.md) - Match owned enums exhaustively
-- [serde-enum-representation](./serde-enum-representation.md) - Choose enum wire tagging
+- [Rust Book: Enums](https://doc.rust-lang.org/book/ch06-00-enums.html)
+- [Making Impossible States Impossible](https://geeklaunch.io/blog/make-impossible-states-impossible/)
+- [api-typestate](./api-typestate.md) — Type-level state machines
+- [api-non-exhaustive](./api-non-exhaustive.md) — Forward-compatible enums
+- [type-option-nullable](./type-option-nullable.md) — `Option` for optional values

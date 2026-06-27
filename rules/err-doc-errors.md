@@ -138,6 +138,20 @@ missing_errors_doc = "warn"
 pub fn might_fail() -> Result<(), Error> { Ok(()) }
 ```
 
+### Suppressing the Lint
+
+When the error is self-explanatory or internal, suppress with `#[expect]` (preferred) or `#[allow]`:
+
+```rust
+/// Internal helper — error type documents itself.
+#[expect(clippy::missing_errors_doc, reason = "internal function, error is self-explanatory")]
+fn load_cache() -> Result<Cache, CacheError> {
+    // ...
+}
+```
+
+Since Rust 1.80, `#[expect]` is preferred over `#[allow]` because it warns when the suppression is no longer needed.
+
 ## See Also
 
 - [doc-examples-section](./doc-examples-section.md) - Examples in documentation

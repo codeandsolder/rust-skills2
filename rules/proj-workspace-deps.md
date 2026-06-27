@@ -126,18 +126,94 @@ serde = { workspace = true, optional = true }
 serde = ["dep:serde"]
 ```
 
+## `[workspace.package]` Inheritance (Rust 1.64+)
+
+Declare shared package metadata once in the workspace root and inherit it in every member:
+
+```toml
+# Root Cargo.toml
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.85"
+authors = ["My Team <team@example.com>"]
+repository = "https://github.com/user/repo"
+description = "My awesome project"
+
+# crates/core/Cargo.toml
+[package]
+name = "my-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+description.workspace = true
+```
+
+This prevents metadata drift — without inheritance, each crate may silently fall behind on `edition` or `rust-version`.
+
+## `[workspace.lints]` Config (RFC 3389, stable 1.74+)
+
+Centralize lint configuration in the workspace root and inherit in member crates:
+
+```toml
+# Root Cargo.toml
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+
+[workspace.lints.rustdoc]
+missing_crate_level_docs = "warn"
+
+# crates/core/Cargo.toml
+[package]
+name = "my-core"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true  # Inherit all workspace lints
+```
+
+> **Limitation**: It is a hard error to mix `lints.workspace = true` with per-crate overrides in the same `[lints]` table (cargo#13157). Use `#![allow(...)]` attributes in `lib.rs`/`main.rs` to override per crate.
+
+## `resolver = "3"` (Edition 2024 Default)
+
+Use `resolver = "3"` in the workspace. This is the default for Edition 2024 (Rust 1.85+) and respects `package.rust-version` for dependency selection.
+
+```toml
+[workspace]
+members = ["crates/*"]
+resolver = "3"  # Edition 2024 default; explicit for older editions
+```
+
+| Resolver | Edition | Behavior |
+|----------|---------|----------|
+| `"1"` | ≤ 2015 | Original resolver |
+| `"2"` | 2021 | Conditional activation, target-specific deps |
+| `"3"` | 2024 | `"2"` + respects `rust-version` in dependency resolution |
+
 ## Complete Workspace Example
 
 ```toml
 # Root Cargo.toml
 [workspace]
 members = ["crates/*"]
-resolver = "3"  # default for the 2024 edition; use "2" for 2021
+resolver = "3"
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "MIT"
+rust-version = "1.85"
 repository = "https://github.com/user/repo"
 
 [workspace.dependencies]
@@ -164,12 +240,20 @@ tracing-subscriber = "0.3"
 proptest = "1.0"
 criterion = { version = "0.5", features = ["html_reports"] }
 
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+unwrap_used = "deny"
+
 # crates/core/Cargo.toml
 [package]
 name = "my-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 serde.workspace = true
@@ -177,6 +261,49 @@ thiserror.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+
+[lints]
+workspace = true
+```
+
+## Known Pitfalls
+
+### Feature Unification (RFC 3692)
+
+Workspace members share a single dependency graph. If `crate-a` enables `tokio/full` and `crate-b` enables `tokio/process`, all members see the union of features:
+
+```toml
+# crate-a enables "full"
+# crate-b enables only "process"
+# → All members compile with "full + process"
+```
+
+This can cause unexpected compile times or enable unwanted functionality. To opt out per-package (unstable):
+
+```toml
+# Requires cargo nightly
+[workspace]
+members = ["crates/*"]
+resolver.feature-unification = "package"
+```
+
+### `default-features = false` with Workspace Dependencies (cargo#12162)
+
+`default-features = false` does not compose with `{dep}.workspace = true` as expected. Workaround: specify the exact feature set in the workspace definition:
+
+```toml
+# ❌ default-features = false on workspace dep has no effect
+[workspace.dependencies]
+tokio = "1.32"
+
+# crate-a/Cargo.toml
+[dependencies]
+tokio = { workspace = true, default-features = false, features = ["rt"] }
+
+# ✅ Workaround: define the dep with minimal features in workspace
+[workspace.dependencies]
+tokio-minimal = { package = "tokio", version = "1.32", default-features = false }
+tokio-full = { package = "tokio", version = "1.32", features = ["full"] }
 ```
 
 ## See Also

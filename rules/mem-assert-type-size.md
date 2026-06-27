@@ -6,6 +6,8 @@
 
 Adding a field to a frequently-instantiated struct can silently bloat memory usage. Static size assertions catch this at compile time, making size changes intentional rather than accidental. This is especially important for types stored in large collections or passed frequently by value.
 
+**Rust 1.87+** guarantees that `Vec::with_capacity(N).capacity() == N` exactly, making pre-allocation contracts stricter. Use size assertions on your hot types to ensure they fit within cache lines and expected memory budgets.
+
 ## Bad
 
 ```rust
@@ -132,6 +134,40 @@ mod tests {
     }
 }
 ```
+
+## Padding Analysis with `#[repr(C)]`
+
+When using `#[repr(C)]`, field order determines layout — poor ordering wastes space to padding:
+
+```rust
+use std::mem::size_of;
+
+// 24 bytes: 8 (u64) + 8 (padding) + 1 (u8) + 7 (padding) = padded
+#[repr(C)]
+struct BadOrder {
+    a: u64,   // offset 0
+    b: u8,    // offset 8 — 7 bytes padding after
+}
+assert_eq!(size_of::<BadOrder>(), 16);
+
+// 12 bytes: 1 (u8) + 3 (padding) + 8 (u64) = packed
+#[repr(C)]
+struct BetterOrder {
+    b: u8,    // offset 0
+    a: u64,   // offset 8
+}
+assert_eq!(size_of::<BetterOrder>(), 16);  // Same! #[repr(C)] can't reorder
+
+// 9 bytes: no padding with repr(C) or repr(Rust)
+#[repr(C, packed)]
+struct Packed {
+    a: u64,   // offset 0
+    b: u8,    // offset 8
+}
+assert_eq!(size_of::<Packed>(), 9);  // No padding but slow unaligned access
+```
+
+For hot types, let the Rust compiler reorder fields (default `#[repr(Rust)]`) and add size assertions to detect regressions.
 
 ## When to Assert
 

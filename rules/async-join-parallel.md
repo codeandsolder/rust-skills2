@@ -6,6 +6,8 @@
 
 Awaiting futures sequentially takes the sum of their durations. `join!` runs futures concurrently, taking only as long as the slowest one. For independent operations like multiple API calls or parallel file reads, this can dramatically reduce latency.
 
+> **Important**: `join!` runs all futures on the **same task** — they are interleaved via cooperative polling, not truly parallel. For CPU-bound parallelism, use `tokio::spawn` to distribute work across threads. For IO-bound work where futures spend most time waiting, the interleaving is sufficient.
+
 ## Bad
 
 ```rust
@@ -123,6 +125,25 @@ async fn fetch_with_semaphore(ids: &[u64]) -> Vec<User> {
     join_all(futures).await
 }
 ```
+
+## Biased Polling
+
+By default, `join!` polls futures in random order for fairness. Use `select!` with `biased;` when you need deterministic priority:
+
+```rust
+use tokio::select;
+
+async fn prioritized() -> Result<(), Error> {
+    select! {
+        biased;  // Check branches in order
+        result = critical_operation() => result?,
+        _ = cancellation_token.cancelled() => Err(Error::Cancelled),
+        result = best_effort() => result?,
+    }
+}
+```
+
+For `join!`, polling order rarely matters because all futures complete. When it does, restructure into `select!` with `biased;` or use `JoinSet` for dynamic prioritization.
 
 ## When NOT to Use join!
 

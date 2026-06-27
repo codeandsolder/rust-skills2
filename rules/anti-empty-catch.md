@@ -108,13 +108,19 @@ fn report_metric(name: &str, value: f64) {
 }
 ```
 
-## Clippy Lint
+## Detection
 
 ```toml
+# Cargo.toml
+[lints.rust]
+let_underscore_drop = "warn"  # Allow by default in rustc; opt in explicitly (uplifted from clippy in Rust 1.96)
+
 [lints.clippy]
-let_underscore_drop = "warn"
 ignored_unit_patterns = "warn"
+let_underscore_lock = "warn"  # Dropping a lock guard silently unlocks
 ```
+
+> **Note**: Since Rust 1.96, `let_underscore_drop` is a built-in rustc lint (**allow by default** in stable Rust — see [the rustc lint listing](https://doc.rust-lang.org/stable/rustc/lints/listing/allowed-by-default.html)). It catches `let _ = expr` that drops a value with a non-trivial `Drop` implementation (silently dropped `MutexGuard`, `File`, `Transaction`, etc.). Enable it explicitly in `[lints.rust]` (`warn` or `deny` depending on your strictness). It's distinct from `unused_must_use` (which IS deny by default), which catches ignored `Result` returns.
 
 ## Decision Guide
 

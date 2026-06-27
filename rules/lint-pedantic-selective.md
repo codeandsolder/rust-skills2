@@ -1,10 +1,29 @@
 # lint-pedantic-selective
 
+**Rule**: `lint-pedantic-selective`
+
 > Enable clippy::pedantic selectively
 
 ## Why It Matters
 
 The `clippy::pedantic` group contains opinionated lints that aren't universally applicable. Enabling it wholesale produces noise; selectively enabling useful pedantic lints improves code quality without false positives.
+
+## Priority System (Rust 1.74+)
+
+When enabling a whole group like `pedantic`, use the `priority` system so individual lints can override it:
+
+```toml
+[lints.clippy]
+# Lower priority for the group — individual lints (priority 0) override
+pedantic = { level = "warn", priority = -1 }
+
+# Override specific noisy pedantic lints (default priority 0, wins)
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+```
+
+Without `priority`, enabling the group and allowing individual lints may produce conflicting configurations.
 
 ## Bad
 

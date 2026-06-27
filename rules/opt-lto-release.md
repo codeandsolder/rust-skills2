@@ -30,7 +30,7 @@ strip = true         # Remove symbols for smaller binary
 ## LTO Options Explained
 
 ```toml
-# No LTO (default)
+# No LTO (default) — still enables thin-local LTO when opt > 0
 lto = false
 
 # Thin LTO - fast compilation, most benefits
@@ -49,32 +49,27 @@ lto = "off"
 
 | Setting | Compile Time | Binary Size | Performance |
 |---------|--------------|-------------|-------------|
-| `lto = false` | Fast | Larger | Baseline |
+| `lto = false` | Fast | Larger | Baseline (thin-local still active when opt > 0) |
 | `lto = "thin"` | Medium | Smaller | +5-15% |
 | `lto = "fat"` | Slow | Smallest | +10-20% |
 
 ## Evidence from Production
 
-Many production crates enable fat LTO and `codegen-units = 1` in their release
-profiles for maximum performance. For example, ripgrep ships a `release-lto`
-profile (see the Cargo Book for profile documentation:
-<https://doc.rust-lang.org/cargo/reference/profiles.html>):
-
 ```toml
-# A common pattern in performance-critical crates
+# From Anchor (Solana framework)
+# https://github.com/solana-foundation/anchor/blob/master/cli/src/rust_template.rs
 [profile.release]
 overflow-checks = true
 lto = "fat"
 codegen-units = 1
 
-# Named profile for explicit LTO builds (e.g. ripgrep's release-lto)
-[profile.release-lto]
-inherits = "release"
+# From sol-trade-sdk
+# https://github.com/0xfnzero/sol-trade-sdk
+[profile.release]
 opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-strip = "symbols"
 ```
 
 ## Complete Optimized Profile
@@ -109,8 +104,24 @@ opt-level = 3        # Optimize dependencies even in dev
 |-----------|-------------|
 | Development | `false` (fast compiles) |
 | CI builds | `"thin"` (balance) |
-| Release binaries | `"fat"` (max perf) |
+| Release binaries (generic) | `"fat"` (max perf) |
+| Release binaries (x86-64-v3+) | `"thin"` (avoid 4000% regression) |
 | Libraries (crates.io) | `false` (users choose) |
+
+## ⚠ Critical: fat LTO + target-cpu=x86-64-v3
+
+Combining `lto = "fat"` with `-C target-cpu=x86-64-v3` can cause **up to 4000% compile-time slowdowns** ([rust#146497](https://github.com/rust-lang/rust/issues/146497)). Use `lto = "thin"` when targeting x86-64-v3 or higher.
+
+```toml
+# Safe combination for x86-64-v3 targets
+[profile.release]
+lto = "thin"          # NOT "fat"
+codegen-units = 1
+opt-level = 3
+```
+
+> **Note**: Since Rust 1.90, `lld` is the default linker on Linux, improving LTO compile times.<br/>
+> **Tip**: Use [`cargo-wizard`](https://crates.io/crates/cargo-wizard) to quickly configure optimal profile settings.
 
 ## Measuring Impact
 

@@ -58,6 +58,28 @@ github.com/user/my-library-rs   # Unnecessary
 github.com/rust-lang/rust       # The rust repo itself uses "rust"
 ```
 
+## Package Name vs Crate Name
+
+Package names in `Cargo.toml` use **kebab-case** (published on crates.io). Internally, hyphens are converted to underscores for the crate name in `use` statements.
+
+```toml
+# Cargo.toml (kebab-case on crates.io)
+[package]
+name = "my-crate"
+```
+
+```rust
+// In code: hyphens become underscores
+use my_crate::some_module;
+```
+
+Since 2024, `cargo new` warns on non-snake_case package names (PR #12766):
+
+```bash
+$ cargo new my-rust-project
+warning: the name `my-rust-project` is not snake_case
+```
+
 ## Exceptions
 
 ```toml
@@ -69,6 +91,25 @@ github.com/rust-lang/rust       # The rust repo itself uses "rust"
 name = "fancy-lib"           # Instead of fancy-rs
 name = "better-json"         # Instead of json-rust
 name = "my-serde-impl"       # Instead of serde-rs-fork
+
+# The -sys suffix is a standard exception for FFI bindings
+name = "openssl-sys"         # OK: standard FFI naming
+name = "libgit2-sys"         # OK: standard FFI naming
+name = "zstd-sys"            # OK: standard FFI naming
+```
+
+## Anti-Patterns
+
+```toml
+# Bad: redundant -rs/-rust suffix
+json-rs
+rust-http
+toml-rust
+
+# Good: descriptive name without language suffix
+json-hyper-codec
+http-client
+toml-edit
 ```
 
 ## See Also

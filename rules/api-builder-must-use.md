@@ -116,9 +116,11 @@ fn map<F>(self, f: F) -> Map<Self, F> { ... }
 
 ```toml
 [lints.clippy]
-must_use_candidate = "warn"  # Suggests where #[must_use] would help
-return_self_not_must_use = "warn"  # Specifically for -> Self methods
+must_use_candidate = "warn"            # Suggests where #[must_use] would help
+return_self_not_must_use = "warn"      # Specifically for -> Self methods
 ```
+
+Note: the `bon` crate's trait-based typestate makes `#[must_use]` on builder methods a non-issue — its generated builders already require all methods to be chained, so ignored return values cannot occur silently. When using `bon`, you don't need to worry about `return_self_not_must_use` or `must_use_candidate` for builder methods.
 
 ## Standard Library Examples
 

@@ -105,6 +105,32 @@ for i in 0..rows {
 | `for i in 0..a.len() { a[i] + b[i] }` | `a.iter().zip(&b)` |
 | `for i in 0..v.len() { v[i] *= 2 }` | `for x in &mut v { *x *= 2 }` |
 
+## Zip Patterns
+
+`zip()` elegantly replaces index-based multi-slice access and handles uneven lengths gracefully:
+
+```rust
+// Index-based: manually check bounds, risk of mismatch
+for i in 0..names.len().min(scores.len()) {
+    println!("{}: {}", names[i], scores[i]);
+}
+
+// Zip: handles shortest length automatically, no bounds checks
+for (name, score) in names.iter().zip(&scores) {
+    println!("{}: {}", name, score);
+}
+
+// Zip with index via enumerate
+for (i, (name, score)) in names.iter().zip(&scores).enumerate() {
+    println!("{}. {}: {}", i, name, score);
+}
+
+// Triple zip for three or more iterables
+for (a, b, c) in xs.iter().zip(&ys).zip(&zs).map(|((a, b), c)| (a, b, c)) {
+    // ...
+}
+```
+
 ## Performance Note
 
 ```rust

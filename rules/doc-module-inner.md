@@ -101,12 +101,70 @@ pub mod steps;
 pub mod prelude;
 ```
 
+## Crate Root with include_str
+
+For large crate-level docs, use `#[doc = include_str!("...")]` to embed
+a README or separate doc file as the crate root documentation:
+
+```rust
+//! # My Awesome Crate
+//!
+#![doc = include_str!("../README.md")]
+```
+
+This keeps `lib.rs` clean while ensuring the README is also the crate
+documentation.
+
+> **Caution (Edition 2024)**: When using nested `include_str!` inside
+> documentation produced by `include_str!`, paths resolve relative to the
+> outermost included file, not the Rust source. See
+> [doc-include-str](./doc-include-str.md) for details.
+
+## Feature Flags Section
+
+When using `doc_cfg`, list feature flags at the module level and annotate
+items with `#[doc(cfg(feature = "..."))]`:
+
+```rust
+//! # Feature Flags
+//!
+//! | Feature | Description | Default |
+//! |---------|-------------|---------|
+//! | `async` | Async workflow execution | yes |
+//! | `serde` | Serialization support | no |
+```
+
+Then in the same crate:
+
+```rust
+/// Process items asynchronously.
+#[doc(cfg(feature = "async"))]
+pub mod async_workflow;
+```
+
+Enable this with `docsrs` cfg in your `Cargo.toml`:
+
+```toml
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+```
+
+## Lints
+
+Enable `missing_crate_level_docs` to warn when the crate root (`lib.rs`)
+lacks documentation:
+
+```rust
+#![warn(missing_crate_level_docs)]
+```
+
 ## Key Sections for Module Docs
 
 1. **Brief description** - One-line summary
 2. **Overview** - What the module provides
 3. **Examples** - How to use it
-4. **Feature flags** - Optional functionality
+4. **Feature flags** - Optional functionality and doc_cfg integration
 5. **See Also** - Related modules
 
 ## See Also
@@ -114,3 +172,5 @@ pub mod prelude;
 - [doc-all-public](./doc-all-public.md) - Documenting public items
 - [doc-examples-section](./doc-examples-section.md) - Adding examples
 - [doc-cargo-metadata](./doc-cargo-metadata.md) - Crate metadata
+- [doc-include-str](./doc-include-str.md) - README as crate root docs
+- [doc-cfg-patterns](./doc-cfg-patterns.md) - Feature/platform doc annotations

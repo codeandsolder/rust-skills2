@@ -133,6 +133,24 @@ async fn scoped(data: Arc<Data>) {
 }
 ```
 
+## Edition 2024 Async Closures
+
+In Edition 2024, Rust stabilizes `async || {}` closures that can hold captured references across `.await` points without the borrow checker issues that plague `|| async {}`:
+
+```rust
+async fn process(data: Arc<Data>) {
+    // Edition 2024 async closure: borrows can span await within the closure
+    let f = async || {
+        let slice = &data.items[..];
+        expensive_async_operation().await;
+        use_slice(slice);
+    };
+    f().await;
+}
+```
+
+This reduces the need to clone when the closure is used locally (not spawned). However, when spawning to a multi-threaded runtime, you still need owned data (`Arc::clone()`, `.clone()`) for the future to be `Send`. Use `async || {}` when the closure is immediately awaited, and `Arc::clone()` / `.clone()` when data must cross thread boundaries.
+
 ## MutexGuard Across Await
 
 ```rust

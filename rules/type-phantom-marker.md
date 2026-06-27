@@ -1,15 +1,17 @@
 # type-phantom-marker
 
-> Use `PhantomData` to express type relationships without runtime cost
+> Use `PhantomData` for zero-cost type markers
+
+**Rule**: `type-phantom-marker`
 
 ## Why It Matters
 
-Sometimes your type needs to be parameterized by a type that doesn't appear in any field—for variance, drop order, or semantic purposes. `PhantomData<T>` tells the compiler your type is "associated with" `T` without storing any `T` data. It has zero runtime cost.
+Sometimes your type needs to be parameterized by a type that doesn't appear in any field — for variance, drop order, or semantic purposes. `PhantomData<T>` tells the compiler your type is "associated with" `T` without storing any `T` data. It has zero runtime cost. For `!Unpin` markers, use `PhantomPinned`, a dedicated zero-sized type from `std::marker`.
 
 ## Bad
 
 ```rust
-// Type parameter unused - compiler error
+// Type parameter unused — compiler error
 struct Handle<T> {
     id: u64,
     // Error: parameter `T` is never used
@@ -34,10 +36,7 @@ struct Handle<T> {
 
 impl<T> Handle<T> {
     fn new(id: u64) -> Self {
-        Handle {
-            id,
-            _marker: PhantomData,
-        }
+        Handle { id, _marker: PhantomData }
     }
 }
 
@@ -51,7 +50,7 @@ let user_handle = Handle::<User>::new(1);
 let order_handle = Handle::<Order>::new(2);
 
 process_user(user_handle);   // OK
-process_user(order_handle);  // Error: expected Handle<User>, found Handle<Order>
+// process_user(order_handle);  // Error: expected Handle<User>, found Handle<Order>
 ```
 
 ## Expressing Ownership
@@ -62,15 +61,12 @@ use std::marker::PhantomData;
 // Owns T conceptually (like Box<T>)
 struct Container<T> {
     ptr: *mut T,
-    _marker: PhantomData<T>,  // Acts like we own a T
+    _marker: PhantomData<T>,  // Drop will be called on T
 }
 
-// Drop will be called on T when Container drops
 impl<T> Drop for Container<T> {
     fn drop(&mut self) {
-        unsafe {
-            std::ptr::drop_in_place(self.ptr);
-        }
+        unsafe { std::ptr::drop_in_place(self.ptr); }
     }
 }
 ```
@@ -86,7 +82,6 @@ struct Ref<'a, T> {
     _marker: PhantomData<&'a T>,  // Acts like &'a T
 }
 
-// Compiler tracks lifetime correctly
 impl<'a, T> Ref<'a, T> {
     fn get(&self) -> &'a T {
         unsafe { &*self.ptr }
@@ -94,12 +89,77 @@ impl<'a, T> Ref<'a, T> {
 }
 ```
 
+## `PhantomPinned` for `!Unpin` Markers
+
+`PhantomPinned` is a zero-sized type that implements `!Unpin`, making your type immovable after construction — essential for self-referential structs and pinned futures:
+
+```rust
+use std::marker::PhantomPinned;
+use std::pin::Pin;
+
+// A type that, once pinned, cannot be moved
+struct SelfReferential {
+    data: String,
+    pointer: *const String,  // Points to `self.data`
+    _pin: PhantomPinned,      // Makes the type !Unpin
+}
+
+impl SelfReferential {
+    fn new(data: String) -> Pin<Box<Self>> {
+        let mut s = Box::pin(SelfReferential {
+            pointer: std::ptr::null(),
+            data,
+            _pin: PhantomPinned,
+        });
+        // Safety: we won't move `s` after initializing the pointer
+        unsafe {
+            let this: &mut Self = Pin::as_mut(&mut s).get_unchecked_mut();
+            this.pointer = &this.data as *const String;
+        }
+        s
+    }
+}
+```
+
+## `#[repr(transparent)]` + `PhantomData` + `NonZero<uN>` for FFI Handles
+
+Combine all three for a type-safe, niche-optimized FFI handle:
+
+```rust
+use std::marker::PhantomData;
+use std::num::NonZero;
+
+/// A type-safe, non-nullable, niche-optimized FFI handle.
+#[repr(transparent)]
+struct FfiHandle<T> {
+    raw: NonZero<u64>,
+    _marker: PhantomData<T>,
+}
+
+impl<T> FfiHandle<T> {
+    /// Create a handle from a raw non-zero value.
+    ///
+    /// # Safety
+    /// `raw` must be a valid handle returned by the C library.
+    unsafe fn from_raw(raw: NonZero<u64>) -> Self {
+        Self { raw, _marker: PhantomData }
+    }
+
+    fn as_raw(&self) -> NonZero<u64> {
+        self.raw
+    }
+}
+
+// Zero-cost optional: Option<FfiHandle<T>> is 8 bytes
+assert_eq!(std::mem::size_of::<FfiHandle<()>>(), 8);
+assert_eq!(std::mem::size_of::<Option<FfiHandle<()>>>(), 8);
+```
+
 ## Type-Level State Machine
 
 ```rust
 use std::marker::PhantomData;
 
-// States as zero-size types
 struct Unlocked;
 struct Locked;
 
@@ -112,10 +172,8 @@ impl Door<Unlocked> {
         println!("Locking...");
         Door { _state: PhantomData }
     }
-    
-    fn open(&self) {
-        println!("Opening...");
-    }
+
+    fn open(&self) { println!("Opening..."); }
 }
 
 impl Door<Locked> {
@@ -123,18 +181,15 @@ impl Door<Locked> {
         println!("Unlocking...");
         Door { _state: PhantomData }
     }
-    
-    // Can't call open() on Locked door - method doesn't exist
+    // Can't call open() on Locked door — method doesn't exist
 }
 
-fn example() {
-    let door: Door<Unlocked> = Door { _state: PhantomData };
-    door.open();           // OK
-    let locked = door.lock();
-    // locked.open();      // Error: no method `open` for Door<Locked>
-    let unlocked = locked.unlock();
-    unlocked.open();       // OK
-}
+let door: Door<Unlocked> = Door { _state: PhantomData };
+door.open();             // OK
+let locked = door.lock();
+// locked.open();        // Error: no method `open` for Door<Locked>
+let unlocked = locked.unlock();
+unlocked.open();         // OK
 ```
 
 ## Variance Control
@@ -143,19 +198,13 @@ fn example() {
 use std::marker::PhantomData;
 
 // Covariant in T (PhantomData<T>)
-struct Producer<T> {
-    _marker: PhantomData<T>,  // Covariant
-}
+struct Producer<T> { _marker: PhantomData<T> }
 
 // Contravariant in T (PhantomData<fn(T)>)
-struct Consumer<T> {
-    _marker: PhantomData<fn(T)>,  // Contravariant
-}
+struct Consumer<T> { _marker: PhantomData<fn(T)> }
 
 // Invariant in T (PhantomData<fn(T) -> T>)
-struct Both<T> {
-    _marker: PhantomData<fn(T) -> T>,  // Invariant
-}
+struct Both<T> { _marker: PhantomData<fn(T) -> T> }
 ```
 
 ## Common Uses
@@ -183,6 +232,11 @@ struct Vec<T, A: Allocator = Global> {
 
 ## See Also
 
-- [api-typestate](./api-typestate.md) - State machine pattern
-- [api-newtype-safety](./api-newtype-safety.md) - Type-safe wrappers
-- [type-newtype-ids](./type-newtype-ids.md) - ID types
+- [Rust Reference: PhantomData](https://doc.rust-lang.org/reference/special-types-and-traits.html#phantomdata)
+- [PhantomPinned docs](https://doc.rust-lang.org/std/marker/struct.PhantomPinned.html)
+- [Pin and PhantomPinned](https://doc.rust-lang.org/std/pin/index.html)
+- [api-typestate](./api-typestate.md) — State machine pattern
+- [api-newtype-safety](./api-newtype-safety.md) — Type-safe wrappers
+- [type-newtype-ids](./type-newtype-ids.md) — ID types
+- [type-repr-transparent](./type-repr-transparent.md) — Layout guarantees
+- [type-nonzero-intrinsics](./type-nonzero-intrinsics.md) — NonZero niche optimization

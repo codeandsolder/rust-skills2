@@ -62,7 +62,7 @@ let age = user.age();
 
 ## When get_ IS Appropriate
 
-Use `get` when the method does more than simple access:
+Use `get` when the method does more than simple access — typically returning `Option` or performing indexing:
 
 ```rust
 impl HashMap<K, V> {
@@ -85,6 +85,23 @@ impl Context {
     }
 }
 ```
+
+## Canonical `get` Pattern
+
+For index-based data structures, the canonical `get` family follows this pattern:
+
+| Method | Signature |
+|--------|-----------|
+| `get()` | `fn get(&self, index: K) -> Option<&V>` |
+| `get_mut()` | `fn get_mut(&mut self, index: K) -> Option<&mut V>` |
+| `get_unchecked()` | `unsafe fn get_unchecked(&self, index: K) -> &V` |
+| `get_unchecked_mut()` | `unsafe fn get_unchecked_mut(&mut self, index: K) -> &mut V` |
+
+Note that `_mut` suffix comes **last**, after the full verb: `first_mut`, not `get_first_mut`.
+
+## No Clippy Enforcement
+
+There is no clippy lint for `get_` prefix (proposed PR #3616 was never merged). This convention is purely community-enforced.
 
 ## Standard Library Examples
 
@@ -150,5 +167,5 @@ impl ConfigBuilder {
 ## See Also
 
 - [name-is-has-bool](./name-is-has-bool.md) - Boolean naming
-- [name-is-has-bool](./name-is-has-bool.md) - Boolean naming
+- [name-funcs-snake](./name-funcs-snake.md) - Function naming
 - [api-builder-pattern](./api-builder-pattern.md) - Builder pattern

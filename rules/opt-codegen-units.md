@@ -27,11 +27,11 @@ opt-level = 3      # Maximum optimization
 
 ## What codegen-units Affects
 
-| Codegen Units | Compile Time | Runtime Performance | Memory Use |
-|---------------|--------------|---------------------|------------|
-| 16 (default)  | Faster       | Baseline            | Lower      |
-| 4-8           | Moderate     | Slightly better     | Moderate   |
-| 1             | Slower       | Best                | Higher     |
+| Codegen Units | Compile Time | Runtime Performance | Memory Use | Note |
+|---------------|--------------|---------------------|------------|------|
+| 16 (default)  | Faster       | Baseline            | Lower      | `lto = false` still enables thin-local LTO when opt > 0 |
+| 4-8           | Moderate     | Slightly better     | Moderate   | |
+| 1             | Slower       | Best                | Higher     | Combine with `lto = "thin"` or `"fat"` |
 
 ## How It Works
 
@@ -49,13 +49,15 @@ opt-level = 3      # Maximum optimization
 // - Better constant propagation
 ```
 
+> **Note**: Since Rust 1.90, `rust-lld` is the default linker on Linux, improving LTO and codegen performance out of the box.
+
 ## Full Release Profile
 
 ```toml
 [profile.release]
 # Maximum runtime performance
 opt-level = 3
-lto = "fat"
+lto = "fat"            # Use "thin" when combining with target-cpu=x86-64-v3
 codegen-units = 1
 panic = "abort"      # Smaller binary, slight perf gain
 strip = true         # Smaller binary
@@ -83,6 +85,8 @@ cargo build --release
 cargo build --release
 # Time: ~2-5min, but potentially 10-20% faster binary
 ```
+
+> **Tip**: Use [`cargo-wizard`](https://crates.io/crates/cargo-wizard) to quickly configure optimal profile settings for your project.
 
 ## Per-Profile Configuration
 

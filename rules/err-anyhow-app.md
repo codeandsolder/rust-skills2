@@ -173,7 +173,78 @@ fn handle_error(err: anyhow::Error) {
 | Need to match error variants | `thiserror` |
 | Just need to report errors | `anyhow` |
 
+## Display Layers: color-eyre and miette
+
+`anyhow` can be combined with display/reporting crates for richer output:
+
+```rust
+// color-eyre — colorful, structured error reports
+use color_eyre::eyre::Result;
+
+fn main() -> Result<()> {
+    color_eyre::install()?; // Backtrace capture + colored output
+    run_app()?;
+    Ok(())
+}
+
+// miette — diagnostic-rich error reports with source snippets
+use miette::{Diagnostic, Report, SourceSpan};
+
+#[derive(Debug, Diagnostic, thiserror::Error)]
+#[error("parse failed")]
+#[diagnostic(help("check the syntax at offset {offset}"))]
+struct ParseError {
+    offset: usize,
+    #[source_code]
+    src: String,
+    #[label("here")]
+    highlight: SourceSpan,
+}
+```
+
+## #[error(transparent)] with anyhow::Error
+
+`anyhow::Error` can be wrapped in thiserror enums using `#[error(transparent)]`:
+
+```rust
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum AppError {
+    #[error("transparent")]  // Delegates Display and source to inner
+    Other(#[from] anyhow::Error),
+
+    #[error("config error: {0}")]
+    Config(String),
+}
+
+// Now any anyhow-contextualized error can flow into your typed error enum
+```
+
+## Rust 1.92+ Improvements
+
+- `unused_must_use` no longer warns on `Result<(), Infallible>` — eliminating a common annoyance with infallible trait impls.
+- `assert_matches!` (Rust 1.96) provides better test diagnostics than `assert!(matches!(...))`.
+- `From<T> for AssertUnwindSafe<T>` (Rust 1.96) makes `catch_unwind` more ergonomic.
+
+```rust
+// Rust 1.96 — assert_matches! in tests
+#[test]
+fn test_error_kind() {
+    assert_matches!(result, Err(Error::NotFound));
+}
+
+// Rust 1.96 — ergonomic catch_unwind
+use std::panic::{catch_unwind, AssertUnwindSafe};
+
+let result = catch_unwind(AssertUnwindSafe(|| {
+    fallible_operation()?;
+    Ok(())
+}));
+```
+
 ## See Also
 
 - [err-thiserror-lib](err-thiserror-lib.md) - Use thiserror for libraries
 - [err-context-chain](err-context-chain.md) - Add context to errors
+- [err-diagnostic-do-not-recommend](err-diagnostic-do-not-recommend.md) - Cleaner compiler diagnostics

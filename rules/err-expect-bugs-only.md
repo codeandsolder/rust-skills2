@@ -126,8 +126,62 @@ let port: u16 = match input.parse() {
 };
 ```
 
+## Rust 1.92+ Changes
+
+### `unused_must_use` respects `Infallible`
+
+Since Rust 1.92, `unused_must_use` no longer warns on `Result<(), Infallible>`. This means infallible operations don't require explicit handling:
+
+```rust
+fn always_succeeds() -> Result<(), Infallible> {
+    Ok(())
+}
+
+// No warning — Infallible means this can't fail
+let _ = always_succeeds();
+```
+
+### `unwrap_used` Catches Fully-Qualified Syntax
+
+Since clippy PR #16489 (Rust 1.93), `unwrap_used` catches `Result::unwrap(x)` in addition to `x.unwrap()`:
+
+```rust
+// Both forms are caught by unwrap_used:
+let a = some_result.unwrap();   // caught
+let b = Result::unwrap(some_result);  // also caught since 1.93
+```
+
+### Proposed: `empty_expect` Lint
+
+A proposed clippy lint `empty_expect` (#16764) would flag `.expect("")` — expect with an empty message, which is no better than `unwrap()`:
+
+```rust
+// Would be flagged by empty_expect
+let value = optional_value.expect("");
+
+// Prefer a descriptive message
+let value = optional_value.expect("BUG: invariant violated — value must be present");
+```
+
+## Clippy `allow-unwrap-types` Config
+
+To whitelist known-safe `unwrap()` calls (e.g., `Mutex::lock().unwrap()`) while keeping `unwrap_used` = "deny" for real logic errors, configure `allow-unwrap-types`:
+
+```toml
+# clippy.toml
+allow-unwrap-types = [
+    "std::sync::LockResult<std::sync::MutexGuard<_>>",
+    "std::sync::LockResult<std::sync::RwLockReadGuard<_>>",
+    "std::sync::LockResult<std::sync::RwLockWriteGuard<_>>",
+]
+```
+
+This allows `Mutex::lock().unwrap()` without triggering `unwrap_used`, while still catching genuine errors like `HashMap::get().unwrap()`.
+
 ## See Also
 
 - [err-no-unwrap-prod](./err-no-unwrap-prod.md) - Avoiding unwrap in production
+- [err-expect-not-allow](./err-expect-not-allow.md) - Prefer #[expect] over #[allow]
+- [err-clippy-unwrap-types](./err-clippy-unwrap-types.md) - Configure allow-unwrap-types
 - [err-result-over-panic](./err-result-over-panic.md) - When to return Result
 - [api-parse-dont-validate](./api-parse-dont-validate.md) - Type-driven validation

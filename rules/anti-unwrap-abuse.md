@@ -136,6 +136,31 @@ let file = File::open(path)
 fn tests_only() { }
 ```
 
+## unwrap_unchecked() — Separate Concern
+
+`unwrap_unchecked()` is an `unsafe` variant (`unsafe { opt.unwrap_unchecked() }`) that skips the panic entirely via UB if the value is `None`/`Err`. **This is not a performance fix for `unwrap()`** — it's an `unsafe` optimization for extreme hot paths where you have proven (through profiling) that the bounds check is a bottleneck.
+
+```rust
+// BAD: Unsafe performance hack without evidence
+unsafe { some_option.unwrap_unchecked() }
+
+// GOOD: Safe, idiomatic — compiler often elides the branch anyway
+some_option.unwrap()
+```
+
+Reserve `unwrap_unchecked()` for:
+- Profile-validated hot loops (sub-nanosecond per iteration matters).
+- When you hold an invariant proven above the call site.
+- Document the safety justification in the `// SAFETY:` comment.
+
+```rust
+// SAFETY: We just checked `.is_some()` on the line above.
+// The compiler may not fuse the check, so this saves one branch.
+if opt.is_some() {
+    let val = unsafe { opt.unwrap_unchecked() };
+}
+```
+
 ## See Also
 
 - [err-question-mark](err-question-mark.md) - Use ? for propagation

@@ -135,6 +135,26 @@ name = "my-tool"
 default-run = "my-tool"  # Or specify another
 ```
 
+## Workspace Context
+
+In a workspace, use `-p` to select the member crate before `--bin`:
+
+```bash
+# Run binary from a specific workspace member
+cargo run -p my-app-cli --bin server
+cargo run -p my-app-cli --bin cli
+
+# default-run also works with workspace inheritance
+```
+
+```toml
+# crates/cli/Cargo.toml
+[package]
+name = "my-app-cli"
+version.workspace = true
+default-run = "my-app-cli"
+```
+
 ## See Also
 
 - [proj-lib-main-split](./proj-lib-main-split.md) - Keep main.rs minimal

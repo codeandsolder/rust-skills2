@@ -108,8 +108,59 @@ async fn fetch_user_returns_user_data() {
     
     // Assert
     assert!(result.is_ok());
-    let user = result.unwrap();
+    let user = result.expect("Failed to fetch user");
     assert_eq!(user.id, user_id);
+}
+```
+
+## GIVEN / WHEN / THEN (BDD-Style)
+
+```rust
+#[test]
+fn given_valid_email_when_creating_user_then_succeeds() {
+    // GIVEN
+    let email = "alice@example.com";
+
+    // WHEN
+    let result = User::new("Alice", email);
+
+    // THEN
+    assert_matches!(result, Ok(user) if user.email() == email);
+}
+
+#[test]
+fn given_empty_name_when_creating_user_then_fails() {
+    // GIVEN
+    let name = "";
+
+    // WHEN
+    let result = User::new(name, "alice@example.com");
+
+    // THEN
+    assert!(result.is_err());
+}
+```
+
+## With rstest Fixtures
+
+```rust
+use rstest::*;
+
+#[fixture]
+fn test_user() -> User {
+    User::new("Alice", "alice@example.com").unwrap()
+}
+
+#[rstest]
+fn user_has_correct_email(test_user: User) {
+    assert_eq!(test_user.email(), "alice@example.com");
+}
+
+#[rstest]
+#[case::valid_email("bob@example.com", true)]
+#[case::invalid_email("not-an-email", false)]
+fn email_validation(#[case] input: &str, #[case] expected: bool) {
+    assert_eq!(Email::validate(input).is_ok(), expected);
 }
 ```
 
@@ -157,4 +208,5 @@ mod tests {
 
 - [test-descriptive-names](./test-descriptive-names.md) - Test naming
 - [test-fixture-raii](./test-fixture-raii.md) - Test setup/teardown
+- [test-rstest-fixtures](./test-rstest-fixtures.md) - rstest fixtures and parameterized tests
 - [test-mock-traits](./test-mock-traits.md) - Mocking dependencies

@@ -1,10 +1,12 @@
 # lint-unsafe-doc
 
+**Rule**: `lint-unsafe-doc`
+
 > Require documentation for unsafe blocks
 
 ## Why It Matters
 
-The `undocumented_unsafe_blocks` lint ensures every unsafe block has a `// SAFETY:` comment explaining why the operation is sound. Unsafe code is the source of most memory safety bugs—documenting invariants catches mistakes and helps reviewers.
+The `undocumented_unsafe_blocks` lint ensures every unsafe block has a `// SAFETY:` comment explaining why the operation is sound. Unsafe code is the source of most memory safety bugs—documenting invariants catches mistakes and helps reviewers. Edition 2024 additionally enforces `unsafe_op_in_unsafe_fn` at deny level.
 
 ## Configuration
 
@@ -122,8 +124,12 @@ unsafe impl Sync for MyType {}
 ```toml
 [lints.clippy]
 undocumented_unsafe_blocks = "warn"
-# Also consider:
 multiple_unsafe_ops_per_block = "warn"  # One operation per block
+
+[lints.rust]
+# Edition 2024 deny-by-default — each unsafe op in an unsafe fn
+# must be wrapped in its own unsafe {} block
+unsafe_op_in_unsafe_fn = "deny"
 ```
 
 ## See Also

@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-Standard `Vec<T>` is 24 bytes even when empty. `ThinVec` from Mozilla's `thin_vec` crate uses a single pointer (8 bytes), storing length and capacity inline with the heap allocation. For Option<Vec<T>> patterns or structs with many optional vecs, this significantly reduces memory overhead.
+Standard `Vec<T>` is 24 bytes even when empty. `ThinVec` from Mozilla's `thin_vec` crate uses a single pointer (8 bytes), storing length and capacity inline with the heap allocation. For `Option<Vec<T>>` patterns or structs with many optional vecs, this significantly reduces memory overhead. **thin-vec 0.2.18** is the current stable release with active maintenance.
 
 ## Bad
 
@@ -69,6 +69,21 @@ assert_eq!(size_of::<Option<ThinVec<u8>>>(), 8);  // Option is free!
 | Iteration speed | Faster | Slightly slower |
 | API compatibility | Full | Vec-like |
 
+## Alternative: slotmap::DenseSlotMap
+
+For sparse stable-key data where `ThinVec`'s heap-header trade-off is too costly, consider `slotmap::DenseSlotMap` which provides contiguous storage with stable handles:
+
+```rust
+use slotmap::DenseSlotMap;
+
+let mut map = DenseSlotMap::new();
+let k1 = map.insert("hello");
+let k2 = map.insert("world");
+
+// Contiguous storage, stable keys
+assert_eq!(map[k1], "hello");
+```
+
 ## When to Use ThinVec
 
 ```rust
@@ -132,11 +147,12 @@ let thin: ThinVec<i32> = vec.into();
 
 ```toml
 [dependencies]
-thin-vec = "0.2"
+thin-vec = "0.2.18"
 ```
 
 ## See Also
 
 - [mem-smallvec](./mem-smallvec.md) - Stack-allocated small vecs
 - [mem-boxed-slice](./mem-boxed-slice.md) - Fixed-size heap slices
+- [mem-slotmap-arena](./mem-slotmap-arena.md) — Stable handles with contiguous storage
 - [mem-with-capacity](./mem-with-capacity.md) - Pre-allocation strategies

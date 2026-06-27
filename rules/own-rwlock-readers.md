@@ -1,10 +1,15 @@
 # own-rwlock-readers
 
-> Use `RwLock<T>` when reads significantly outnumber writes
+> Use the right `RwLock<T>` when reads significantly outnumber writes
 
 ## Why It Matters
 
-`Mutex<T>` allows only one thread to access data at a time, even for reads. `RwLock<T>` allows multiple concurrent readers OR one exclusive writer. For read-heavy workloads, this dramatically improves throughput by eliminating unnecessary serialization of read operations.
+`Mutex<T>` allows only one thread or task to access data at a time, even for reads. `RwLock<T>` allows multiple concurrent readers OR one exclusive writer. For read-heavy workloads, this can improve throughput by eliminating unnecessary serialization of read operations.
+
+Pick the lock based on context:
+
+- `std::sync::RwLock` or `parking_lot::RwLock` for synchronous code
+- `tokio::sync::RwLock` for async code
 
 ## Bad
 
@@ -44,9 +49,30 @@ fn update_setting(config: &RwLock<Config>, key: &str, value: &str) {
 // 100 threads reading = parallel execution
 ```
 
-## parking_lot::RwLock
+## Async code needs tokio::sync::RwLock
 
-Prefer `parking_lot::RwLock` for better performance:
+```rust
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+struct Config {
+    enabled: bool,
+}
+
+async fn is_enabled(config: Arc<RwLock<Config>>) -> bool {
+    config.read().await.enabled
+}
+
+async fn set_enabled(config: Arc<RwLock<Config>>, enabled: bool) {
+    config.write().await.enabled = enabled;
+}
+```
+
+Do not default to `std::sync::RwLock` or `parking_lot::RwLock` in async code unless the lock usage is strictly synchronous and never crosses `.await`.
+
+## parking_lot::RwLock for synchronous code
+
+For synchronous code, `parking_lot::RwLock` is often a good performance-oriented choice:
 
 ```rust
 use parking_lot::RwLock;
@@ -86,10 +112,40 @@ Standard `RwLock` may starve writers if readers are continuous. `parking_lot::Rw
 ```rust
 // parking_lot is writer-fair, preventing starvation
 use parking_lot::RwLock;
-
-// Or use std with explicit fairness (nightly)
-// #![feature(rwlock_downgrade)]
 ```
+
+## RwLockWriteGuard::downgrade (1.92) — Write Then Read Atomically
+
+A long-standing API gap: atomically downgrade a write lock to a read lock without releasing the lock. This eliminates the race window between unlocking write and acquiring read:
+
+```rust
+use std::sync::RwLock;
+
+let lock = RwLock::new(vec![1, 2, 3]);
+
+// Before 1.92: must release write lock, then acquire read lock
+// Between release and acquire, another thread can write!
+{
+    let mut wg = lock.write().unwrap();
+    wg.push(4);
+    // wg dropped here — write lock released
+}
+// ⚠️ Race window: another thread could write before we read
+let rg = lock.read().unwrap();
+println!("len = {}", rg.len());
+
+// 1.92+: atomically downgrade write → read
+{
+    let mut wg = lock.write().unwrap();
+    wg.push(4);
+    // Downgrade to read without releasing the lock
+    let rg = RwLockWriteGuard::downgrade(wg);
+    // Lock is still held as read — no other thread can write
+    println!("len = {}", rg.len());
+} // Read guard dropped here
+```
+
+This is especially valuable in concurrent data structures where you need to modify then immediately observe the result atomically.
 
 ## Real-World Pattern: Cached Computation
 

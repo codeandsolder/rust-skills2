@@ -1,10 +1,22 @@
 # lint-cargo-metadata
 
+**Rule**: `lint-cargo-metadata`
+
 > Enable clippy::cargo for published crates
 
 ## Why It Matters
 
 The `clippy::cargo` lint group checks Cargo.toml for issues that affect publishing and dependency management. For crates intended for crates.io, these checks help ensure a professional, well-configured package.
+
+## Edition 2024 & Minimum Rust Version
+
+When targeting Edition 2024, update your `Cargo.toml` metadata:
+
+```toml
+[package]
+edition = "2024"
+rust-version = "1.85"  # Edition 2024 requires at least Rust 1.85
+```
 
 ## Configuration
 
@@ -72,8 +84,8 @@ feature-a = []  # Feature name matches crate name
 [package]
 name = "my-crate"
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.70"
+edition = "2024"
+rust-version = "1.85"
 
 # Required for cargo lint satisfaction
 description = "A short description of what this crate does"
@@ -86,6 +98,10 @@ readme = "README.md"
 keywords = ["keyword1", "keyword2"]
 categories = ["category-slug"]
 
+# Workspace metadata (not lint-checked but recommended)
+[workspace.metadata]
+# Project-specific metadata
+
 [dependencies]
 # Specific versions, not wildcards
 serde = "1.0"
@@ -94,6 +110,10 @@ tokio = { version = "1.0", features = ["full"] }
 [features]
 default = ["std"]
 std = []  # Opt-out, not no-std opt-in
+
+[lints.rust]
+# Warn on unused feature flags in [features]
+cargo_unused_cargo_features = "deny"
 
 [lints.clippy]
 cargo = "warn"

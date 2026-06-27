@@ -132,6 +132,67 @@ fn error_path() -> Error {
 }
 ```
 
+## cold_path() — Stable Branch Hint (Rust 1.95+)
+
+Since Rust 1.95.0, `core::hint::cold_path()` provides a stable, inline-friendly way to mark code paths as unlikely, without extracting code into separate functions:
+
+```rust
+use core::hint::cold_path;
+
+fn validate(input: &str) -> Result<Data, ValidationError> {
+    if input.is_empty() {
+        cold_path();  // Hint: this path is unlikely
+        return Err(ValidationError::Empty);
+    }
+    
+    if input.len() > 1000 {
+        cold_path();
+        return Err(ValidationError::TooLong);
+    }
+    
+    Ok(parse_data(input))
+}
+```
+
+### Implementing likely/unlikely with cold_path()
+
+```rust
+use core::hint::cold_path;
+
+/// Stable likely() — no nightly, no external crates.
+#[inline(always)]
+pub const fn likely(b: bool) -> bool {
+    if !b { cold_path(); }
+    b
+}
+
+/// Stable unlikely() — no nightly, no external crates.
+#[inline(always)]
+pub const fn unlikely(b: bool) -> bool {
+    if b { cold_path(); }
+    b
+}
+
+// Usage
+fn process(data: &Data) -> i32 {
+    if unlikely(data.is_corrupted()) {
+        return handle_corruption(data);
+    }
+    fast_process(data)
+}
+```
+
+### cold_path() vs #[cold]
+
+| Aspect | `#[cold]` | `cold_path()` |
+|--------|-----------|---------------|
+| Scope | Function-level | Inline -- within any block |
+| Inlining | Prevents inlining | Allows inlining |
+| Use case | Large cold functions | Small cold branches in hot code |
+| Since | Rust 1.0 | Rust 1.95.0 |
+
+Use `#[cold]` for extracted functions, `cold_path()` for inline hints without extraction.
+
 ## Measuring Impact
 
 ```rust
@@ -149,4 +210,5 @@ fn error_path() -> Error {
 
 - [opt-inline-never-cold](./opt-inline-never-cold.md) - Combining with inline(never)
 - [opt-likely-hint](./opt-likely-hint.md) - Branch prediction hints
+- [opt-cold-path](./opt-cold-path.md) - Using cold_path() for inline path marking
 - [err-result-over-panic](./err-result-over-panic.md) - Error handling

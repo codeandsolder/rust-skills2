@@ -1,10 +1,16 @@
 # lint-warn-perf
 
+**Rule**: `lint-warn-perf`
+
 > Enable clippy::perf for performance improvements
 
 ## Why It Matters
 
 The `clippy::perf` lint group catches performance anti-patterns—inefficient allocations, unnecessary copies, suboptimal API usage. While not all performance issues are critical, avoiding obvious inefficiencies is good practice.
+
+### Stdlib Hints (Not Clippy Lints)
+
+Since Rust 1.88, `std::hint::select_unpredictable` can guide the optimizer on branch-heavy code. Since Rust 1.95, `std::hint::cold_path` marks paths the optimizer should treat as cold. These are not clippy lints but complement `clippy::perf`:
 
 ## Configuration
 
@@ -100,6 +106,24 @@ fn process(input: &str) -> String {
         .filter(|part| part.starts_with(' '))
         .map(str::trim)
         .collect()
+}
+```
+
+## Stdlib Hints for Performance
+
+```rust
+// std::hint::select_unpredictable (1.88+)
+// Guides the optimizer when a value is unpredictable:
+use std::hint::select_unpredictable;
+let idx = select_unpredictable(branchy_value);
+array[idx]  // May use conditional move instead of branch
+
+// std::hint::cold_path (1.95+)
+// Marks a code path as cold for the optimizer:
+use std::hint::cold_path;
+if unlikely_condition {
+    cold_path();
+    return;
 }
 ```
 

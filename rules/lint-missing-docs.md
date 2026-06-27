@@ -1,5 +1,7 @@
 # lint-missing-docs
 
+**Rule**: `lint-missing-docs`
+
 > Warn on missing documentation for public items
 
 ## Why It Matters
@@ -120,8 +122,21 @@ For existing codebases, start with `warn` and fix incrementally:
 
 ```rust
 #![warn(missing_docs)]
-#![warn(rustdoc::broken_intra_doc_links)]
+#![deny(rustdoc::broken_intra_doc_links)]
 #![warn(rustdoc::private_intra_doc_links)]
+#![warn(rustdoc::missing_crate_level_docs)]
+```
+
+Or in `Cargo.toml`:
+
+```toml
+[lints.rust]
+missing_docs = "warn"
+
+[lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "warn"
+missing_crate_level_docs = "warn"
 ```
 
 ## Workspace Configuration

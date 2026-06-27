@@ -74,17 +74,22 @@ enum GoodEvent {
 println!("GoodEvent: {} bytes", size_of::<GoodEvent>());  // ~16 bytes
 ```
 
-## Clippy Lint
+## Clippy Lints
 
 ```toml
 [lints.clippy]
-large_enum_variant = "warn"  # Warns when variants differ significantly
+large_enum_variant = "warn"    # Warns when variants differ significantly
+result_large_err   = "warn"    # Warns when Result::Err variant is large
 ```
 
 ```rust
-// Clippy will suggest:
+// large_enum_variant:
 // warning: large size difference between variants
 // help: consider boxing the large fields to reduce the total size
+
+// result_large_err:
+// warning: the Err variant of this Result is unusually large
+// help: consider boxing the Err variant to reduce Result size
 ```
 
 ## When to Box
@@ -155,4 +160,5 @@ fn handle_ref(event: &Event) {
 
 - [own-move-large](./own-move-large.md) - Boxing large types for cheap moves
 - [mem-smallvec](./mem-smallvec.md) - Alternative for inline small collections
+- [mem-box-new-uninit](./mem-box-new-uninit.md) — Lazy-initialized heap allocations
 - [lint-deny-correctness](./lint-deny-correctness.md) - Enabling clippy lints

@@ -87,7 +87,20 @@ fn merge_all(chunks: Vec<Vec<Item>>) -> Vec<Item> {
 |--------|-------------|
 | `.extend(iter)` | Add all elements from iterator |
 | `.extend_from_slice(&[T])` | Add from slice (for `Copy` types) |
+| `.extend_from_within(range)` | Clone elements from within the Vec |
 | `.append(&mut Vec)` | Move all from another Vec |
+
+## extend_from_within
+
+`Vec::extend_from_within` copies elements from within the same Vec without an external source iterator:
+
+```rust
+let mut vec = vec![1, 2, 3];
+vec.extend_from_within(..);   // vec == [1, 2, 3, 1, 2, 3]
+vec.extend_from_within(..2);  // vec == [1, 2, 3, 1, 2, 3, 1, 2]
+```
+
+This is more efficient than `vec.extend(vec[..].to_vec())` because it avoids an intermediate allocation. The source range can overlap with the new elements — the Vec handles it correctly.
 
 ## Pattern: Building Strings
 
@@ -147,4 +160,5 @@ set.extend(items.iter().map(|i| i.id));
 
 - [mem-with-capacity](./mem-with-capacity.md) - Pre-allocation
 - [perf-drain-reuse](./perf-drain-reuse.md) - Reusing allocations
+- [perf-collect-into](./perf-collect-into.md) - collect_into for reuse
 - [mem-reuse-collections](./mem-reuse-collections.md) - Collection reuse

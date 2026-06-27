@@ -77,6 +77,71 @@ fn update_or_default(map: &mut HashMap<String, Config>, key: String, value: i32)
 | `.and_modify(f)` | Apply `f` if occupied |
 | `.or_insert_with_key(f)` | Insert `f(&key)` if empty |
 
+## Anti-Pattern: or_insert_with When You Need the Key
+
+When the value depends on the key, use `or_insert_with_key` instead of capturing the key in a closure:
+
+```rust
+// Bad: clones key into closure
+map.entry(key.clone()).or_insert_with(|| compute(key));
+
+// Good: key passed to closure
+map.entry(key).or_insert_with_key(|k| compute(k));
+```
+
+## BTreeMap insert_entry (Rust 1.92+)
+
+`BTreeMap::Entry::insert_entry(value)` inserts and returns an `OccupiedEntry`, enabling chained mutation without a second lookup:
+
+```rust
+use std::collections::BTreeMap;
+
+let mut map = BTreeMap::new();
+
+// Insert and get OccupiedEntry in one operation
+let entry = map.entry("key").insert_entry("value");
+// entry: OccupiedEntry — no second lookup needed
+*entry.into_mut() = "updated";
+```
+
+This is especially useful for `BTreeMap` where lookups are O(log n):
+
+```rust
+struct Counter {
+    inner: BTreeMap<String, u64>,
+}
+
+impl Counter {
+    fn inc(&mut self, key: String) {
+        self.inner
+            .entry(key)
+            .and_modify(|c| *c += 1)
+            .or_insert(1);
+    }
+
+    fn inc_and_get(&mut self, key: String) -> &mut u64 {
+        self.inner
+            .entry(key)
+            .or_insert_with_key(|k| k.len() as u64)
+    }
+}
+```
+
+## HashMap extract_if (Rust 1.88+)
+
+For conditional removal of entries, `HashMap::extract_if` (stable since 1.88) avoids the double-iteration of `retain` + separate collection:
+
+```rust
+use std::collections::HashMap;
+
+let mut map: HashMap<&str, i32> = [("a", 1), ("b", 2), ("c", 3)].into();
+
+// Extract entries matching predicate in one pass
+let small: HashMap<_, _> = map.extract_if(|_, v| *v <= 1).collect();
+// map = {"b": 2, "c": 3}
+// small = {"a": 1}
+```
+
 ## Pattern: Count Occurrences
 
 ```rust
@@ -126,10 +191,11 @@ match map.entry(key) {
 | `contains_key` + `insert` | 2 | 2 |
 | `get` + `insert` | 2 | 2 |
 | `entry().or_insert()` | 1 | 1 |
+| `entry().insert_entry()` | 1 | 1 |
 
 ## See Also
 
 - [perf-extend-batch](./perf-extend-batch.md) - Batch insertions
+- [perf-extract-if](./perf-extract-if.md) - Conditional extraction
 - [mem-with-capacity](./mem-with-capacity.md) - Pre-allocate maps
 - [perf-drain-reuse](./perf-drain-reuse.md) - Reuse map allocations
-- [coll-map-choice](./coll-map-choice.md) - Pick the right map type

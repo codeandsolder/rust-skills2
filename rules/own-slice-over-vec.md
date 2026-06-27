@@ -76,6 +76,60 @@ process(&boxed);  // Works
 process(&arc);    // Works
 ```
 
+## Standard Library Range Types (Rust 1.96)
+
+`core::range::Range<T>` is now `Copy` (since Rust 1.96), enabling ergonomic range-based APIs:
+
+```rust
+use core::range::Range;
+
+// Can now #[derive(Copy)] on types containing ranges
+#[derive(Clone, Copy)]
+struct Span {
+    start: usize,
+    end: usize,
+}
+
+// Prefer core::range::Range for new code
+#[derive(Clone, Copy)]
+struct Span(Range<usize>);
+
+// Methods accepting ranges work with slices
+fn take<'a>(data: &'a [u8], range: Range<usize>) -> &'a [u8] {
+    &data[range]  // Range implements SliceIndex
+}
+```
+
+See [own-range-copy](own-range-copy.md) for more details.
+
+### slice::as_array (1.93) — From &[T] to &[T; N]
+
+```rust
+let slice: &[u8] = &[1, 2, 3, 4];
+
+// Before 1.93: manual conversion
+let arr: &[u8; 4] = slice.try_into().unwrap();
+
+// 1.93+: direct, panics if wrong length
+let arr: &[u8; 4] = slice.as_array().unwrap();
+```
+
+### array_windows (1.94) — Windowed iteration with known-size arrays
+
+```rust
+let data = [1, 2, 3, 4, 5];
+
+// Before 1.94: windows() returns &[T], need extra bounds checks
+for window in data.windows(3) {
+    // window is &[i32], length checked at runtime
+}
+
+// 1.94+: returns &[T; N], statically known size
+for window in data.array_windows::<3>() {
+    // window is &[i32; 3] — no runtime length check
+}
+```
+
 ## Path Types Too
 
 ```rust

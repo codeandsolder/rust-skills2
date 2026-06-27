@@ -1,5 +1,7 @@
 # lint-rustfmt-check
 
+**Rule**: `lint-rustfmt-check`
+
 > Run cargo fmt --check in CI
 
 ## Why It Matters
@@ -50,10 +52,10 @@ Create `rustfmt.toml` for custom settings:
 
 ```toml
 # rustfmt.toml
-edition = "2021"
+edition = "2024"
 max_width = 100
 use_small_heuristics = "Max"
-imports_granularity = "Module"
+imports_granularity = "Module"    # Stable since rustfmt 1.72
 group_imports = "StdExternalCrate"
 reorder_imports = true
 ```
@@ -64,7 +66,7 @@ reorder_imports = true
 |--------|---------|-------------|
 | `max_width` | 100 | Maximum line width |
 | `tab_spaces` | 4 | Spaces per indent |
-| `edition` | "2015" | Rust edition |
+| `edition` | "2024" | Rust edition (use workspace default) |
 | `use_small_heuristics` | "Default" | Layout heuristics |
 | `imports_granularity` | "Preserve" | Import grouping |
 | `group_imports` | "Preserve" | Import ordering |
@@ -124,12 +126,12 @@ const MATRIX: [[i32; 4]; 4] = [
 
 ## Nightly Features
 
-Some options require nightly:
+Some options still require nightly:
 
 ```toml
 # rustfmt.toml (nightly only)
 unstable_features = true
-imports_granularity = "Crate"
+imports_granularity = "Crate"  # "Module" is stable, "Crate" is nightly
 wrap_comments = true
 format_code_in_doc_comments = true
 ```
@@ -138,6 +140,8 @@ format_code_in_doc_comments = true
 # Use nightly rustfmt
 cargo +nightly fmt
 ```
+
+> Note: `imports_granularity = "Module"` has been stable since rustfmt 1.72 (bundled with Rust 1.72+). Only `"Crate"` and `"Item"` levels require nightly.
 
 ## IDE Integration
 

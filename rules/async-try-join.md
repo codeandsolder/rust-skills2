@@ -143,6 +143,24 @@ async fn individual_timeouts() -> Result<(A, B)> {
 }
 ```
 
+## Polling Order
+
+By default, `try_join!` polls futures in random order. If you need deterministic priority (e.g., always check cancellation first), use `select!` with `biased;` mode instead:
+
+```rust
+use tokio::select;
+
+async fn prioritized() -> Result<(), Error> {
+    select! {
+        biased;  // Check branches in declaration order
+        result = cancellable_operation() => result?,
+        _ = cancellation_token.cancelled() => Err(Error::Cancelled),
+    }
+}
+```
+
+For `try_join!` itself, polling order rarely matters because all futures complete. Use `select!` with `biased;` when prioritization is needed.
+
 ## try_join! vs FuturesUnordered
 
 ```rust

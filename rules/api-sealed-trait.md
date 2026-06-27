@@ -152,6 +152,49 @@ pub trait Plugin: private::SealedCore {
 // Users can customize open methods
 ```
 
+## RFC 3323: Native `#[sealed]`
+
+RFC 3323 proposes a native `#[sealed]` attribute for traits. As of June 2026, it has been accepted but not yet stabilized. Until then, the module-level sealing pattern shown above remains the standard approach.
+
+**Alternative crates:**
+- `sealed_trait` crate — proc-macro-based `#[sealed_trait]` attribute
+- `cargo-semver-checks` — detects accidental sealed trait violations
+
+## Companion: #[diagnostic::do_not_recommend]
+
+Rust 1.85.0 introduced `#[diagnostic::do_not_recommend]` for impl blocks. When used with sealed trait blanket impls, it prevents the compiler from suggesting your sealed trait in error messages:
+
+```rust
+mod private {
+    pub trait Sealed {}
+}
+
+pub trait Format: private::Sealed {
+    fn format(&self) -> String;
+}
+
+// Hides this blanket from compiler diagnostics
+#[diagnostic::do_not_recommend]
+impl<T: private::Sealed + Display> Format for T {
+    fn format(&self) -> String {
+        self.to_string()
+    }
+}
+
+// User error no longer suggests "implement Format" — they see the sealed trait pattern
+```
+
+See [api-do-not-recommend](./api-do-not-recommend.md) for details.
+
+## Clippy Lint: clippy::sealed_trait
+
+Since Rust 1.83, `clippy::sealed_trait` detects traits that appear to be sealed (i.e., require a private supertrait) and verifies the pattern is used correctly:
+
+```toml
+[lints.clippy]
+sealed_trait = "warn"  # Detects and validates sealed trait patterns
+```
+
 ## When to Seal
 
 | Seal When | Don't Seal When |
@@ -163,6 +206,7 @@ pub trait Plugin: private::SealedCore {
 
 ## See Also
 
+- [api-do-not-recommend](./api-do-not-recommend.md) - Hiding impls from diagnostics
 - [api-non-exhaustive](./api-non-exhaustive.md) - Related pattern for enums/structs
 - [api-extension-trait](./api-extension-trait.md) - Adding methods to external types
 - [api-typestate](./api-typestate.md) - Compile-time state guarantees

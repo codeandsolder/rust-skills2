@@ -75,22 +75,81 @@ let x: i32 = 42;
 let y = x;  // Copy, not clone - this is fine
 ```
 
-## Evidence
+## Recent Additions (Rust 1.86+)
 
-From ripgrep's codebase - uses `Cow` to avoid clones:
+### Cell::update (1.88) — Avoid clone-then-set
+
+For `Copy` types, `Cell::update` eliminates the clone-then-set pattern entirely:
+
 ```rust
-// https://github.com/BurntSushi/ripgrep/blob/master/crates/globset/src/pathutil.rs
-pub(crate) fn file_name<'a>(path: &Cow<'a, [u8]>) -> Option<Cow<'a, [u8]>> {
-    match *path {
-        Cow::Borrowed(path) => Cow::Borrowed(&path[last_slash..]),
-        Cow::Owned(ref path) => Cow::Owned(path.clone()),
-    }
-}
+use std::cell::Cell;
+
+let counter = Cell::new(0);
+
+// Before 1.88: clone-read, then write back
+counter.set(counter.get() + 1);
+
+// 1.88+: atomic read-modify-write with a closure
+counter.update(|x| x + 1);
 ```
+
+See [own-cell-update](own-cell-update.md) for details.
+
+### Vec::pop_if (1.86) — Conditional pop
+
+```rust
+let mut v = vec![1, 2, 3, 4, 5];
+
+// Before 1.86: pop then check
+let even = v.pop().filter(|x| x % 2 == 0);
+
+// 1.86+: pop only if predicate matches
+let even = v.pop_if(|x| x % 2 == 0);
+```
+
+### slice::get_disjoint_mut (1.86) — Borrow multiple indices simultaneously
+
+```rust
+let mut v = vec![1, 2, 3, 4, 5];
+
+// Before 1.86: split_at workaround or unsafe
+let (a, b) = v.split_at_mut(2);
+
+// 1.86+: get disjoint mutable references
+let [a, b] = v.get_disjoint_mut([0, 2]) else { unreachable!() };
+```
+
+### assert_matches! / debug_assert_matches! (1.96)
+
+```rust
+// Before 1.96: manual match or third-party crate
+match result {
+    Ok(value) => assert_eq!(value, 42),
+    _ => panic!("unexpected"),
+}
+
+// 1.96+: concise, with formatting support
+assert_matches!(result, Ok(42));
+```
+
+### Edition 2024 RPIT Lifetime Capture
+
+In Edition 2024, return-position `impl Trait` (RPIT) automatically captures all in-scope lifetimes. This means many functions that previously needed explicit lifetime annotations or clones-for-lifetime workarounds now just work:
+
+```rust
+// Edition 2021: must name lifetimes or clone
+fn process(&self, items: &[u8]) -> impl Iterator<Item = &[u8]> + '_ { ... }
+
+// Edition 2024: lifetimes are automatically captured
+fn process(&self, items: &[u8]) -> impl Iterator<Item = &[u8]> { ... }
+```
+
+See [own-lifetime-elision](own-lifetime-elision.md) and [own-cow-rpit-edition2024](own-cow-rpit-edition2024.md).
 
 ## See Also
 
 - [own-slice-over-vec](own-slice-over-vec.md) - Accept slices instead of references to collections
 - [own-cow-conditional](own-cow-conditional.md) - Use Cow for conditional ownership
+- [own-cell-update](own-cell-update.md) - Cell::update for Copy types
+- [own-lifetime-elision](own-lifetime-elision.md) - Lifetime elision rules
 - [mem-clone-from](mem-clone-from.md) - Reuse allocations when cloning
-- [mem-take-replace](mem-take-replace.md) - Move out of &mut without cloning

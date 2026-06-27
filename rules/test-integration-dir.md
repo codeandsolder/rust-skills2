@@ -137,8 +137,51 @@ cargo test --test integration_test
 cargo test --test api_tests test_login
 ```
 
+## cargo-nextest (Faster Alternative)
+
+```bash
+# Install
+cargo install cargo-nextest
+
+# Run all tests (3× faster than cargo test)
+cargo nextest run
+
+# Run only integration tests
+cargo nextest run -E 'test(type = integration)'
+
+# Run specific integration test file
+cargo nextest run -E 'test(/integration_test/)'
+
+# CI partitioning — split across 4 CI jobs
+cargo nextest run --partition hash:1/4
+cargo nextest run --partition hash:2/4
+cargo nextest run --partition hash:3/4
+cargo nextest run --partition hash:4/4
+
+# JUnit output for CI dashboards
+cargo nextest run --profile ci
+```
+
+## Nextest Configuration
+
+```toml
+# .config/nextest.toml
+[profile.default]
+fail-fast = true
+status-level = "pass,fail"
+
+[profile.ci]
+fail-fast = false
+retries = 0
+
+[profile.ci.junit]
+path = "junit.xml"
+report-name = "integration-tests"
+```
+
 ## See Also
 
 - [test-cfg-test-module](./test-cfg-test-module.md) - Unit test modules
 - [test-descriptive-names](./test-descriptive-names.md) - Test naming
 - [test-tokio-async](./test-tokio-async.md) - Async integration tests
+- [test-nextest-workflow](./test-nextest-workflow.md) - Nextest workflow details

@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-`SmallVec<[T; N]>` stores up to N elements inline (on the stack), only allocating on the heap when the size exceeds N. This eliminates heap allocations for the common case while still allowing growth when needed.
+`SmallVec<[T; N]>` stores up to N elements inline (on the stack), only allocating on the heap when the size exceeds N. This eliminates heap allocations for the common case while still allowing growth when needed. **SmallVec 1.15.2** is the current stable release; **SmallVec 2.0 alpha.12** (November 2025) uses union tagging for reduced space overhead.
 
 ## Bad
 
@@ -65,27 +65,30 @@ type Errors = SmallVec<[Error; 4]>;
 type Attrs = SmallVec<[Attribute; 8]>;
 ```
 
-## Evidence from rust-analyzer
+## TinyVec (No Unsafe)
+
+For projects that forbid `unsafe` code, `tinyvec` provides a 100%-safe alternative:
 
 ```rust
-// https://github.com/rust-lang/rust/blob/main/compiler/rustc_expand/src/base.rs
-macro_rules! make_stmts_default {
-    ($me:expr) => {
-        $me.make_expr().map(|e| {
-            smallvec![ast::Stmt {
-                id: ast::DUMMY_NODE_ID,
-                span: e.span,
-                kind: ast::StmtKind::Expr(e),
-            }]
-        })
-    }
-}
+use tinyvec::{tiny_vec, TinyVec};
+
+// Same concept as SmallVec but 100% safe code
+let v: TinyVec<[i32; 4]> = tiny_vec![1, 2, 3];
+```
+
+## SmallVec 2.0 (Alpha)
+
+SmallVec 2.0 alpha uses union tagging to reduce per-instance overhead:
+
+```rust
+// SmallVec 1.x: separate discriminant + inline storage
+// SmallVec 2.0: union-tagged, less overhead per instance
+// Track at: https://github.com/servo/rust-smallvec
 ```
 
 ## Trade-offs
 
 ```rust
-// SmallVec is slightly larger than Vec
 use std::mem::size_of;
 // Vec<i32>: 24 bytes (ptr + len + cap)
 // SmallVec<[i32; 4]>: 32 bytes (inline storage + len + discriminant)
@@ -122,13 +125,13 @@ fn parse_rgb(s: &str) -> ArrayVec<u8, 3> {
 }
 ```
 
-## TinyVec (No Unsafe)
+## Cargo.toml
 
-```rust
-use tinyvec::{tiny_vec, TinyVec};
-
-// Same concept as SmallVec but 100% safe code
-let v: TinyVec<[i32; 4]> = tiny_vec![1, 2, 3];
+```toml
+[dependencies]
+smallvec = "1.15"
+# or for 100%-safe alternative
+tinyvec = "1.9"
 ```
 
 ## See Also

@@ -121,12 +121,100 @@ pub enum ApiError {
 }
 ```
 
+## thiserror 2.0: no_std Support
+
+thiserror 2.0+ supports `no_std` environments (Rust 1.81+):
+
+```toml
+# Cargo.toml
+[dependencies]
+thiserror = { version = "2", default-features = false }
+```
+
+```rust
+#![no_std]
+
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum SpiError {
+    #[error("DMA transfer failed on channel {channel}")]
+    DmaFailed {
+        channel: u8,
+        #[source]
+        source: DmaError,
+    },
+
+    #[error("CS assertion failed")]
+    CsAssert(#[from] GpioError),
+}
+```
+
+## #[error(transparent)]
+
+Delegates both Display and source to the inner error, useful for wrapping other error types:
+
+```rust
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum AppError {
+    #[error("transparent")]
+    Internal(#[from] InternalError),
+
+    #[error("transparent")]
+    Io(#[from] std::io::Error),
+
+    // Without transparent, wrapping is more verbose
+    #[error("parse error: {0}")]
+    Parse(String),
+}
+```
+
+## Alternative: snafu 0.9
+
+`snafu` 0.9 (March 2026) provides context selectors and a `Report` macro:
+
+```rust
+use snafu::prelude::*;
+
+#[derive(Debug, Snafu)]
+pub enum ConfigError {
+    #[snafu(display("failed to read config at {path}"))]
+    ReadFailed {
+        path: String,
+        source: std::io::Error,
+    },
+}
+
+// snafu's Report macro for unified output
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("{}", Report::from_error(e));
+        std::process::exit(1);
+    }
+}
+```
+
+## #[diagnostic::do_not_recommend] (Rust 1.85+)
+
+Hide blanket error conversion impls from compiler suggestions:
+
+```rust
+#[diagnostic::do_not_recommend]
+impl<T: std::error::Error + 'static> From<T> for Box<dyn std::error::Error> {
+    fn from(err: T) -> Self {
+        Box::new(err)
+    }
+}
+```
+
 ## When to Use What
 
 | Error Pattern | Use Case |
 |---------------|----------|
 | Custom enum | Library with specific failure modes |
-| `thiserror` | Libraries needing `std::error::Error` |
+| `thiserror` | Libraries needing `std::error::Error` or `core::error::Error` |
 | `anyhow::Error` | Applications, prototypes |
 | Struct with source | Single error type with wrapped cause |
 
@@ -148,5 +236,7 @@ pub struct QueryError {
 ## See Also
 
 - [err-thiserror-lib](./err-thiserror-lib.md) - thiserror for error definitions
+- [err-no-std-error](./err-no-std-error.md) - no_std error patterns
 - [err-anyhow-app](./err-anyhow-app.md) - When to use anyhow instead
+- [err-diagnostic-do-not-recommend](./err-diagnostic-do-not-recommend.md) - Cleaner compiler diagnostics
 - [api-non-exhaustive](./api-non-exhaustive.md) - Forward-compatible enums

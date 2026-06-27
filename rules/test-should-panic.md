@@ -107,6 +107,33 @@ fn invalid_input_returns_error() {
 }
 ```
 
+## assert_matches! as Alternative (Rust 1.96+)
+
+For enum error types, `assert_matches!` provides clearer diagnostics than `#[should_panic]`:
+
+```rust
+use std::assert_matches;
+
+#[derive(Debug)]
+enum ConfigError {
+    ParseFailed { line: usize },
+    MissingField { name: String },
+}
+
+fn parse_config(input: &str) -> Result<i32, ConfigError> { /* ... */ }
+
+#[test]
+fn test_parse_error_variant() {
+    let result = parse_config("bad");
+
+    // ❌ Before: only knows "panicked" — no detail on which variant
+    // #[should_panic(expected = "...")]
+
+    // ✅ After: shows actual error value in failure message
+    assert_matches!(result, Err(ConfigError::ParseFailed { line: 1 }));
+}
+```
+
 ## Combining with Result
 
 ```rust
@@ -125,6 +152,7 @@ fn test_panics() -> Result<(), Error> {
 
 ## See Also
 
+- [test-assert-matches](./test-assert-matches.md) - Pattern-based assertions (preferred for enum errors)
 - [err-result-over-panic](./err-result-over-panic.md) - Panic vs Result
 - [err-expect-bugs-only](./err-expect-bugs-only.md) - When to use expect
 - [test-descriptive-names](./test-descriptive-names.md) - Test naming

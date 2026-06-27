@@ -93,7 +93,6 @@ println!("Debug: {:?}", value);
 
 ```rust
 use std::cell::RefCell;
-use std::fmt::Write; // for write! into the String buffer
 
 thread_local! {
     static BUFFER: RefCell<String> = RefCell::new(String::with_capacity(256));
@@ -112,8 +111,6 @@ fn format_event(event: &Event) -> String {
 ## Pattern: Display Implementation
 
 ```rust
-use std::fmt::Write; // for the caller's write! into a String
-
 struct Event {
     level: Level,
     message: String,
@@ -130,11 +127,28 @@ let mut buf = String::new();
 write!(buf, "{}", event)?;
 ```
 
+## Pattern: format_args!() for Lazy Formatting
+
+Use `format_args!()` when you need formatted text without allocating until absolutely necessary — it produces a `std::fmt::Arguments` value that can be stored, inspected, or written later:
+
+```rust
+// BAD: allocates even if level filter rejects it
+log(format!("event: {} at {}", event.name, event.time));
+
+// GOOD: lazy formatting — no allocation until write
+let args = format_args!("event: {} at {}", event.name, event.time);
+log(args);
+
+// Even better: use the tracing/log macros directly
+info!("event: {} at {}", event.name, event.time);
+```
+
 ## Clippy Lint
 
 ```toml
 [lints.clippy]
-format_in_format_args = "warn"
+format_in_format_args = "warn"       # Suggests using `write!` or `format_args!` instead of format!() inside format args
+format_args = "warn"                 # Suggests using format_args!() over format!() when possible
 ```
 
 ## See Also

@@ -59,6 +59,29 @@ fn get_name(&self) -> &str {
 }
 ```
 
+## Counter-Pattern: Premature Clone Avoidance
+
+Avoiding `.clone()` at all costs can lead to convoluted lifetime gymnastics and overly complex code. **Clone first, optimize later.** Only refactor clones away when profiling shows they're a bottleneck.
+
+```rust
+// BAD: Over-engineered to avoid one clone
+fn process<'a>(data: &'a Data, cache: &'a mut Cache) -> impl 'a + Future<Output = ()> {
+    async move {
+        // Complex lifetime dance to avoid cloning `data`
+        let result = fetch(&data).await;
+        cache.store(result).await;
+    }
+}
+
+// GOOD: Clone and move — simple, readable, maintainable
+fn process(data: Data, cache: Cache) -> impl Future<Output = ()> {
+    async move {
+        let result = fetch(&data).await;
+        cache.store(result).await;
+    }
+}
+```
+
 ## When to Clone
 
 ```rust
@@ -92,6 +115,7 @@ thread::spawn(move || use_data(shared));
 | `Clone` for shared ownership | `Arc<T>` |
 | Clone in hot loop | Move outside loop |
 | `s.to_string()` from `&str` | Accept `&str` if possible |
+| `a.clone()` then mutate | `clone_from(&a)` to reuse allocation |
 
 ## Pattern: Clone on Write
 
@@ -107,6 +131,20 @@ fn process(input: Cow<str>) -> Cow<str> {
 }
 ```
 
+## Pattern: clone_from() to Reuse Allocation
+
+When you need to update an owned value from a reference, prefer `clone_from()` — it reuses the existing allocation instead of dropping and allocating anew:
+
+```rust
+// BAD: allocates new String, drops old
+self.name = other.name.clone();
+
+// GOOD: reuses existing buffer if capacity is sufficient
+self.name.clone_from(&other.name);
+```
+
+This works for `String`, `Vec`, `HashMap`, and any type implementing `Clone`.
+
 ## Detecting Excessive Clones
 
 ```toml
@@ -115,6 +153,7 @@ fn process(input: Cow<str>) -> Cow<str> {
 clone_on_copy = "warn"
 clone_on_ref_ptr = "warn"
 redundant_clone = "warn"
+assigning_clones = "allow"  # pedantic, suggests clone_from()
 ```
 
 ## See Also

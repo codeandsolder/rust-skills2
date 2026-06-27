@@ -55,43 +55,48 @@ fn build_tree() -> Rc<Node> {
 | Single owner, might need multiple later | Start with `Rc`, upgrade if needed |
 | Library code, unknown threading model | `Arc<T>` (safer default) |
 
-## Breaking Cycles with Weak
+## Recent Additions
 
-`Rc` never frees a value caught in a reference cycle — the strong count never reaches zero, so it leaks. Use `Weak<T>` for back-references (a child pointing at its parent): a `Weak` does not keep the value alive and is upgraded to an `Rc` only when needed.
+### `Rc::new_zeroed` / `Rc::new_zeroed_slice` (1.92)
 
 ```rust
-use std::rc::{Rc, Weak};
-use std::cell::RefCell;
+use std::rc::Rc;
 
-struct Node {
-    parent: RefCell<Weak<Node>>,        // back-reference: does not own the parent
-    children: RefCell<Vec<Rc<Node>>>,
-}
-
-let parent = Rc::new(Node {
-    parent: RefCell::new(Weak::new()),
-    children: RefCell::new(vec![]),
-});
-let child = Rc::new(Node {
-    parent: RefCell::new(Rc::downgrade(&parent)),
-    children: RefCell::new(vec![]),
-});
-parent.children.borrow_mut().push(Rc::clone(&child));
-
-// upgrade() yields Option<Rc<Node>> — None once the parent is dropped
-let _maybe_parent: Option<Rc<Node>> = child.parent.borrow().upgrade();
+// 1.92+: allocate zeroed Rc, avoids double-initialization
+let buf = unsafe { Rc::new_zeroed::<LargeBuf>() };
+let buf = unsafe { buf.assume_init() }; // Now safe to use
 ```
 
-## Key Points
+### `Pin<Rc<T>>` Default (1.91)
 
-- Prefer `Rc::clone(&x)` to `x.clone()`: it makes the cheap refcount bump explicit and visually distinct from a deep clone.
-- `Rc<T>` gives shared *immutable* access; pair it with `RefCell<T>` (`Rc<RefCell<T>>`) for shared mutability in single-threaded code.
-- `Rc::strong_count(&x)` / `Rc::weak_count(&x)` inspect the counts — handy in tests.
-- `Rc` is `!Send` and `!Sync`, so the compiler rejects sending it across threads; switch to `Arc` (with `Mutex`/`RwLock`) at a thread boundary.
+```rust
+use std::pin::Pin;
+use std::rc::Rc;
+
+// 1.91+: Pin<Rc<T>> implements Default when T: Default
+fn create_pinned() -> Pin<Rc<MyData>> {
+    Default::default()
+}
+```
+
+### `Cell::as_array_of_cells` with `Rc<Cell<[T; N]>>` (1.91)
+
+```rust
+use std::cell::Cell;
+use std::rc::Rc;
+
+// 1.91+: reinterpret &Cell<[T; N]> as &[Cell<T>; N]
+let data: Rc<Cell<[u32; 4]>> = Rc::new(Cell::new([1, 2, 3, 4]));
+let cells: &[Cell<u32>; 4] = data.as_array_of_cells();
+
+// Mutate individual elements through the cell
+cells[0].set(10);
+cells[1].set(20);
+// This was previously impossible without unsafe code
+```
 
 ## See Also
 
 - [own-arc-shared](./own-arc-shared.md) - When you need thread-safe sharing
 - [own-refcell-interior](./own-refcell-interior.md) - Combining Rc with interior mutability
-- [conc-thread-local](./conc-thread-local.md) - Per-thread state in single-threaded-style code
-- [mem-drop-order](./mem-drop-order.md) - Drop order matters for cyclic/`Weak` structures
+- [own-cell-update](./own-cell-update.md) - Cell::update for Copy types

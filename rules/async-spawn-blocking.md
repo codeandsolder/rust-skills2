@@ -148,6 +148,63 @@ async fn parallel_process(items: Vec<Item>) -> Vec<Output> {
 }
 ```
 
+## Tuning the Blocking Pool
+
+```rust
+use tokio::runtime::Builder;
+
+let runtime = Builder::new_multi_thread()
+    .worker_threads(4)
+    .max_blocking_threads(100)  // Default: 512
+    .build()?;
+
+// Monitor with RuntimeMetrics:
+// let depth = runtime.metrics().blocking_queue_depth();
+// let active = runtime.metrics().num_blocking_threads();
+
+// Guidelines:
+// - Too low: blocking tasks queue, starving producers
+// - Too high: thread overhead, memory pressure
+// - Start at 64, monitor queue depth, adjust up
+```
+
+## Two-Runtime Pattern
+
+For mixed IO/CPU workloads, separate runtimes prevent IO tasks from being starved by CPU work:
+
+```rust
+use tokio::runtime::{Builder, Runtime};
+
+fn main() {
+    // IO runtime: many threads, oversubscribed
+    let io_rt = Builder::new_multi_thread()
+        .worker_threads(8)
+        .thread_name("io-worker")
+        .enable_all()
+        .build()
+        .unwrap();
+    
+    // CPU runtime: one thread per core
+    let cpu_rt = Builder::new_multi_thread()
+        .worker_threads(num_cpus::get())
+        .thread_name("cpu-worker")
+        .build()
+        .unwrap();
+    
+    io_rt.block_on(async {
+        // IO work on io runtime
+        let data = fetch_data().await;
+        
+        // CPU work on cpu runtime
+        let result = cpu_rt.spawn_blocking(move || {
+            heavy_computation(data)
+        }).await.unwrap();
+        
+        println!("Result: {}", result);
+    });
+}
+```
+
 ## See Also
 
 - [async-tokio-fs](async-tokio-fs.md) - Use tokio::fs for async file I/O

@@ -59,6 +59,16 @@ let handle = tokio::spawn({
     }
 });
 
+// Check `.cancelled()` frequently in hot loops to remain responsive
+async fn cancel_sensitive_loop(token: CancellationToken) {
+    loop {
+        tokio::select! {
+            _ = token.cancelled() => break,
+            _ = do_one_unit_of_work() => {},
+        }
+    }
+}
+
 // Later: trigger cancellation
 token.cancel();
 handle.await?;  // Task completes cleanly
@@ -89,6 +99,8 @@ token.cancel();
 // Child tokens - cancelled when parent is cancelled
 let child = token.child_token();
 ```
+
+> **Performance note**: Prefer `clone()` over `child_token()` for scale. `clone()` is O(1) while `child_token()` allocates per-call state. See [tokio #7945](https://github.com/tokio-rs/tokio/discussions/7945).
 
 ## Hierarchical Cancellation
 
@@ -156,7 +168,9 @@ async fn run_app(shutdown: CancellationToken) -> Result<()> {
     tasks.spawn(server_task(shutdown.child_token()));
     
     // Wait for shutdown or task completion
+    // Use biased; to prioritize shutdown over task results
     tokio::select! {
+        biased;
         _ = shutdown.cancelled() => {
             println!("Shutdown requested, waiting for tasks...");
         }

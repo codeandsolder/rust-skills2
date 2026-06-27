@@ -61,6 +61,47 @@ fn double_values(data: &mut [i32]) {
 }
 ```
 
+## Fixed-Size Windows with array_windows (Rust 1.94+)
+
+For compile-time-size windows, `<[T]>::array_windows` produces `&[T; N]` with zero bounds-check overhead — a strict improvement over manual `for i in 0..len - n + 1`:
+
+```rust
+// Bad: manual indices, bounds-checked
+fn moving_avg(data: &[f64]) -> Vec<f64> {
+    let mut result = Vec::new();
+    for i in 0..data.len().saturating_sub(2) {
+        result.push((data[i] + data[i + 1] + data[i + 2]) / 3.0);
+    }
+    result
+}
+
+// Good: array_windows, no bounds checks
+fn moving_avg(data: &[f64]) -> Vec<f64> {
+    data.array_windows::<3>()
+        .map(|&[a, b, c]| (a + b + c) / 3.0)
+        .collect()
+}
+```
+
+## Storing Range Bounds with core::range::Range (Rust 1.96+)
+
+When storing range bounds in structs, `core::range::Range` (1.96+) implements `Copy` because it implements `IntoIterator` instead of `Iterator`:
+
+```rust
+use core::range::Range;
+
+#[derive(Clone, Copy)]
+struct Chunk {
+    offset: Range<usize>,  // Copy! vs core::ops::Range which is not Copy
+    label: &'static str,
+}
+
+// core::ops::Range implements Iterator, so it can't be Copy
+// core::range::Range implements IntoIterator, enabling Copy
+```
+
+This is useful when storing range metadata in arrays or Copy-heavy structs without needing a custom wrapper.
+
 ## When Indexing Is Needed
 
 Sometimes you genuinely need indices:
@@ -109,6 +150,6 @@ let sum: i64 = data.par_iter().map(|&x| x as i64).sum();
 ## See Also
 
 - [perf-iter-lazy](./perf-iter-lazy.md) - Keep iterators lazy
+- [perf-array-windows](./perf-array-windows.md) - Fixed-size windows
 - [opt-bounds-check](./opt-bounds-check.md) - Bounds check elimination
 - [anti-index-over-iter](./anti-index-over-iter.md) - Anti-pattern
-- [conc-rayon-par-iter](./conc-rayon-par-iter.md) - Parallelize data-parallel loops

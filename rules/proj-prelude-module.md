@@ -119,6 +119,24 @@ pub mod prelude {
 }
 ```
 
+## Caveat: Preludes Are Controversial
+
+Some in the Rust community argue against preludes entirely, advocating explicit imports instead. The criticism (see corrode.dev, 2025):
+
+- **Hides dependencies** — `use crate::prelude::*` obscures where each name comes from.
+- **Encourages glob blindness** — readers can't tell which items come from your crate vs. std.
+- **Name conflicts** — `Error`, `Result`, or `Future` in a prelude can shadow standard items in confusing ways.
+
+If you use a prelude, make it **opt-in convenience**, not a requirement. An explicit path import should always be equally viable:
+
+```rust
+// Same thing — both should work
+use my_crate::prelude::*;
+use my_crate::{Client, Config, Error};
+```
+
+For libraries, consider whether your prelude saves more than a few imports. A prelude with 2-3 items is rarely worth the glob.
+
 ## Guidelines
 
 1. **Be conservative** - Only include truly common items

@@ -49,9 +49,7 @@ fn apply_filter(data: &mut [u8]) {
 ## Iterator Patterns
 
 ```rust
-// These give the compiler much better opportunities to eliminate bounds checks
-// (and often do in practice), but elimination is not guaranteed — verify hot
-// code with generated assembly (e.g. cargo-show-asm):
+// All of these avoid bounds checks:
 
 // zip - parallel iteration
 for (a, b) in xs.iter().zip(ys.iter()) { ... }
@@ -130,11 +128,47 @@ fn process_header(data: &[u8]) -> Option<Header> {
 }
 ```
 
+## Newer Safe Patterns (Rust 1.80+)
+
+```rust
+// split_at_checked (1.80) — no bounds checks, returns Result
+fn middle_third(data: &[u8]) -> Option<&[u8]> {
+    let third = data.len() / 3;
+    let (_, rest) = data.split_at_checked(third)?;
+    let (mid, _) = rest.split_at_checked(third)?;
+    Some(mid)
+}
+
+// as_chunks / as_chunks_mut (1.88) — zero-copy chunk reinterpretation
+fn sum_chunks(data: &[f32]) -> f32 {
+    let (chunks, remainder): (&[[f32; 4]], &[f32]) = data.as_chunks();
+    // No bounds checks per element
+    let sum_simd: f32 = chunks.iter().map(|&c| c.iter().sum::<f32>()).sum();
+    sum_simd + remainder.iter().sum::<f32>()
+}
+
+// get_disjoint_mut (1.86) — safe concurrent mutable access
+fn swap_first_last(data: &mut [i32]) {
+    let len = data.len();
+    if len < 2 { return; }
+    let [a, b] = data.get_disjoint_mut([0, len - 1]).unwrap();
+    // SAFETY: indices 0 and len-1 are guaranteed distinct
+    std::mem::swap(a, b);
+}
+
+// get_disjoint_unchecked_mut (1.86) — unchecked variant
+fn swap_disjoint(data: &mut [i32], i: usize, j: usize) {
+    // SAFETY: i != j verified by caller
+    let [a, b] = unsafe { data.get_disjoint_unchecked_mut([i, j]) };
+    std::mem::swap(a, b);
+}
+```
+
 ## Verify Bounds Check Elimination
 
 ```bash
 # Check generated assembly
-cargo asm --release my_crate::hot_function
+cargo show-asm --release my_crate::hot_function
 
 # Look for 'cmp' and 'ja'/'jbe' instructions near array access
 # If eliminated, you'll see direct memory access

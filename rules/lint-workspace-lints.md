@@ -1,5 +1,7 @@
 # lint-workspace-lints
 
+**Rule**: `lint-workspace-lints`
+
 > Configure lints at workspace level for consistent enforcement
 
 ## Why It Matters
@@ -29,7 +31,9 @@ unwrap_used = "warn"
 # Root Cargo.toml
 [workspace.lints.rust]
 unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"  # Edition 2024
 missing_docs = "warn"
+keyword_idents = "deny"          # Edition 2024
 
 [workspace.lints.clippy]
 # Correctness
@@ -46,6 +50,7 @@ cognitive_complexity = "warn"
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"
+private_intra_doc_links = "warn"
 
 # crate-a/Cargo.toml
 [lints]
@@ -54,6 +59,10 @@ workspace = true
 # crate-b/Cargo.toml
 [lints]
 workspace = true
+
+# Per-crate overrides must use code-level #![allow(...)]
+# because Cargo issue #13157 prevents per-lint overrides
+# when workspace = true is set.
 ```
 
 ## Recommended Lint Configuration
@@ -63,7 +72,14 @@ workspace = true
 [workspace.lints.rust]
 # Safety
 unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"       # Edition 2024
 missing_debug_implementations = "warn"
+
+# Edition 2024 lints
+keyword_idents = "deny"
+anonymous_lifetime_in_impl_trait = "deny"
+if_let_rescope = "warn"
+strict_module_headers = "warn"
 
 # Quality
 unused_results = "warn"
@@ -106,26 +122,47 @@ todo = "warn"
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"
 private_intra_doc_links = "warn"
+missing_crate_level_docs = "warn"
 ```
 
 ## Per-Crate Overrides
 
+> **CRITICAL**: Cargo issue [#13157](https://github.com/rust-lang/cargo/issues/13157) — when `[lints] workspace = true` is set, member `Cargo.toml` files **cannot** override individual lints. The member must use code-level `#![allow(...)]` instead.
+
+### Works (✅) — Full workspace inheritance, no overrides
+
 ```toml
-# crate-with-binary/Cargo.toml
+# crate-a/Cargo.toml
+[lints]
+workspace = true
+```
+
+### Does NOT Work (❌) — Override ignored or error
+
+```toml
+# crate-b/Cargo.toml
 [lints]
 workspace = true
 
-# Binary entry point can use unwrap
+# This is IGNORED when workspace = true is set (Cargo issue #13157)
 [lints.clippy]
 unwrap_used = "allow"
+```
 
-# test-utils/Cargo.toml
-[lints]
-workspace = true
+### Correct Approach — Code-level allow
 
-# Test utilities can print
-[lints.clippy]
-print_stdout = "allow"
+```rust
+// crate-b/src/main.rs
+// Binary entry point — allow unwrap for this crate
+#![allow(clippy::unwrap_used)]
+```
+
+Or use a module-level allow:
+
+```rust
+// crate-b/src/lib.rs
+// Test utilities can print
+#![allow(clippy::print_stdout)]
 ```
 
 ## CI Integration
@@ -155,14 +192,26 @@ jobs:
 [workspace.lints.clippy]
 # All lints in category at once
 correctness = { level = "deny", priority = -1 }
-suspicious = { level = "deny", priority = -1 }
-style = { level = "warn", priority = -1 }
-complexity = { level = "warn", priority = -1 }
-perf = { level = "warn", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
+suspicious  = { level = "deny", priority = -1 }
+style       = { level = "warn", priority = -1 }
+complexity  = { level = "warn", priority = -1 }
+perf        = { level = "warn", priority = -1 }
+pedantic    = { level = "warn", priority = -1 }
 
-# Then override specific lints (higher priority)
-missing_errors_doc = "allow"  # Override pedantic
+# Then override specific lints with higher priority (0 = default)
+missing_errors_doc = "allow"  # Override pedantic for this lint
+```
+
+## Edition 2024 Workspace Lints
+
+```toml
+[workspace.lints.rust]
+# Edition 2024 lints — explicit, deny-by-default in Edition 2024
+unsafe_op_in_unsafe_fn          = "deny"
+keyword_idents                  = "deny"
+anonymous_lifetime_in_impl_trait = "deny"
+if_let_rescope                  = "warn"
+strict_module_headers           = "warn"
 ```
 
 ## See Also

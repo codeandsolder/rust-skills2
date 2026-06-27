@@ -99,14 +99,10 @@ fn process() -> impl Future<Output = Result> { }
 // Argument position - like generics but simpler
 fn handle(handler: impl Handler) { }
 
-// Return-position impl Trait in traits (RPITIT) is stable since Rust 1.75
+// Can't use in trait definitions (use associated types instead)
 trait Processor {
-    // Use impl Trait when callers don't need to name the return type:
-    fn process(&self) -> impl Display;  // stable, idiomatic (Rust 1.75+)
-
-    // Use an associated type when callers need to name or constrain the type:
-    type Output: Display;
-    fn process_named(&self) -> Self::Output;
+    type Output: Display;  // Not impl Display
+    fn process(&self) -> Self::Output;
 }
 ```
 
@@ -131,10 +127,44 @@ impl Shape {
 }
 ```
 
+## Pattern: enum_dispatch Crate
+
+When you have a trait with many implementors that are known at compile time, the [`enum_dispatch`](https://crates.io/crates/enum_dispatch) crate turns dynamic dispatch into a static enum match — zero-cost dispatch without boxing:
+
+```rust
+use enum_dispatch::enum_dispatch;
+
+#[enum_dispatch]
+trait Command {
+    fn execute(&self) -> Result<(), Error>;
+}
+
+#[enum_dispatch(Command)]
+enum AllCommands {
+    Create(CreateCmd),
+    Delete(DeleteCmd),
+    Update(UpdateCmd),
+}
+
+// Callers use AllCommands directly — no Box, no dyn, no vtable
+fn run(cmds: Vec<AllCommands>) -> Result<(), Error> {
+    for cmd in &cmds {
+        cmd.execute()?;  // Static dispatch via match
+    }
+    Ok(())
+}
+```
+
+## Clippy Lints
+
+```toml
+[lints.clippy]
+box_collection = "warn"   # Catches Box<Vec<T>>, Box<String>, etc.
+boxed_local = "warn"      # Catches unnecessary Box for local values
+```
+
 ## See Also
 
 - [anti-over-abstraction](./anti-over-abstraction.md) - Excessive generics
 - [type-generic-bounds](./type-generic-bounds.md) - Generic constraints
 - [mem-box-large-variant](./mem-box-large-variant.md) - Boxing enum variants
-- [trait-dyn-vs-generic](./trait-dyn-vs-generic.md) - Choose dispatch deliberately
-- [closure-static-vs-dyn](./closure-static-vs-dyn.md) - Same tradeoff for closures

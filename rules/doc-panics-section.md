@@ -109,6 +109,9 @@ pub fn push(&mut self, item: T) {
 }
 ```
 
+Note: `debug_assert!` only panics in debug builds. Document this
+difference so users aren't surprised in release builds.
+
 ## Provide Non-Panicking Alternatives
 
 When documenting a panicking function, point to safe alternatives:
@@ -120,6 +123,17 @@ When documenting a panicking function, point to safe alternatives:
 ///
 /// For a non-panicking version, use [`get`] which returns `Option<&T>`.
 ```
+
+## Lints
+
+Enable `clippy::missing_panics_doc` to catch missing `# Panics` sections:
+
+```rust
+#![warn(clippy::missing_panics_doc)]
+```
+
+This warns on any public function that can panic (via `unwrap`, `expect`,
+indexing, `assert!`, etc.) without a `# Panics` section.
 
 ## See Also
 

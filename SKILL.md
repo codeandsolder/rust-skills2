@@ -1,27 +1,29 @@
 ---
 name: rust-skills
 description: >
-  Comprehensive Rust coding guidelines with 265 rules across 26 categories.
+  Comprehensive Rust coding guidelines with 320 rules across 26 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
   matching, macros, closures, observability, testing, and common anti-patterns.
-  Invoke with /rust-skills.
+  Modernized for Rust 1.96 (2024 edition). Invoke with /rust-skills.
 license: MIT
 metadata:
   author: leonardomso
-  version: "1.5.1"
+  version: "2.0.0"
   sources:
     - Rust API Guidelines
     - Rust Performance Book
     - Rust 2024 Edition Guide
     - The Rustonomicon
     - ripgrep, tokio, serde, polars, axum, cargo codebases
+    - This Week in Rust 2024-2026
+    - blog.rust-lang.org release posts 1.85-1.96
 ---
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 265 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.96 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 320 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.96 (2024 edition).
 
 ## When to Apply
 
@@ -39,16 +41,16 @@ Reference these guidelines when:
 
 | Priority | Category | Impact | Prefix | Rules |
 |----------|----------|--------|--------|-------|
-| 1 | Ownership & Borrowing | CRITICAL | `own-` | 12 |
-| 2 | Error Handling | CRITICAL | `err-` | 12 |
-| 3 | Memory Optimization | CRITICAL | `mem-` | 17 |
+| 1 | Ownership & Borrowing | CRITICAL | `own-` | 15 |
+| 2 | Error Handling | CRITICAL | `err-` | 17 |
+| 3 | Memory Optimization | CRITICAL | `mem-` | 22 |
 | 4 | Unsafe Code | CRITICAL | `unsafe-` | 7 |
-| 5 | API Design | HIGH | `api-` | 17 |
-| 6 | Async/Await | HIGH | `async-` | 18 |
+| 5 | API Design | HIGH | `api-` | 20 |
+| 6 | Async/Await | HIGH | `async-` | 21 |
 | 7 | Concurrency | HIGH | `conc-` | 4 |
-| 8 | Compiler Optimization | HIGH | `opt-` | 12 |
+| 8 | Compiler Optimization | HIGH | `opt-` | 14 |
 | 9 | Numeric & Arithmetic Safety | HIGH | `num-` | 5 |
-| 10 | Type Safety | MEDIUM | `type-` | 13 |
+| 10 | Type Safety | MEDIUM | `type-` | 17 |
 | 11 | Trait & Generics Design | MEDIUM | `trait-` | 6 |
 | 12 | Conversions | MEDIUM | `conv-` | 3 |
 | 13 | Const & Compile-Time | MEDIUM | `const-` | 4 |
@@ -57,14 +59,14 @@ Reference these guidelines when:
 | 16 | Macros | MEDIUM | `macro-` | 8 |
 | 17 | Closures | MEDIUM | `closure-` | 5 |
 | 18 | Collections | MEDIUM | `coll-` | 4 |
-| 19 | Naming Conventions | MEDIUM | `name-` | 16 |
-| 20 | Testing | MEDIUM | `test-` | 15 |
-| 21 | Documentation | MEDIUM | `doc-` | 12 |
+| 19 | Naming Conventions | MEDIUM | `name-` | 18 |
+| 20 | Testing | MEDIUM | `test-` | 21 |
+| 21 | Documentation | MEDIUM | `doc-` | 16 |
 | 22 | Observability | MEDIUM | `obs-` | 7 |
-| 23 | Performance Patterns | MEDIUM | `perf-` | 13 |
-| 24 | Project Structure | LOW | `proj-` | 14 |
-| 25 | Clippy & Linting | LOW | `lint-` | 13 |
-| 26 | Anti-patterns | REFERENCE | `anti-` | 15 |
+| 23 | Performance Patterns | MEDIUM | `perf-` | 18 |
+| 24 | Project Structure | LOW | `proj-` | 17 |
+| 25 | Clippy & Linting | LOW | `lint-` | 18 |
+| 26 | Anti-patterns | REFERENCE | `anti-` | 20 |
 
 ---
 
@@ -78,12 +80,15 @@ Reference these guidelines when:
 - [`own-arc-shared`](rules/own-arc-shared.md) - Use `Arc<T>` for thread-safe shared ownership
 - [`own-rc-single-thread`](rules/own-rc-single-thread.md) - Use `Rc<T>` for shared ownership in single-threaded contexts
 - [`own-refcell-interior`](rules/own-refcell-interior.md) - Use `RefCell<T>` for interior mutability in single-threaded code
-- [`own-mutex-interior`](rules/own-mutex-interior.md) - Use `Mutex<T>` for interior mutability across threads
-- [`own-rwlock-readers`](rules/own-rwlock-readers.md) - Use `RwLock<T>` when reads significantly outnumber writes
+- [`own-mutex-interior`](rules/own-mutex-interior.md) - Use the right `Mutex<T>` for the execution model: `std`/`parking_lot` for synchronous code, `tokio::sync::Mutex` for async code
+- [`own-rwlock-readers`](rules/own-rwlock-readers.md) - Use the right `RwLock<T>` when reads significantly outnumber writes
 - [`own-copy-small`](rules/own-copy-small.md) - Implement `Copy` for small, simple types
 - [`own-clone-explicit`](rules/own-clone-explicit.md) - Use explicit `Clone` for types where copying has meaningful cost
 - [`own-move-large`](rules/own-move-large.md) - Move large types instead of copying; use `Box` if moves are expensive
 - [`own-lifetime-elision`](rules/own-lifetime-elision.md) - Rely on lifetime elision rules; add explicit lifetimes only when required
+- [`own-cell-update`](rules/own-cell-update.md) - Use `Cell::update` (Rust 1.88+) for atomic read-modify-write on `Copy`-type interior-mutable data
+- [`own-cow-rpit-edition2024`](rules/own-cow-rpit-edition2024.md) - Edition 2024 RPIT lifetime capture makes `Cow<'_, T>` returns from methods borrowing `&self` dramatically more ergonomic
+- [`own-range-copy`](rules/own-range-copy.md) - Prefer `core::range::Range` (Rust 1.96+, `Copy`) over `core::ops::Range` in new code when the range needs to be `Copy`
 
 ### 2. Error Handling (CRITICAL)
 
@@ -99,6 +104,11 @@ Reference these guidelines when:
 - [`err-lowercase-msg`](rules/err-lowercase-msg.md) - Start error messages lowercase, no trailing punctuation
 - [`err-doc-errors`](rules/err-doc-errors.md) - Document error conditions with `# Errors` section in doc comments
 - [`err-custom-type`](rules/err-custom-type.md) - Define custom error types for domain-specific failures
+- [`err-clippy-unwrap-types`](rules/err-clippy-unwrap-types.md) - Configure `allow-unwrap-types` to whitelist safe `unwrap()` calls while keeping real `unwrap_used` violations
+- [`err-diagnostic-do-not-recommend`](rules/err-diagnostic-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` to hide blanket error conversion impls from compiler suggestions
+- [`err-expect-not-allow`](rules/err-expect-not-allow.md) - Prefer `#[expect(...)]` over `#[allow(...)]` for suppressing lint warnings
+- [`err-no-std-error`](rules/err-no-std-error.md) - Use `core::error::Error` for `no_std` error types with thiserror 2.0+
+- [`err-try-block-experimental`](rules/err-try-block-experimental.md) - `try {}` blocks are experimental — consider use cases, prefer `?` for now
 
 ### 3. Memory Optimization (CRITICAL)
 
@@ -119,6 +129,11 @@ Reference these guidelines when:
 - [`mem-assert-type-size`](rules/mem-assert-type-size.md) - Use static assertions to guard against accidental type size growth
 - [`mem-take-replace`](rules/mem-take-replace.md) - Use `mem::take` / `mem::replace` to move a value out of a `&mut` without cloning
 - [`mem-drop-order`](rules/mem-drop-order.md) - Know and control drop order: struct fields drop top-to-bottom, locals in reverse
+- [`mem-arc-str`](rules/mem-arc-str.md) - Prefer `Arc<str>` over `Arc<String>` for thread-shared immutable strings
+- [`mem-box-new-uninit`](rules/mem-box-new-uninit.md) - Use `Box::new_uninit()` for lazy-initialized heap allocations
+- [`mem-ecow-clone-heavy`](rules/mem-ecow-clone-heavy.md) - Use `EcoString` for clone-heavy string workloads
+- [`mem-hotpath-profile`](rules/mem-hotpath-profile.md) - Profile memory before optimizing
+- [`mem-slotmap-arena`](rules/mem-slotmap-arena.md) - Use `SlotMap<K, V>` for stable handles with contiguous storage
 
 ### 4. Unsafe Code (CRITICAL)
 
@@ -149,6 +164,9 @@ Reference these guidelines when:
 - [`api-serde-optional`](rules/api-serde-optional.md) - Make serde a feature flag, not a hard dependency for library crates
 - [`api-impl-fromiterator`](rules/api-impl-fromiterator.md) - Implement `FromIterator` and `Extend` for collection types, and `IntoIterator` for all three reference forms
 - [`api-operator-overload`](rules/api-operator-overload.md) - Overload operators only when the semantics are natural and unsurprising
+- [`api-bon-builder`](rules/api-bon-builder.md) - Use the `bon` crate (v3.9, `elastio/bon`) for ergonomic, compile-time safe builders
+- [`api-do-not-recommend`](rules/api-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` (Rust 1.85.0) to hide blanket impls from compiler diagnostics
+- [`api-nutype-validated`](rules/api-nutype-validated.md) - Use `nutype` (v0.7.0, `greyblake/nutype`) for sanitized and validated newtypes with zero overhead
 
 ### 6. Async/Await (HIGH)
 
@@ -165,11 +183,14 @@ Reference these guidelines when:
 - [`async-broadcast-pubsub`](rules/async-broadcast-pubsub.md) - Use `broadcast` channel for pub/sub where all subscribers receive all messages
 - [`async-watch-latest`](rules/async-watch-latest.md) - Use `watch` channel for sharing the latest value with multiple observers
 - [`async-oneshot-response`](rules/async-oneshot-response.md) - Use `oneshot` channel for request-response patterns
-- [`async-joinset-structured`](rules/async-joinset-structured.md) - Use `JoinSet` for managing dynamic collections of spawned tasks
+- [`async-joinset-structured`](rules/async-joinset-structured.md) - Use `JoinSet` for managing dynamic collections of spawned tasks with structured concurrency
 - [`async-clone-before-await`](rules/async-clone-before-await.md) - Clone Arc/Rc data before await points to avoid holding references across suspension
 - [`async-fn-in-trait`](rules/async-fn-in-trait.md) - Use native `async fn` in traits (stable 1.75) instead of the `async_trait` macro
 - [`async-async-fn-bounds`](rules/async-async-fn-bounds.md) - Use `AsyncFn`/`AsyncFnMut`/`AsyncFnOnce` bounds instead of `F: Fn() -> Fut, Fut: Future`
 - [`async-cancel-safety`](rules/async-cancel-safety.md) - Ensure futures used in `tokio::select!` branches are cancellation-safe
+- [`async-blocking-detection`](rules/async-blocking-detection.md) - Detect and prevent blocking in async code using `RuntimeMetrics` and runtime configuration
+- [`async-runtime-metrics`](rules/async-runtime-metrics.md) - Use `RuntimeMetrics` for task health, blocking thread pressure, and starvation detection
+- [`async-structured-concurrency`](rules/async-structured-concurrency.md) - Combine `JoinSet` + `CancellationToken` + `select!` for structured async task management
 
 ### 7. Concurrency (HIGH)
 
@@ -184,14 +205,16 @@ Reference these guidelines when:
 - [`opt-inline-always-rare`](rules/opt-inline-always-rare.md) - Use `#[inline(always)]` sparingly—only for critical hot paths proven by profiling
 - [`opt-inline-never-cold`](rules/opt-inline-never-cold.md) - Use `#[inline(never)]` and `#[cold]` for error paths and rarely-executed code
 - [`opt-cold-unlikely`](rules/opt-cold-unlikely.md) - Mark unlikely code paths with `#[cold]` to help compiler optimization
-- [`opt-likely-hint`](rules/opt-likely-hint.md) - Use code structure to hint at likely branches; use intrinsics on nightly
+- [`opt-likely-hint`](rules/opt-likely-hint.md) - Use `cold_path()` and `select_unpredictable` for branch hints on stable Rust
 - [`opt-lto-release`](rules/opt-lto-release.md) - Enable LTO in release builds
 - [`opt-codegen-units`](rules/opt-codegen-units.md) - Set `codegen-units = 1` for maximum optimization in release builds
 - [`opt-pgo-profile`](rules/opt-pgo-profile.md) - Use Profile-Guided Optimization (PGO) for maximum performance
-- [`opt-target-cpu`](rules/opt-target-cpu.md) - Use `target-cpu=native` for maximum performance on known deployment targets
+- [`opt-target-cpu`](rules/opt-target-cpu.md) - Use `target-cpu=native` (or `x86-64-v3`) for maximum performance on known deployment targets
 - [`opt-bounds-check`](rules/opt-bounds-check.md) - Use iterators and patterns that eliminate bounds checks in hot paths
 - [`opt-simd-portable`](rules/opt-simd-portable.md) - Use portable SIMD for vectorized operations across architectures
 - [`opt-cache-friendly`](rules/opt-cache-friendly.md) - Organize data for cache-efficient access patterns
+- [`opt-cold-path`](rules/opt-cold-path.md) - Use `core::hint::cold_path()` to mark unlikely inline paths (Rust 1.95+)
+- [`opt-select-unpredictable`](rules/opt-select-unpredictable.md) - Use `core::hint::select_unpredictable()` for branchless conditional moves (Rust 1.88+)
 
 ### 9. Numeric & Arithmetic Safety (HIGH)
 
@@ -203,19 +226,23 @@ Reference these guidelines when:
 
 ### 10. Type Safety (MEDIUM)
 
-- [`type-newtype-ids`](rules/type-newtype-ids.md) - Wrap IDs in newtypes: `UserId(u64)`
-- [`type-newtype-validated`](rules/type-newtype-validated.md) - Use newtypes to enforce validation at construction time
+- [`type-newtype-ids`](rules/type-newtype-ids.md) - Wrap IDs in newtypes
+- [`type-newtype-validated`](rules/type-newtype-validated.md) - Use newtypes to enforce validation at construction
 - [`type-enum-states`](rules/type-enum-states.md) - Use enums for mutually exclusive states
 - [`type-option-nullable`](rules/type-option-nullable.md) - Use `Option<T>` for values that might not exist
-- [`type-result-fallible`](rules/type-result-fallible.md) - Use `Result<T, E>` for operations that can fail
-- [`type-phantom-marker`](rules/type-phantom-marker.md) - Use `PhantomData` to express type relationships without runtime cost
-- [`type-never-diverge`](rules/type-never-diverge.md) - Use `!` (never type) for functions that never return
-- [`type-generic-bounds`](rules/type-generic-bounds.md) - Add trait bounds only where needed, prefer where clauses for readability
-- [`type-no-stringly`](rules/type-no-stringly.md) - Avoid stringly-typed APIs; use enums, newtypes, or validated types
-- [`type-repr-transparent`](rules/type-repr-transparent.md) - Use `#[repr(transparent)]` for newtypes in FFI contexts
+- [`type-result-fallible`](rules/type-result-fallible.md) - Use `Result<T, E>` for fallible operations
+- [`type-phantom-marker`](rules/type-phantom-marker.md) - Use `PhantomData` for zero-cost type markers
+- [`type-never-diverge`](rules/type-never-diverge.md) - Use the never type `!` for functions that never return
+- [`type-generic-bounds`](rules/type-generic-bounds.md) - Add trait bounds only where needed
+- [`type-no-stringly`](rules/type-no-stringly.md) - Avoid stringly-typed APIs
+- [`type-repr-transparent`](rules/type-repr-transparent.md) - Always add `#[repr(transparent)]` to single-field newtypes
 - [`type-deref-coercion`](rules/type-deref-coercion.md) - Implement `Deref`/`DerefMut` only for smart-pointer and transparent wrapper types
 - [`type-display-vs-debug`](rules/type-display-vs-debug.md) - Use `Display` for user-facing output and `Debug` for diagnostics; never swap them
 - [`type-numeric-fmt`](rules/type-numeric-fmt.md) - Implement `LowerHex`, `UpperHex`, `Octal`, and `Binary` for numeric newtypes
+- [`type-derive-more-boilerplate`](rules/type-derive-more-boilerplate.md) - Use `derive_more` for newtype boilerplate reduction
+- [`type-newtype-repr-transparent`](rules/type-newtype-repr-transparent.md) - Always add `#[repr(transparent)]` to single-field newtypes
+- [`type-nonzero-intrinsics`](rules/type-nonzero-intrinsics.md) - Use `NonZero<uN>` for non-zero integer invariants
+- [`type-nutype-validated`](rules/type-nutype-validated.md) - Use `nutype` for validated newtypes
 
 ### 11. Trait & Generics Design (MEDIUM)
 
@@ -298,10 +325,12 @@ Reference these guidelines when:
 - [`name-no-get-prefix`](rules/name-no-get-prefix.md) - Omit get_ prefix for simple getters
 - [`name-is-has-bool`](rules/name-is-has-bool.md) - Use `is_`, `has_`, `can_`, `should_` prefixes for boolean-returning methods
 - [`name-iter-convention`](rules/name-iter-convention.md) - Use iter/iter_mut/into_iter for iterator methods
-- [`name-iter-method`](rules/name-iter-method.md) - Name iterator methods `iter()`, `iter_mut()`, and `into_iter()` consistently
+- [`name-iter-method`](rules/name-iter-method.md) - Implement `IntoIterator` delegation for `for` loop support
 - [`name-iter-type-match`](rules/name-iter-type-match.md) - Name iterator types after their source method
 - [`name-acronym-word`](rules/name-acronym-word.md) - Treat acronyms as words in identifiers: `HttpServer`, not `HTTPServer`
 - [`name-crate-no-rs`](rules/name-crate-no-rs.md) - Don't suffix crate names with `-rs` or `-rust`
+- [`name-feature`](rules/name-feature.md) - Name Cargo features without placeholder words like `abc`, `use-abc`, or `with-abc`
+- [`name-word-order`](rules/name-word-order.md) - Name error types verb-object: `ParseIntError`, not `IntParseError`
 
 ### 20. Testing (MEDIUM)
 
@@ -313,13 +342,19 @@ Reference these guidelines when:
 - [`test-proptest-properties`](rules/test-proptest-properties.md) - Use proptest for property-based testing
 - [`test-mockall-mocking`](rules/test-mockall-mocking.md) - Use mockall for trait mocking
 - [`test-mock-traits`](rules/test-mock-traits.md) - Use traits for dependencies to enable mocking in tests
-- [`test-fixture-raii`](rules/test-fixture-raii.md) - Use RAII pattern (Drop trait) for automatic test cleanup
+- [`test-fixture-raii`](rules/test-fixture-raii.md) - Use RAII pattern (Drop trait) for automatic test cleanup, or `rstest::#[fixture]` for declarative setup
 - [`test-tokio-async`](rules/test-tokio-async.md) - Use `#[tokio::test]` for async tests
 - [`test-should-panic`](rules/test-should-panic.md) - Use `#[should_panic]` to test that code panics as expected
-- [`test-criterion-bench`](rules/test-criterion-bench.md) - Use `criterion` for benchmarking
+- [`test-criterion-bench`](rules/test-criterion-bench.md) - Use `criterion` for benchmarking (or `divan` for simpler workflows)
 - [`test-doctest-examples`](rules/test-doctest-examples.md) - Keep documentation examples as executable doctests
 - [`test-loom-concurrency`](rules/test-loom-concurrency.md) - Use `loom` to exhaustively test lock-free and concurrent code
 - [`test-snapshot-testing`](rules/test-snapshot-testing.md) - Use snapshot testing (insta) for complex or serialized output
+- [`test-assert-matches`](rules/test-assert-matches.md) - Use `assert_matches!` / `debug_assert_matches!` (Rust 1.96+) for pattern-based assertions
+- [`test-coverage-llvm-cov`](rules/test-coverage-llvm-cov.md) - Use `cargo-llvm-cov` for LLVM-based code coverage
+- [`test-fuzzing-minimal`](rules/test-fuzzing-minimal.md) - Use `cargo-fuzz` for fuzz testing critical functions
+- [`test-insta-snapshot`](rules/test-insta-snapshot.md) - Use `insta` for snapshot/approval testing
+- [`test-nextest-workflow`](rules/test-nextest-workflow.md) - Use `cargo-nextest` for faster execution and CI partitioning
+- [`test-rstest-fixtures`](rules/test-rstest-fixtures.md) - Use `rstest` for parameterized tests, fixtures, and async test setup
 
 ### 21. Documentation (MEDIUM)
 
@@ -335,6 +370,10 @@ Reference these guidelines when:
 - [`doc-link-types`](rules/doc-link-types.md) - Use intra-doc links to connect related types and functions
 - [`doc-cargo-metadata`](rules/doc-cargo-metadata.md) - Fill `Cargo.toml` metadata for published crates
 - [`doc-crate-readme`](rules/doc-crate-readme.md) - Unify the README and crate root docs with `#![doc = include_str!("../README.md")]`
+- [`doc-cfg-patterns`](rules/doc-cfg-patterns.md) - Use `#[doc(cfg(...))]` to annotate platform/feature-gated items
+- [`doc-hidden-public`](rules/doc-hidden-public.md) - Use `#[doc(hidden)]` to omit internal impl details from public docs
+- [`doc-include-str`](rules/doc-include-str.md) - Use `#[doc = include_str!("...")]` for embedding external content in documentation
+- [`doc-test-edition-2024`](rules/doc-test-edition-2024.md) - Edition 2024 changes for doc tests: combined binary, `standalone_crate`, nested includes, and `$crate`
 
 ### 22. Observability (MEDIUM)
 
@@ -352,7 +391,7 @@ Reference these guidelines when:
 - [`perf-iter-lazy`](rules/perf-iter-lazy.md) - Keep iterators lazy, collect only when needed
 - [`perf-collect-once`](rules/perf-collect-once.md) - Don't collect intermediate iterators
 - [`perf-entry-api`](rules/perf-entry-api.md) - Use entry API for map insert-or-update
-- [`perf-drain-reuse`](rules/perf-drain-reuse.md) - Use drain to reuse allocations
+- [`perf-drain-reuse`](rules/perf-drain-reuse.md) - Use drain and extract_if to reuse allocations
 - [`perf-extend-batch`](rules/perf-extend-batch.md) - Use extend for batch insertions
 - [`perf-chain-avoid`](rules/perf-chain-avoid.md) - Avoid chain in hot loops
 - [`perf-collect-into`](rules/perf-collect-into.md) - Use collect_into for reusing containers
@@ -361,6 +400,11 @@ Reference these guidelines when:
 - [`perf-profile-first`](rules/perf-profile-first.md) - Profile before optimizing
 - [`perf-ahash`](rules/perf-ahash.md) - Use a faster hasher (`ahash` / `FxHashMap`) when DoS resistance is not needed
 - [`perf-io-buffering`](rules/perf-io-buffering.md) - Wrap `Read`/`Write` in `BufReader`/`BufWriter` for many small operations
+- [`perf-array-windows`](rules/perf-array-windows.md) - Use `<[T]>::array_windows` and `<[T]>::as_chunks` for compile-time-size windows
+- [`perf-atomic-update`](rules/perf-atomic-update.md) - Use `Atomic*::update` and `try_update` for cleaner CAS loops
+- [`perf-copy-range`](rules/perf-copy-range.md) - Use `core::range::Range` for Copy-compatible range storage
+- [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` for conditional extraction (Rust 1.88+)
+- [`perf-hint-apis`](rules/perf-hint-apis.md) - Use branch hint APIs for hot-path optimization
 
 ### 24. Project Structure (LOW)
 
@@ -378,10 +422,13 @@ Reference these guidelines when:
 - [`proj-feature-additive`](rules/proj-feature-additive.md) - Design Cargo features to be strictly additive
 - [`proj-msrv-declare`](rules/proj-msrv-declare.md) - Declare `rust-version` (MSRV) in Cargo.toml and test it in CI
 - [`proj-build-rs-minimal`](rules/proj-build-rs-minimal.md) - Keep `build.rs` minimal, deterministic, and idempotent
+- [`proj-lints-table`](rules/proj-lints-table.md) - Use `[lints]` / `[workspace.lints]` for centralized lint configuration
+- [`proj-workspace-metadata`](rules/proj-workspace-metadata.md) - Use `[workspace.package]` for shared metadata inheritance
+- [`proj-workspace-publish`](rules/proj-workspace-publish.md) - Use `cargo publish --workspace` for native workspace publishing (Rust 1.90+)
 
 ### 25. Clippy & Linting (LOW)
 
-- [`lint-deny-correctness`](rules/lint-deny-correctness.md) - `#![deny(clippy::correctness)]`
+- [`lint-deny-correctness`](rules/lint-deny-correctness.md) - Deny clippy::correctness and equivalent rustc lints
 - [`lint-warn-suspicious`](rules/lint-warn-suspicious.md) - Enable clippy::suspicious for likely bugs
 - [`lint-warn-style`](rules/lint-warn-style.md) - Enable clippy::style for idiomatic code
 - [`lint-warn-complexity`](rules/lint-warn-complexity.md) - Enable clippy::complexity for simpler code
@@ -394,6 +441,11 @@ Reference these guidelines when:
 - [`lint-workspace-lints`](rules/lint-workspace-lints.md) - Configure lints at workspace level for consistent enforcement
 - [`lint-cfg-check`](rules/lint-cfg-check.md) - Enable `unexpected_cfgs` and declare known cfgs to catch feature-gate typos
 - [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Enable high-value `clippy::nursery` lints selectively, not the whole group
+- [`lint-cargo-unused-features`](rules/lint-cargo-unused-features.md) - Detect unused feature flags declared in Cargo.toml (Rust 1.88+)
+- [`lint-dylint-custom`](rules/lint-dylint-custom.md) - Use Dylint for project-specific custom lints without forking clippy
+- [`lint-edition-2024`](rules/lint-edition-2024.md) - Track Edition 2024 lints (`unsafe_op_in_unsafe_fn`, `keyword_idents`, etc.)
+- [`lint-lints-table`](rules/lint-lints-table.md) - Use the `[lints]` table in `Cargo.toml` for canonical lint configuration (Rust 1.74+)
+- [`lint-uplifted`](rules/lint-uplifted.md) - Track clippy lints uplifted into rustc (Rust 1.86-1.96)
 
 ### 26. Anti-patterns (REFERENCE)
 
@@ -412,6 +464,11 @@ Reference these guidelines when:
 - [`anti-format-hot-path`](rules/anti-format-hot-path.md) - Don't use format! in hot paths
 - [`anti-collect-intermediate`](rules/anti-collect-intermediate.md) - Don't collect intermediate iterators
 - [`anti-stringly-typed`](rules/anti-stringly-typed.md) - Don't use strings where enums or newtypes would provide type safety
+- [`anti-arc-mutex-everything`](rules/anti-arc-mutex-everything.md) - Don't default to `Arc<Mutex<T>>` for every shared state problem
+- [`anti-blocking-async-drop`](rules/anti-blocking-async-drop.md) - Don't block, spawn, or do I/O in `Drop` of async types
+- [`anti-block-on-async`](rules/anti-block-on-async.md) - Don't use `handle.block_on()` inside async code
+- [`anti-deref-overuse`](rules/anti-deref-overuse.md) - Don't use `Deref<Target = InnerType>` for newtype method delegation
+- [`anti-unsafe-send-sync`](rules/anti-unsafe-send-sync.md) - Don't use `unsafe impl Send` / `Sync` as a thread-safety shortcut
 
 ---
 

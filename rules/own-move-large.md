@@ -116,6 +116,60 @@ impl ConfigBuilder {
 }
 ```
 
+## Recent Additions
+
+### `Box::new_zeroed` / `Box::new_zeroed_slice` (1.92)
+
+Allocate zeroed memory on the heap, avoiding the cost of initializing then immediately overwriting:
+
+```rust
+// Before 1.92: allocate, zero, then overwrite
+let mut buf = Box::new([0u8; 4096]);
+buf.copy_from_slice(&data);
+
+// 1.92+: allocate already zeroed (unsafe: must ensure initializing)
+let mut buf = unsafe { Box::new_zeroed::<[u8; 4096]>() };
+let buf = unsafe { buf.assume_init() };
+```
+
+### `Vec::into_raw_parts` (1.93)
+
+Decompose a `Vec` into its raw pointer, length, and capacity for FFI or manual memory management:
+
+```rust
+let mut v = vec![1, 2, 3];
+
+// 1.93+: get raw parts without forget
+let (ptr, len, cap) = v.into_raw_parts();
+
+// Later: reconstruct (responsible for memory)
+let v = unsafe { Vec::from_raw_parts(ptr, len, cap) };
+```
+
+### `MaybeUninit` Slice Methods (1.93)
+
+```rust
+use std::mem::MaybeUninit;
+
+// 1.93+: work with slices of MaybeUninit
+let mut buf: Box<[MaybeUninit<u8>; 4096]> = Box::new_uninit();
+let initialized: &mut [u8] = MaybeUninit::slice_as_mut(&mut buf[..10]);
+initialized.copy_from_slice(&data[..10]);
+// Remaining elements can be written later
+```
+
+### `dangling_pointers_from_locals` Lint (1.91)
+
+This lint detects dangling pointers created by taking the address of local variables — a common issue when moving large data:
+
+```rust
+// Example that triggers the lint:
+fn problem() -> *const LargeData {
+    let data = LargeData::new();
+    &data as *const _  // WARNING: dangling pointer to local
+}
+```
+
 ## Profile First
 
 Don't prematurely optimize. Use tools to identify if moves are actually a bottleneck:

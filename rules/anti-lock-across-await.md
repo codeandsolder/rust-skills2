@@ -116,9 +116,15 @@ impl BetterService {
 ```toml
 # Cargo.toml
 [lints.clippy]
-await_holding_lock = "deny"
-await_holding_refcell_ref = "deny"
+await_holding_lock = "deny"             # Catches std Mutex/RwLock guards
+await_holding_refcell_ref = "deny"      # Catches RefCell borrows
+
+# For custom guard types, use await_holding_invalid_type (Rust 1.62+):
+# Allows listing custom types that must not cross .await boundaries
+[lints.rust]
+# await_holding_invalid_type = { level = "deny", types = ["MyCustomGuard"] }
 ```
+> **Note**: `await_holding_invalid_type` lets you extend the detection to custom RAII guard types. Add your own guard types to the `types` list to prevent accidental holds across `.await`.
 
 ## See Also
 

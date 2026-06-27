@@ -66,6 +66,8 @@ These methods return iterators (lazy):
 | `.chain()` | Concatenate iterators |
 | `.flat_map()` | Map and flatten |
 | `.enumerate()` | Add index |
+| `.next_if()` (on Peekable) | Conditionally consume next (1.94+) |
+| `.next_if_map()` (on Peekable) | Map+consume next (1.94+) |
 
 ## Consuming Methods
 
@@ -96,6 +98,41 @@ let result = items.iter()
     .find(|x| expensive_check(x));
 ```
 
+## Fixed-Size Slice Iteration: as_chunks and array_windows
+
+For zero-allocation processing of slices in fixed-size units, use `<[T]>::as_chunks` (Rust 1.88+) and `<[T]>::array_windows` (Rust 1.94+). These return `&[T; N]` references with no bounds-check overhead, keeping iteration fully lazy:
+
+```rust
+// Process in chunks of 4 — no allocation, no bounds checks
+let (chunks, remainder) = data.as_chunks::<4>();
+for &[a, b, c, d] in chunks {
+    process_four(a, b, c, d);
+}
+
+// Sliding window — no allocation, no bounds checks
+for &[a, b, c] in data.array_windows::<3>() {
+    process_triple(a, b, c);
+}
+```
+
+## Peekable::next_if and next_if_map (Rust 1.94+)
+
+`Peekable::next_if` and `next_if_map` enable conditional lazy consumption without allocating an intermediate collection:
+
+```rust
+let mut iter = [1, 2, 3, 4, 5].into_iter().peekable();
+
+// Skip leading zeros (lazy, no allocation)
+while iter.next_if(|&x| x == 0).is_some() {}
+
+// Transform-accept pattern
+while let Some(doubled) = iter.next_if_map(|x| {
+    if *x < 10 { Some(x * 2) } else { None }
+}) {
+    process(doubled);
+}
+```
+
 ## Pattern: Process Without Collecting
 
 ```rust
@@ -120,4 +157,5 @@ let total: i64 = data.iter()
 
 - [perf-collect-once](./perf-collect-once.md) - Single collect
 - [perf-iter-over-index](./perf-iter-over-index.md) - Prefer iterators
+- [perf-array-windows](./perf-array-windows.md) - Fixed-size windows
 - [anti-collect-intermediate](./anti-collect-intermediate.md) - Anti-pattern

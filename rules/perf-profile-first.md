@@ -31,6 +31,7 @@ fn rarely_called() {
 // 1. Profile first
 // cargo flamegraph --bin myapp
 // cargo instruments -t time --bin myapp (macOS)
+// samply record ./target/release/myapp  (cross-platform)
 
 // 2. Find the actual bottleneck
 // Flamegraph shows expensive_computation takes 95% of time
@@ -49,7 +50,24 @@ fn process(data: &[Item]) -> Vec<Output> {
 
 ## Profiling Tools
 
-### Flamegraphs (Recommended Start)
+### samply (Cross-Platform Sampling Profiler, Recommended)
+
+[samply](https://github.com/mstange/samply) is a sampling profiler that outputs to the Firefox Profiler format. It works on Linux, macOS, and Windows with no special kernel modules:
+
+```bash
+# Install
+cargo install samply
+
+# Profile a binary
+samply record ./target/release/myapp -- <args>
+
+# Opens Firefox Profiler UI automatically
+# Shows flame graphs, call trees, timeline
+```
+
+Advantages: low overhead, works on release builds, native stack walking, no instrumentation needed.
+
+### Flamegraphs (Traditional)
 
 ```bash
 # Install
@@ -87,6 +105,55 @@ cargo instruments -t time --release
 cargo instruments -t alloc --release
 ```
 
+### CodSpeed CI (Hardware-Counter Benchmarking)
+
+[CodSpeed](https://codspeed.io) provides CI benchmarking using hardware performance counters. It works with Criterion and Divan, measuring instruction counts rather than wall-clock time — eliminating noise from system load:
+
+```toml
+# .github/workflows/bench.yml
+name: Benchmarks
+on: [push]
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: CodSpeedHQ/action@v3
+        with:
+          token: ${{ secrets.CODSPEED_TOKEN }}
+          run: cargo bench
+```
+
+```rust
+// bench.rs — works with CodSpeed unchanged
+use divan::black_box;
+
+fn main() {
+    divan::main();
+}
+
+#[divan::bench]
+fn compute() -> i32 {
+    expensive_computation(black_box(42))
+}
+```
+
+### cargo-llvm-cov (Coverage-Guided Optimization)
+
+Coverage data helps identify cold/dead code paths. Combined with PGO, it guides inlining and layout decisions:
+
+```bash
+# Install
+cargo install cargo-llvm-cov
+
+# Generate coverage report
+cargo llvm-cov --open
+
+# Use with PGO for production builds
+cargo llvm-cov --profile=release
+```
+
 ### DHAT (Heap Profiling)
 
 ```bash
@@ -116,6 +183,18 @@ fn bench_my_function(c: &mut Criterion) {
 
 criterion_group!(benches, bench_my_function);
 criterion_main!(benches);
+```
+
+## Rust 1.90: LLD Default Linker
+
+Since Rust 1.90, `rust-lld` is the default linker on `x86_64-unknown-linux-gnu`. LLD is significantly faster than GNU ld and produces comparable code. If you see linker warnings or errors in older projects, this may be the cause:
+
+```bash
+# LLD is now used by default — no configuration needed
+cargo build --release
+
+# To revert to GNU ld if needed:
+# RUSTFLAGS="-C link-args=-fuse-ld=bfd" cargo build --release
 ```
 
 ## What to Look For
@@ -172,4 +251,5 @@ Flamegraph Reading:
 
 - [opt-lto-release](opt-lto-release.md) - Enable LTO for release builds
 - [test-criterion-bench](test-criterion-bench.md) - Use criterion for benchmarking
+- [perf-release-profile](./perf-release-profile.md) - Release profile settings
 - [anti-premature-optimize](anti-premature-optimize.md) - Don't optimize without data

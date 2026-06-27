@@ -160,6 +160,50 @@ let contents = futures::future::try_join_all(
 // (requires unsafe or mmap crate)
 ```
 
+## When std::fs Can Be Faster
+
+For very small files (<1KB), `tokio::fs` adds `spawn_blocking` overhead that can exceed the actual I/O time. In these cases, `std::fs` wrapped in a single `spawn_blocking` call may be more efficient for batch reads:
+
+```rust
+// Tiny files: batch them into one spawn_blocking call
+async fn read_tiny_files(paths: &[PathBuf]) -> io::Result<Vec<String>> {
+    let paths = paths.to_vec();
+    tokio::task::spawn_blocking(move || {
+        paths.iter().map(|p| std::fs::read_to_string(p)).collect()
+    })
+    .await
+    .unwrap()
+}
+```
+
+## Do NOT Use tokio::fs for Special Files
+
+`tokio::fs` wraps operations in `spawn_blocking`, which works for regular files but can hang indefinitely on **special files**:
+
+```rust
+// BAD: tokio::fs on special files can block forever
+async fn bad_special() -> io::Result<()> {
+    tokio::fs::read("/dev/tty").await?;  // May never return!
+    Ok(())
+}
+
+// GOOD: Handle special files explicitly
+async fn good_special() -> io::Result<Vec<u8>> {
+    let data = tokio::task::spawn_blocking(|| {
+        use std::os::unix::fs::FileTypeExt;
+        let file = std::fs::File::open("/dev/something")?;
+        let metadata = file.metadata()?;
+        if metadata.file_type().is_char_device() || metadata.file_type().is_block_device() {
+            // Use O_NONBLOCK or handle device-specific I/O
+        }
+        std::fs::read("/dev/something")
+    }).await.unwrap()?;
+    Ok(data)
+}
+```
+
+Avoid `tokio::fs` for: named pipes (FIFOs), device files (`/dev/*`), `/proc` and `/sys` filesystems, and any file that may block on read/write indefinitely.
+
 ## See Also
 
 - [async-spawn-blocking](./async-spawn-blocking.md) - How tokio::fs works internally

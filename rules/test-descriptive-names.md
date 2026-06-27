@@ -135,8 +135,38 @@ mod tests {
 // tests::validation::requires_name_field
 ```
 
+## rstest Named Cases
+
+```rust
+use rstest::*;
+
+// Named cases appear in test output as case names
+#[rstest]
+#[case::empty_string_trim("", true)]
+#[case::whitespace("   ", true)]
+#[case::valid_string("hello", false)]
+fn test_is_blank(#[case] input: &str, #[case] expected: bool) {
+    assert_eq!(input.trim().is_empty(), expected);
+}
+
+// Output:
+// test_is_blank::empty_string_trim
+// test_is_blank::whitespace
+// test_is_blank::valid_string
+
+// With complex parameters
+#[rstest]
+#[case::valid_email("user@example.com", true)]
+#[case::missing_at("userexample.com", false)]
+#[case::empty_local("@example.com", false)]
+fn test_email_validation(#[case] email: &str, #[case] valid: bool) {
+    assert_eq!(validate_email(email).is_ok(), valid);
+}
+```
+
 ## See Also
 
 - [test-arrange-act-assert](./test-arrange-act-assert.md) - Test structure
 - [test-cfg-test-module](./test-cfg-test-module.md) - Test module organization
+- [test-rstest-fixtures](./test-rstest-fixtures.md) - rstest parameterized tests
 - [doc-examples-section](./doc-examples-section.md) - Documentation tests

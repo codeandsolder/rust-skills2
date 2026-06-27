@@ -31,6 +31,15 @@ strip = true           # Remove symbols
 opt-level = 3
 ```
 
+## Rust 1.92+: Unwind Tables with panic = "abort"
+
+Since Rust 1.92, `panic = "abort"` on Linux still emits minimal unwind tables, enabling backtraces even with abort-on-panic. Previously, `panic = "abort"` stripped all unwind information, making backtraces unreliable:
+
+```toml
+[profile.release]
+panic = "abort"      # Still gets backtraces on 1.92+
+```
+
 ## Profile Options
 
 | Option | Values | Effect |
@@ -39,7 +48,7 @@ opt-level = 3
 | `lto` | false, "thin", "fat" | Link-time optimization |
 | `codegen-units` | 1-256 | Parallel compilation units |
 | `panic` | "unwind", "abort" | Panic behavior |
-| `strip` | true, false, "symbols", "debuginfo" | Binary stripping |
+| `strip` | true, false, "symbols", "debuginfo" | Binary stripping (use `"symbols"` to keep debuginfo)** |
 | `debug` | true, false, 0-2 | Debug info level |
 
 ## Optimization Levels
@@ -141,6 +150,17 @@ codegen-units = 1
 lto = false
 codegen-units = 16
 ```
+
+## strip Options
+
+| Value | Behavior | Binary Size |
+|-------|----------|-------------|
+| `true` | Strip all symbols and debuginfo | Smallest |
+| `"symbols"` | Strip symbol table, keep debuginfo | Medium |
+| `"debuginfo"` | Strip debuginfo, keep symbols | Medium |
+| `false` | Keep everything | Largest |
+
+Using `strip = "symbols"` preserves debuginfo for profiling while removing the symbol table used by linkers and loaders.
 
 ## See Also
 

@@ -1,12 +1,56 @@
 # test-fixture-raii
 
-> Use RAII pattern (Drop trait) for automatic test cleanup
+> Use RAII pattern (Drop trait) for automatic test cleanup, or `rstest::#[fixture]` for declarative setup
 
 ## Why It Matters
 
-Tests often need setup and teardown—creating temp files, starting servers, setting environment variables. Using RAII (Resource Acquisition Is Initialization) with Drop ensures cleanup happens automatically, even if the test panics. This prevents test pollution and resource leaks.
+Tests often need setup and teardown—creating temp files, starting servers, setting environment variables. Using RAII (Resource Acquisition Is Initialization) with Drop ensures cleanup happens automatically, even if the test panics. This prevents test pollution and resource leaks. For most cases, `rstest`'s `#[fixture]` provides a cleaner declarative alternative.
 
-## Bad
+## rstest Fixtures (Preferred Approach)
+
+```rust
+use rstest::*;
+
+#[fixture]
+fn temp_dir() -> TempDir {
+    TempDir::new().unwrap()
+}
+
+#[fixture]
+fn config(temp_dir: TempDir) -> Config {
+    Config {
+        data_dir: temp_dir.path().to_path_buf(),
+        timeout: 30,
+    }
+}
+
+// Fixtures are injected automatically by name
+#[rstest]
+fn test_with_fixtures(config: Config) {
+    let result = process_data(&config);
+    assert!(result.is_ok());
+}  // temp_dir cleaned up automatically when TempDir drops
+```
+
+## Async Fixtures with rstest
+
+```rust
+use rstest::*;
+
+#[fixture]
+async fn db_pool() -> PgPool {
+    PgPool::connect("postgres://localhost/test").await.unwrap()
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_database(db_pool: PgPool) {
+    let users = query_users(&db_pool).await.unwrap();
+    assert!(!users.is_empty());
+}
+```
+
+## Bad (Manual Setup — No RAII)
 
 ```rust
 #[test]
@@ -58,9 +102,7 @@ struct EnvGuard {
 impl EnvGuard {
     fn set(key: &str, value: &str) -> Self {
         let original = std::env::var(key).ok();
-        // SAFETY: env::set_var is unsafe since the 2024 edition (env writes are
-        // not thread-safe); env-touching tests should run single-threaded.
-        unsafe { std::env::set_var(key, value) };
+        std::env::set_var(key, value);
         EnvGuard {
             key: key.to_string(),
             original,
@@ -70,10 +112,9 @@ impl EnvGuard {
 
 impl Drop for EnvGuard {
     fn drop(&mut self) {
-        // SAFETY: see EnvGuard::set — restored on the same single-threaded test
         match &self.original {
-            Some(v) => unsafe { std::env::set_var(&self.key, v) },
-            None => unsafe { std::env::remove_var(&self.key) },
+            Some(v) => std::env::set_var(&self.key, v),
+            None => std::env::remove_var(&self.key),
         }
     }
 }
@@ -149,6 +190,7 @@ fn test_with_defer() {
 
 ## See Also
 
+- [test-rstest-fixtures](./test-rstest-fixtures.md) - rstest fixture system
 - [test-arrange-act-assert](./test-arrange-act-assert.md) - Test structure
 - [test-tokio-async](./test-tokio-async.md) - Async test cleanup
 - [test-mock-traits](./test-mock-traits.md) - Mocking with RAII

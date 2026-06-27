@@ -111,6 +111,16 @@ trait ToOwned {
 }
 ```
 
+## Abstraction Level
+
+| Prefix | Abstraction | Work Performed |
+|--------|-------------|----------------|
+| `as_` | **Decreases** (concrete → reference) | Free (O(1)) |
+| `to_` | **Stays same** | Allocates/computes |
+| `into_` | **Decreases** (wrapper → inner) | Variable cost |
+
+`to_` conversions maintain the same abstraction level but do work. For example, `to_string()` keeps the abstraction at "string representation" but allocates. `as_` and `into_` both decrease abstraction (revealing an inner representation), but `as_` is free while `into_` has variable cost.
+
 ## See Also
 
 - [name-as-free](./name-as-free.md) - Free reference conversions

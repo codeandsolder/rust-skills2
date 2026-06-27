@@ -99,6 +99,51 @@ sorted.sort_by_key(|x| x.priority);
 | Single chain + `.collect()` | 1 | 1 | O(data) |
 | No `.collect()` (streaming) | 0 | 1 | O(1) |
 
+## Anti-Pattern: HashMap::values().collect() Then Iterate
+
+Collecting `HashMap` values into a `Vec` just to iterate them wastes an allocation and a pass:
+
+```rust
+// Bad: allocate Vec then iterate
+fn process_all(map: &HashMap<Key, Value>) {
+    let values: Vec<_> = map.values().collect();  // Allocation!
+    for v in &values {
+        process(v);
+    }
+}
+
+// Good: iterate directly
+fn process_all(map: &HashMap<Key, Value>) {
+    for v in map.values() {
+        process(v);
+    }
+}
+```
+
+## Fixed-Size Chunk Patterns
+
+When processing slices in fixed-size chunks, avoid intermediate collections with `<[T]>::as_chunks` (Rust 1.88+) and `<[T]>::array_windows` (Rust 1.94+):
+
+```rust
+// Bad: collect then iterate chunks
+let chunks: Vec<_> = data.chunks(4).collect();
+for chunk in &chunks {
+    process_four(chunk[0], chunk[1], chunk[2], chunk[3]);
+}
+
+// Good: zero-allocation fixed-size chunks
+let (chunks, remainder) = data.as_chunks::<4>();
+for &[a, b, c, d] in chunks {
+    process_four(a, b, c, d);
+}
+// remainder is &[T] for the leftover elements
+
+// For sliding windows:
+for &[a, b, c] in data.array_windows::<3>() {
+    process_three(a, b, c);
+}
+```
+
 ## Pattern: Collect with Capacity
 
 When you must collect, pre-allocate:
@@ -116,5 +161,6 @@ result.extend(
 ## See Also
 
 - [perf-iter-lazy](./perf-iter-lazy.md) - Keep iterators lazy
+- [perf-array-windows](./perf-array-windows.md) - Fixed-size windows
 - [mem-with-capacity](./mem-with-capacity.md) - Pre-allocate collections
 - [anti-collect-intermediate](./anti-collect-intermediate.md) - Anti-pattern

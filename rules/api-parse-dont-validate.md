@@ -177,10 +177,60 @@ impl AsRef<str> for Email {
 }
 ```
 
+## nutype: 2026 Gold Standard
+
+The `nutype` crate (v0.7.0, `greyblake/nutype`) is the modern implementation of "parse, don't validate". It generates validated newtypes — including sanitization, validation, error types, `FromStr`, `Display`, `AsRef`, `Deref`, `Into`, and serde support — from a single attribute macro.
+
+```rust
+use nutype::nutype;
+
+#[nutype(
+    sanitize(trim, lowercase),
+    validate(not_empty, len_char_max = 100, regex = "^[^@]+@[^@]+$"),
+    derive(Debug, Clone, Display, AsRef, Deref, FromStr, Into, Serialize, Deserialize)
+)]
+pub struct Email(String);
+
+// Parsing at the boundary — the only place validation happens
+fn handle_request(raw: RawRequest) -> Result<Response, Error> {
+    let email = Email::new(raw.email)?;          // parse once
+    let port = Port::new(raw.port)?;             // parse once
+    process(email, port)                          // guaranteed valid
+}
+
+fn process(email: Email, port: Port) {
+    // No validation needed — type system guarantees validity
+    send_to(email, port);
+}
+```
+
+### Anti-pattern: Validating at Every Boundary
+
+```rust
+// ❌ Validate everywhere — error-prone, wasteful, easy to forget
+fn fn_a(email: &str) {
+    if !valid_email(email) { return Err(...); }
+    fn_b(email);
+}
+fn fn_b(email: &str) {
+    if !valid_email(email) { return Err(...); }  // Repeat!
+    fn_c(email);
+}
+
+// ✅ Parse once at the boundary, use the type everywhere
+fn fn_a(email: Email) {
+    fn_b(&email);  // Guaranteed valid
+}
+fn fn_b(email: &Email) {
+    fn_c(email.as_ref());  // No checks needed
+}
+```
+
+See [api-nutype-validated](./api-nutype-validated.md) for the full reference.
+
 ## See Also
 
-- [api-newtype-safety](api-newtype-safety.md) - Use newtypes for type safety
-- [type-newtype-validated](type-newtype-validated.md) - Newtypes for validated data
-- [api-typestate](api-typestate.md) - Compile-time state machines
-- [conv-tryfrom-fallible](conv-tryfrom-fallible.md) - Parse via TryFrom
-- [serde-try-from-validate](serde-try-from-validate.md) - Validate at the serde boundary
+- [api-nutype-validated](./api-nutype-validated.md) - nutype crate for validated newtypes
+- [api-newtype-safety](./api-newtype-safety.md) - Use newtypes for type safety
+- [type-newtype-validated](./type-newtype-validated.md) - Newtypes for validated data
+- [api-typestate](./api-typestate.md) - Compile-time state machines

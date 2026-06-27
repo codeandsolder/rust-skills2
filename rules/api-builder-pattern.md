@@ -180,8 +180,47 @@ impl MyBuilder {
 }
 ```
 
+## bon Crate (Recommended for New Projects)
+
+The `bon` crate (`elastio/bon`, v3.9) is the community-standard builder solution for 2025-2026. It provides both `#[derive(Builder)]` for structs and `#[builder]` for functions/methods — decoupling builder APIs from struct internals.
+
+```rust
+use bon::Builder;
+
+// Struct-level builder
+#[derive(Builder)]
+pub struct Request {
+    #[builder(into)]
+    url: String,
+    #[builder(default = 30)]
+    timeout_secs: u64,
+    #[builder(into)]
+    headers: Vec<(String, String)>,
+}
+
+// Function-level builder (no struct needed)
+#[bon::builder]
+fn send_request(
+    url: &str,
+    #[builder(default = 30)]
+    timeout_secs: u64,
+) -> Result<Response, Error> {
+    // ...
+}
+```
+
+**Benefits over hand-rolled builders:**
+- Trait-based typestate enforces required fields at compile time
+- Opt-in `Into` conversions via `#[builder(into)]`
+- Fallible and async builders built-in
+- No-panic guarantee during construction
+- Up to 10× faster compile than `derive_builder`
+
+See [api-bon-builder](./api-bon-builder.md) for detailed usage.
+
 ## See Also
 
-- [api-builder-must-use](api-builder-must-use.md) - Add #[must_use] to builders
-- [api-typestate](api-typestate.md) - Compile-time state machines
-- [api-impl-into](api-impl-into.md) - Accept impl Into for flexibility
+- [api-bon-builder](./api-bon-builder.md) - bon crate builder
+- [api-builder-must-use](./api-builder-must-use.md) - Add #[must_use] to builders
+- [api-typestate](./api-typestate.md) - Compile-time state machines
+- [api-impl-into](./api-impl-into.md) - Accept impl Into for flexibility

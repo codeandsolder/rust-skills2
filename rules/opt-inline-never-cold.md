@@ -111,29 +111,44 @@ fn read_config(path: &Path) -> Result<Config, MyError> {
 }
 ```
 
-## likely/unlikely Hints
+## Stable Branch Hints with cold_path() (Rust 1.95+)
+
+Since Rust 1.95.0, `core::hint::cold_path()` provides the canonical stable way to hint branch probabilities without nightly or external crates:
 
 ```rust
-// Nightly: std::hint likely/unlikely branch hints (still unstable as of Rust 1.96)
-// (std::hint::cold_path() is stable since 1.95 for marking the rare branch)
-#![feature(likely_unlikely)]
-use std::hint::{likely, unlikely};
+use core::hint::cold_path;
 
 fn process(data: Option<&Data>) -> Result<Output, Error> {
-    if unlikely(data.is_none()) {
+    // cold_path() replaces nightly unlikely() / likely() intrinsics
+    if data.is_none() {
+        cold_path();  // Hint: this path is unlikely
         return cold_none_error();
     }
     
     let data = data.unwrap();
-    
-    if likely(data.is_valid()) {
-        fast_process(data)
-    } else {
-        slow_validate_and_process(data)
-    }
+    fast_process(data)
 }
 
-// Stable alternative: structure code so hot path is "fall through"
+// Wrapper: stable likely() without nightly
+#[inline(always)]
+pub fn likely(b: bool) -> bool {
+    if !b { core::hint::cold_path(); }
+    b
+}
+
+// Wrapper: stable unlikely() without nightly
+#[inline(always)]
+pub fn unlikely(b: bool) -> bool {
+    if b { core::hint::cold_path(); }
+    b
+}
+```
+
+### Stable alternative: code structure
+
+Even without `cold_path()`, you can structure code so the hot path is the "fall through":
+
+```rust
 fn process(data: Option<&Data>) -> Result<Output, Error> {
     let data = match data {
         Some(d) => d,

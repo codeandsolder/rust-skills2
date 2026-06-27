@@ -156,9 +156,44 @@ v.push_if_unique(2);  // No-op
 v.push_if_unique(4);  // Adds 4
 ```
 
+## #[diagnostic::do_not_recommend] Companion
+
+Since Rust 1.85.0, `#[diagnostic::do_not_recommend]` hides blanket impls from compiler suggestions. This is especially useful for extension traits with blanket implementations, where the compiler would otherwise suggest implementing the trait directly:
+
+```rust
+pub trait StringExt {
+    fn is_hex(&self) -> bool;
+}
+
+// Without do_not_recommend: compiler suggests implementing StringExt for &str
+// With do_not_recommend: compiler suggests implementing AsRef<str> instead
+#[diagnostic::do_not_recommend]
+impl<T: AsRef<str>> StringExt for T {
+    fn is_hex(&self) -> bool {
+        self.as_ref().chars().all(|c| c.is_ascii_hexdigit())
+    }
+}
+```
+
+See [api-do-not-recommend](./api-do-not-recommend.md) for details.
+
+## Trait Object Upcasting (Rust 1.86)
+
+Rust 1.86.0 (April 2025) stabilized implicit trait object upcasting, which can simplify extension trait hierarchies:
+
+```rust
+trait Readable: private::Sealed {}
+trait Writable: private::Sealed {}
+
+// Previously needed manual conversions; now implicit
+fn process(r: &dyn Readable) {
+    // Can upcast to &dyn private::Sealed automatically
+}
+```
+
 ## See Also
 
+- [api-do-not-recommend](./api-do-not-recommend.md) - Hiding impls from diagnostics
 - [api-sealed-trait](./api-sealed-trait.md) - Controlling trait implementations
 - [api-impl-into](./api-impl-into.md) - Using standard conversion traits
 - [name-as-free](./name-as-free.md) - Naming conventions for conversions
-- [trait-blanket-impl](./trait-blanket-impl.md) - Blanket impls for extension traits

@@ -63,6 +63,49 @@ match parse_config("app.json") {
 }
 ```
 
+## Rust 1.92+: Backtraces with -Cpanic=abort
+
+Since Rust 1.92, backtraces are available even when compiled with `-Cpanic=abort`. This fixes a long-standing regression where panic=abort lost backtrace information:
+
+```toml
+# Cargo.toml — panic=abort no longer sacrifices backtraces
+[profile.release]
+panic = "abort"    # smaller binary, no unwind tables
+```
+
+```rust
+// Backtrace still works with panic=abort (Rust 1.92+)
+fn main() {
+    std::panic::set_hook(Box::new(|info| {
+        let backtrace = std::backtrace::Backtrace::capture();
+        eprintln!("Panic: {info}\nBacktrace:\n{backtrace}");
+    }));
+}
+```
+
+## Rust 1.96: assert_matches! and AssertUnwindSafe
+
+```rust
+// assert_matches! — better test diagnostics than assert!(matches!(...))
+#[test]
+fn test_error_kind() {
+    assert_matches!(parse("bad input"), Err(ParseError::Syntax));
+}
+
+// From<T> for AssertUnwindSafe<T> — ergonomic catch_unwind
+use std::panic::{catch_unwind, AssertUnwindSafe};
+
+fn fallible() -> Result<i32, Error> {
+    Ok(42)
+}
+
+// Before 1.96:
+let result = catch_unwind(|| AssertUnwindSafe(fallible()));
+
+// Rust 1.96:
+let result = catch_unwind(AssertUnwindSafe(fallible()));
+```
+
 ## When Panic IS Appropriate
 
 ```rust

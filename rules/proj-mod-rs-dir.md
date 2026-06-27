@@ -101,6 +101,24 @@ pub use error::DatabaseError;
 pub use queries::{UserQueries, OrderQueries};
 ```
 
+## Edition 2024: `gen` Keyword Reservation
+
+Rust Edition 2024 reserves `gen` as a keyword (RFC 3513). Avoid naming any module or file `gen.rs` — it will become a syntax error.
+
+| ❌ Avoid | ✅ Use Instead |
+|----------|---------------|
+| `gen.rs` | `generator.rs`, `gen_mod.rs`, `r#gen.rs` |
+| `src/gen/` | `src/generator/` |
+| `mod gen;` | `mod generator;` |
+
+```rust
+// ❌ Will break in Edition 2024
+mod gen;
+
+// ✅ Works in all editions
+mod generator;
+```
+
 ## Consistency Rule
 
 Pick one style for your project and stick with it:

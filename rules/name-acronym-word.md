@@ -54,13 +54,53 @@ std::io::IoError               // Not IOError (though Io is acceptable too)
 ## Two-Letter Acronyms
 
 ```rust
-// Two-letter acronyms can go either way
-struct Io { ... }    // or IO - both acceptable
-struct Id { ... }    // or ID - both acceptable
-
-// Preference: treat as word for consistency
+// Two-letter acronyms: strongly prefer treating as word
+struct Io { ... }            // Preferred
+struct Id { ... }            // Preferred
 struct IoHandler { ... }     // Preferred
 struct IdGenerator { ... }   // Preferred
+
+// Against: IO, ID - now considered outdated style
+```
+
+## Compound Words
+
+```rust
+// Contractions of compound words count as one word
+struct Stdin { ... }         // Not StdIn
+struct Usize { ... }         // Not USize
+struct CString { ... }       // Not CString (c-string, not c string)
+struct CStr { ... }          // Not CStr
+struct Uuid { ... }          // Not UUID
+```
+
+## Clippy Enforcement
+
+Enable `clippy::upper_case_acronyms` (style, since 1.51) to catch all-caps acronyms. For stricter enforcement, enable the aggressive option:
+
+```rust
+#![warn(clippy::upper_case_acronyms)]
+
+// Aggressive mode (config): catches more edge cases like HTTP → Http
+// In .cargo/config.toml:
+// [lints.rust]
+// clippy.upper_case_acronyms.upper-case-acronyms-aggressive = true
+```
+
+## Anti-Patterns
+
+```rust
+// Bad: ALL-CAPS acronyms in identifiers
+struct HTTPResponse { ... }   // Should be HttpResponse
+struct JSONParser { ... }     // Should be JsonParser
+struct TCPConnection { ... }  // Should be TcpConnection
+struct XMLDocument { ... }    // Should be XmlDocument
+
+// Good: acronyms as words
+struct HttpResponse { ... }
+struct JsonParser { ... }
+struct TcpConnection { ... }
+struct XmlDocument { ... }
 ```
 
 ## In snake_case

@@ -124,6 +124,38 @@ pub fn get(&self, index: usize) -> Option<&T> {
 /// - The total size must not exceed `isize::MAX`
 ```
 
+## Edition 2024: unsafe extern Syntax
+
+In Edition 2024, use `unsafe extern` instead of `extern` for FFI functions
+that are inherently unsafe:
+
+```rust
+/// Allocates memory of the given size.
+///
+/// # Safety
+///
+/// - `size` must be greater than zero
+/// - The returned pointer must later be freed with [`dealloc`]
+/// - The pointer is not guaranteed to be initialized
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn alloc(size: usize) -> *mut u8 {
+    // ...
+}
+```
+
+Every `unsafe extern` function requires a `# Safety` section.
+
+## Lints
+
+```rust
+#![warn(clippy::missing_safety_doc)]      // Missing # Safety on unsafe fn
+#![warn(clippy::undocumented_unsafe_blocks)]  // Missing SAFETY comment on unsafe blocks
+```
+
+- **`missing_safety_doc`**: warns when an `unsafe fn` lacks a `# Safety` section
+- **`undocumented_unsafe_blocks`**: warns when an `unsafe {}` block lacks a
+  `// SAFETY:` comment explaining why the invariants hold
+
 ## See Also
 
 - [doc-panics-section](./doc-panics-section.md) - Documenting panics

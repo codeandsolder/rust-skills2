@@ -1,12 +1,12 @@
 # test-criterion-bench
 
-> Use `criterion` for benchmarking
+> Use `criterion` for benchmarking (or `divan` for simpler workflows)
 
 ## Why It Matters
 
-Criterion provides statistically rigorous benchmarking with warmup, multiple iterations, outlier detection, and comparison between runs. It's far more reliable than simple timing with `Instant::now()`.
+Benchmarking requires statistical rigor — warmup, multiple iterations, outlier detection. `criterion` is the standard for statistical CI benchmarks. For simpler use cases, `divan` (4.6M+ downloads, v0.1.21) provides a zero-config attribute-based API. For instruction-level analysis, use `iai-callgrind`.
 
-## Setup
+## Criterion Setup
 
 ```toml
 # Cargo.toml
@@ -17,6 +17,98 @@ criterion = "0.5"
 name = "my_benchmark"
 harness = false
 ```
+
+## Divan (Simpler Alternative)
+
+```rust
+// benches/my_benchmark.rs
+use divan::black_box;
+
+fn fibonacci(n: u64) -> u64 {
+    match n {
+        0 => 0,
+        1 => 1,
+        n => fibonacci(n - 1) + fibonacci(n - 2),
+    }
+}
+
+fn main() {
+    divan::main();
+}
+
+#[divan::bench]
+fn fib_20() -> u64 {
+    fibonacci(black_box(20))
+}
+
+// Parameterized
+#[divan::bench(args = [10, 20, 30])]
+fn fib_n(n: u64) -> u64 {
+    fibonacci(black_box(n))
+}
+
+// With max time
+#[divan::bench(max_time = 5)]
+fn heavy_computation() -> u64 {
+    compute(black_box(1000))
+}
+```
+
+```toml
+# Cargo.toml
+[dev-dependencies]
+divan = "0.1"
+
+[[bench]]
+name = "my_benchmark"
+harness = false
+```
+
+## iai-callgrind (Instruction-Level)
+
+```rust
+// benches/iai_bench.rs
+use iai_callgrind::library_benchmark;
+
+#[library_benchmark]
+#[bench::small("a")]
+#[bench::large("a".repeat(1000))]
+fn bench_strlen(input: &str) -> usize {
+    input.len()
+}
+
+fn main() {
+    iai_callgrind::library_benchmark_group!(
+        name = my_group;
+        benchmarks = bench_strlen
+    ).main();
+}
+```
+
+```toml
+# Cargo.toml
+[dev-dependencies]
+iai-callgrind = "0.13"
+
+[[bench]]
+name = "iai_bench"
+harness = false
+```
+
+## CodSpeed CI Integration
+
+```yaml
+# .github/workflows/bench.yml
+- name: Run benchmarks with CodSpeed
+  uses: CodSpeedHQ/action@v2
+  with:
+    run: cargo bench
+    token: ${{ secrets.CODSPEED_TOKEN }}
+```
+
+CodSpeed works with both Criterion and Divan, providing hosted historical tracking, regression detection, and PR comments.
+
+## Basic Criterion Benchmark
 
 ## Basic Benchmark
 
@@ -169,3 +261,6 @@ fn send_data<T: Default, const SIZE: usize>(
 
 - [perf-profile-first](perf-profile-first.md) - Profile before optimizing
 - [perf-black-box-bench](perf-black-box-bench.md) - Use black_box in benchmarks
+- [Divan](https://github.com/nvzqz/divan) — Simpler benchmarking
+- [CodSpeed](https://codspeed.io/docs/guides/how-to-benchmark-rust-with-divan) — CI benchmark tracking
+- [iai-callgrind](https://crates.io/crates/iai-callgrind) — Instruction-count benchmarks

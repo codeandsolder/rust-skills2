@@ -1,10 +1,12 @@
 # opt-target-cpu
 
-> Use `target-cpu=native` for maximum performance on known deployment targets
+> Use `target-cpu=native` (or `x86-64-v3`) for maximum performance on known deployment targets
 
 ## Why It Matters
 
 By default, Rust compiles for a generic x86-64 baseline (roughly Sandy Bridge era). Modern CPUs have SIMD extensions (AVX2, AVX-512), improved instructions, and micro-architectural optimizations that go unused. `target-cpu=native` enables all features of your current CPU, potentially unlocking significant speedups.
+
+For distributed binaries, `x86-64-v3` (AVX2, BMI2, FMA) is the recommended baseline — nearly all CPUs sold since ~2015 support it.
 
 ## Bad
 
@@ -59,29 +61,43 @@ target-cpu=apple-m1        # Apple Silicon
 target-cpu=neoverse-n1     # AWS Graviton2
 ```
 
+## ⚠ Critical: fat LTO + target-cpu=x86-64-v3
+
+Combining `target-cpu=x86-64-v3` with `lto = "fat"` can cause **up to 4000% compile-time slowdowns** ([rust#146497](https://github.com/rust-lang/rust/issues/146497)).
+
+```toml
+# Safe combination for x86-64-v3 targets
+[profile.release]
+lto = "thin"          # NOT "fat" — avoids the regression
+codegen-units = 1
+opt-level = 3
+```
+
 ## Feature Detection at Runtime
 
 ```rust
 // For portable binaries that use native features when available
+// Since Rust 1.86, #[target_feature] works on safe fn (not just unsafe fn)
 #[cfg(target_arch = "x86_64")]
 fn process_fast(data: &[u8]) -> u64 {
     if is_x86_feature_detected!("avx2") {
-        // SAFETY: only reached after avx2 is detected at runtime
-        unsafe { process_avx2(data) }
+        process_avx2(data)  // Safe function called directly
+    } else if is_x86_feature_detected!("sse4.2") {
+        process_sse42(data)
     } else {
         process_generic(data)
     }
 }
 
-#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
-unsafe fn process_avx2(data: &[u8]) -> u64 {
-    // an AVX2-optimized path would go here; delegate to the scalar version
-    process_generic(data)
+fn process_avx2(data: &[u8]) -> u64 {
+    // Safe fn — since Rust 1.86, #[target_feature] works on safe fn
+    // Since Rust 1.87, most std::arch intrinsics without pointer args are safe
 }
 
-fn process_generic(data: &[u8]) -> u64 {
-    data.iter().map(|&b| u64::from(b)).sum()
+#[target_feature(enable = "sse4.2")]
+fn process_sse42(data: &[u8]) -> u64 {
+    // ...
 }
 ```
 
@@ -149,7 +165,7 @@ rustc --print cfg -C target-cpu=x86-64 | grep feature
 rustc --print cfg -C target-cpu=native | grep feature
 
 # View generated assembly
-cargo asm --rust --release my_crate::hot_function
+cargo show-asm --rust --release my_crate::hot_function
 ```
 
 ## See Also

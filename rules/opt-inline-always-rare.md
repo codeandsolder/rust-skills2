@@ -115,7 +115,7 @@ fn bench_with_inline(c: &mut Criterion) {
 // cargo bloat --release --crates
 
 // Check if function was inlined
-// cargo asm --rust my_crate::hot_function
+// cargo show-asm --rust my_crate::hot_function
 ```
 
 ## Generic Functions
@@ -132,6 +132,22 @@ pub fn generic_function<T: Display>(x: T) {
 
 // Without #[inline], the generic function can't be inlined
 // across crate boundaries even if beneficial
+```
+
+## Cautions
+
+```rust
+// DON'T combine #[cold] with #[inline(always)] — they conflict.
+// #[cold] discourages inlining; #[inline(always)] forces it.
+// Rust 1.80+ may warn about this combination.
+#[cold]
+#[inline(always)]  // BAD: contradictory
+fn cold_but_inlined() {
+    // ...
+}
+
+// DON'T assume inlining always helps - measure!
+// Sometimes the compiler makes better decisions
 ```
 
 ## See Also

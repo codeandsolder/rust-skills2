@@ -98,6 +98,41 @@ impl MyType {
 }
 ```
 
+## mut Qualifier Convention
+
+The `mut` qualifier mirrors the return type: `as_mut_slice`, not `as_slice_mut`.
+
+```rust
+impl MyCollection {
+    // CORRECT: mut before the noun (mirrors &mut T return)
+    pub fn as_mut_slice(&mut self) -> &mut [T] { ... }
+    
+    // WRONG: mut after the noun
+    pub fn as_slice_mut(&mut self) -> &mut [T] { ... }  // Non-standard
+}
+```
+
+## Pointer Reinterpretation Pattern
+
+```rust
+impl MyType {
+    // as_ptr/as_mut_ptr for raw pointer access
+    pub fn as_ptr(&self) -> *const T { ... }
+    pub fn as_mut_ptr(&mut self) -> *mut T { ... }
+}
+```
+
+## Clippy Enforcement
+
+`clippy::wrong_self_convention` (style group) enforces that `as_*` methods take `&self` or `&mut self`:
+
+```rust
+impl MyType {
+    // Clippy will warn: as_ methods should take &self or &mut self
+    pub fn as_ref(self) -> &'static str { ... }  // Takes self by value!
+}
+```
+
 ## See Also
 
 - [name-to-expensive](name-to-expensive.md) - `to_` prefix for expensive conversions

@@ -80,6 +80,21 @@ assert!(results.all_succeeded());
 | Error handling boilerplate | Return value handling |
 | `Ok(())` return | Assertions (sometimes) |
 
+### Tip: Wildcard Imports
+
+Use `# use my_crate::*;` to minimize hidden lines for common imports:
+
+```rust
+/// # Examples
+///
+/// ```
+/// # use my_crate::*;
+/// let config = Config::builder().timeout(30).build()?;
+/// process(&config)?;
+/// # Ok::<(), Error>(())
+/// ```
+```
+
 ## Pattern: Hiding Multi-Line Setup
 
 ```rust
@@ -142,8 +157,43 @@ For examples that shouldn't run in tests:
 /// ```
 ```
 
+## Edition 2024: Combined Doctests
+
+Rust Edition 2024 compiles all doc tests in a single binary by default.
+
+### Impact on hidden setup
+
+- `Location::caller()` and `type_name` values may differ across combined
+  doc tests because they share compilation context.
+- If your hidden setup relies on unique crate identity or `$crate`,
+  mark the doc test with `standalone_crate`:
+
+```rust
+/// ```standalone_crate
+/// # use my_crate::*;
+/// // This must compile as its own crate
+/// ```
+```
+
+### Shared Setup with include_str
+
+For complex setup logic shared across multiple doc tests, extract it to a
+file and include it:
+
+```rust
+/// # Examples
+///
+#[doc = include_str!("../doc_tests/setup_and_example.md")]
+```
+
+Note: in Edition 2024, nested `include_str!` paths resolve relative to the
+included Markdown file, not the Rust source. See
+[doc-include-str](./doc-include-str.md) for details.
+
 ## See Also
 
 - [doc-examples-section](./doc-examples-section.md) - Writing examples
 - [doc-question-mark](./doc-question-mark.md) - Using `?` in examples
 - [test-doctest-examples](./test-doctest-examples.md) - Doctests as tests
+- [doc-test-edition-2024](./doc-test-edition-2024.md) - Edition 2024 doctest migration
+- [doc-include-str](./doc-include-str.md) - Shared examples via include_str

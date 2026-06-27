@@ -6,6 +6,8 @@
 
 `x = y.clone()` drops x's allocation and creates a new one from y. `x.clone_from(&y)` reuses x's existing allocation if possible, avoiding the allocation overhead. For repeatedly cloning into the same variable (loops, buffers), this can significantly reduce allocator pressure.
 
+**Note**: With `EcoString` (from `ecow` 0.3.0), `.clone()` itself is O(1) (just a refcount bump), making `clone_from()` less critical for string-heavy workloads. But for `Vec`, `HashMap`, and other heap-backed types, `clone_from()` remains important.
+
 ## Bad
 
 ```rust
@@ -138,10 +140,15 @@ let x: i32 = y;  // Not even Clone, just Copy
 fn process(data: &String) {
     // Can't use clone_from - would need &mut self
 }
+
+// EcoString - clone is O(1) anyway
+let mut s = EcoString::from("hello");
+s.clone_from(&other);  // Still works, but less beneficial
 ```
 
 ## See Also
 
 - [mem-with-capacity](./mem-with-capacity.md) - Pre-allocating capacity
 - [mem-reuse-collections](./mem-reuse-collections.md) - Reusing collection allocations
+- [mem-ecow-clone-heavy](./mem-ecow-clone-heavy.md) — EcoString O(1) clone alternative
 - [own-clone-explicit](./own-clone-explicit.md) - When Clone is appropriate

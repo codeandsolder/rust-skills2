@@ -129,7 +129,55 @@ fn collect_errors<'a>(
 | Hot path, avoiding all allocations | Yes |
 | Returning static strings or formatted | Yes |
 
+## Recent Additions
+
+### `From<T>` for `LazyCell` / `LazyLock` (1.96)
+
+```rust
+use std::cell::LazyCell;
+use std::borrow::Cow;
+
+// 1.96+: LazyCell and LazyLock implement From<T>
+let lazy: LazyCell<Cow<'static, str>> = LazyCell::from(Cow::Borrowed("hello"));
+// Equivalent to LazyCell::new(|| Cow::Borrowed("hello"))
+```
+
+### Edition 2024 RPIT Makes `Cow<'_, str>` Returns More Ergonomic
+
+In Edition 2024, return-position `impl Trait` automatically captures in-scope lifetimes. This makes it much easier to write functions that return `Cow<'_, str>` from borrowed `&self`:
+
+```rust
+// Edition 2021: need explicit lifetime (or clone workaround)
+fn display(&self) -> impl Display + '_ { ... }
+
+// Edition 2024: lifetimes captured automatically
+fn display(&self) -> impl Display { ... }
+
+// Especially useful with Cow:
+fn greeting(&self) -> Cow<'_, str> {
+    if self.needs_formatting() {
+        Cow::Owned(format!("Hello, {}!", self.name))
+    } else {
+        Cow::Borrowed(self.name.as_str())
+    }
+}
+// In 2024, the lifetime ties to &self automatically
+```
+
+### `#[diagnostic::do_not_recommend]` (1.85)
+
+Prevent misleading trait implementation suggestions when `Cow` is involved:
+
+```rust
+#[diagnostic::do_not_recommend]
+impl<T> From<T> for Cow<'static, str> {
+    // Prevents rustc from suggesting this conversion
+    // when the user's real intent was different
+}
+```
+
 ## See Also
 
 - [own-borrow-over-clone](own-borrow-over-clone.md) - Prefer borrowing over cloning
+- [own-cow-rpit-edition2024](own-cow-rpit-edition2024.md) - Edition 2024 RPIT with Cow
 - [mem-avoid-format](mem-avoid-format.md) - Avoid format! when possible

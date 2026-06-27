@@ -137,26 +137,23 @@ let (tx, rx) = watch::channel::<State>(initial);
 ## Worker Pool Pattern
 
 ```rust
+use tokio::task::JoinSet;
+
 async fn process_with_workers(items: Vec<Item>) -> Vec<Result> {
-    let (tx, rx) = mpsc::channel(100);
-    let rx = Arc::new(Mutex::new(rx));
+    let (tx, mut rx) = mpsc::channel(100);
+    let mut set = JoinSet::new();
     
-    // Spawn worker pool
-    let workers: Vec<_> = (0..4).map(|_| {
-        let rx = rx.clone();
-        tokio::spawn(async move {
-            loop {
-                let item = {
-                    let mut rx = rx.lock().await;
-                    rx.recv().await
-                };
-                match item {
-                    Some(item) => process(item).await,
-                    None => break,
-                }
+    // Spawn worker pool with JoinSet (no Arc<Mutex> needed)
+    for _ in 0..4 {
+        let mut worker_rx = rx.clone();
+        set.spawn(async move {
+            while let Some(item) = worker_rx.recv().await {
+                process(item).await;
             }
-        })
-    }).collect();
+        });
+    }
+    // Drop original receiver, keeping only worker clones
+    drop(rx);
     
     // Send items
     for item in items {
@@ -164,8 +161,29 @@ async fn process_with_workers(items: Vec<Item>) -> Vec<Result> {
     }
     drop(tx);  // Signal workers to stop
     
-    futures::future::join_all(workers).await;
+    // Wait for all workers
+    while set.join_next().await.is_some() {}
 }
+```
+
+> **Anti-pattern**: Never wrap an `mpsc::Receiver` in `Arc<Mutex<>>` to share among workers. `mpsc` receivers support `Clone` — clone the receiver before spawning each worker, or use `JoinSet` to manage task lifecycle.
+
+## High-Contention Alternatives
+
+For workloads with extreme contention (hundreds of producers), `tokio::sync::mpsc` may become a bottleneck:
+
+```rust
+// thingbuf::mpsc - high-contention MPSC with better scalability
+// than tokio::sync::mpsc under heavy load (hawkw/thingbuf)
+// use thingbuf::mpsc::channel;
+
+// async-channel - multi-producer, multi-consumer with SPSC/MPMC trade-offs
+// use async_channel::bounded;
+
+// When to use what:
+// - tokio::sync::mpsc: Default choice, good up to ~50 producers
+// - thingbuf::mpsc: Hundreds of producers, high contention
+// - async_channel: Multiple consumers needed
 ```
 
 ## See Also

@@ -115,6 +115,16 @@ Use intra-doc links to connect error variants to their definitions:
 /// contains forbidden characters.
 ```
 
+## Lints
+
+Enable `clippy::missing_errors_doc` to catch missing `# Errors` sections:
+
+```rust
+#![warn(clippy::missing_errors_doc)]
+```
+
+This warns on any public function returning `Result` without a `# Errors` section.
+
 ## See Also
 
 - [doc-panics-section](./doc-panics-section.md) - Documenting panics
