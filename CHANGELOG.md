@@ -4,15 +4,32 @@ All notable changes to this skill are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning for the rule set.
 
-## [1.5.1]
+## [2.0.0]
 
 ### Changed
+- **Modernized for Rust 1.96 (2024 edition).** Updated throughout for the
+  Rust 2024 edition and current stable (Rust 1.96): RPIT lifetime capture
+  rules, `unsafe extern` blocks, `#[unsafe(no_mangle)]`, `if let` chains
+  (1.88), `core::hint::cold_path` (1.95), `core::hint::select_unpredictable`
+  (1.88), `Atomic*::update` (1.95), `core::range::Range` (1.96),
+  `assert_matches!` (1.96), `From<T> for AssertUnwindSafe<T>` (1.96),
+  `<[T]>::array_windows` (1.94), `<[T]>::as_chunks` (1.88), trait object
+  upcasting (1.86), `#[diagnostic::do_not_recommend]` (1.85),
+  `cargo publish --workspace` (1.90), Tokio 1.52+ APIs, async-std
+  discontinued (March 2025).
 - Depth pass: expanded `own-rc-single-thread` (breaking cycles with `Weak`, the
   `Rc::clone` idiom, `strong_count`/`weak_count`, `!Send`/`!Sync`) and
   `own-refcell-interior` (`Cell` for `Copy` types).
 - Added cross-references from ~18 foundational rules to the newer categories
   (`conc-`, `conv-`, `num-`, `serde-`, `trait-`, `closure-`, `coll-`, `pat-`)
   for better navigation between related rules.
+
+Now 324 rules across 26 categories.
+
+## [1.5.1] (skipped in changelog; documented here retroactively)
+
+### Changed
+- Depth pass: expanded `own-rc-single-thread` and `own-refcell-interior`.
 
 ## [1.5.0]
 
@@ -71,7 +88,7 @@ Now 233 rules across 20 categories.
 
 ### Changed
 - Updated throughout for the Rust 2024 edition and current stable (Rust 1.96):
-  fixed `&mut T` is not `Copy`, `impl Trait` in traits, `collect_into` status,
+  RPIT lifetime capture rules, `impl Trait` in traits, `collect_into` status,
   `resolver = "3"`, `env::set_var` now `unsafe`, and more.
 
 Now 218 rules across 18 categories.

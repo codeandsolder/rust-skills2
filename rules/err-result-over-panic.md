@@ -65,16 +65,16 @@ match parse_config("app.json") {
 
 ## Rust 1.92+: Backtraces with -Cpanic=abort
 
-Since Rust 1.92, backtraces are available even when compiled with `-Cpanic=abort`. This fixes a long-standing regression where panic=abort lost backtrace information:
+Since Rust 1.92, backtraces are available even when compiled with `-Cpanic=abort` on Linux. This restores a long-standing regression where panic=abort lost backtrace information (broken since Rust 1.23):
 
 ```toml
-# Cargo.toml — panic=abort no longer sacrifices backtraces
+# Cargo.toml — panic=abort no longer sacrifices backtraces on Linux
 [profile.release]
-panic = "abort"    # smaller binary, no unwind tables
+panic = "abort"    # smaller binary, unwind tables still emitted by default
 ```
 
 ```rust
-// Backtrace still works with panic=abort (Rust 1.92+)
+// Backtrace still works with panic=abort (Rust 1.92+, Linux)
 fn main() {
     std::panic::set_hook(Box::new(|info| {
         let backtrace = std::backtrace::Backtrace::capture();
@@ -82,6 +82,8 @@ fn main() {
     }));
 }
 ```
+
+If you do not want unwind tables emitted (smaller binaries at the cost of losing backtraces), use `-Cforce-unwind-tables=no`.
 
 ## Rust 1.96: assert_matches! and AssertUnwindSafe
 

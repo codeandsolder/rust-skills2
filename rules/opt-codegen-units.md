@@ -49,7 +49,7 @@ opt-level = 3      # Maximum optimization
 // - Better constant propagation
 ```
 
-> **Note**: Since Rust 1.90, `rust-lld` is the default linker on Linux, improving LTO and codegen performance out of the box.
+> **Note**: Since Rust 1.90, `rust-lld` is the default linker on `x86_64-unknown-linux-gnu`, improving LTO and codegen performance out of the box. Other Linux targets (`aarch64-unknown-linux-gnu`, `i686-unknown-linux-gnu`, musl targets) still default to BFD. Opt out with `RUSTFLAGS="-Clinker-features=-lld"` if needed.
 
 ## Full Release Profile
 

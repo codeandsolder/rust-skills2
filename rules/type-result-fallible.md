@@ -119,9 +119,9 @@ fn process_all(items: Vec<Result<i32, Error>>) -> Result<Vec<i32>, Error> {
 }
 ```
 
-## `unused_must_use` + `Infallible` (Rust 1.92+)
+## `unused_must_use` + `Uninhabited` (Rust 1.92+)
 
-Since Rust 1.92, the compiler understands that `Result<T, Infallible>` can never be an `Err`. The `#[must_use]` lint no longer warns when such a result is discarded:
+Since Rust 1.92, the `unused_must_use` lint no longer warns on `Result<(), UninhabitedType>` or `ControlFlow<UninhabitedType, ()>`. The most common case is `Infallible`, but the exemption applies to any uninhabited error type (including user-defined empty enums):
 
 ```rust
 use std::convert::Infallible;
@@ -134,6 +134,12 @@ fn compute() -> Result<i32, Infallible> {
 
 // No warning — Err branch is statically unreachable
 compute();
+
+// Also exempt: ControlFlow<Infallible, ()>
+fn control() -> ControlFlow<Infallible, ()> {
+    ControlFlow::Continue(())
+}
+control();
 
 // With a real error type, the must_use lint applies:
 fn fallible() -> Result<i32, Error> {

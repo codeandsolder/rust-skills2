@@ -407,7 +407,7 @@ Reference these guidelines when:
 - [`perf-array-windows`](rules/perf-array-windows.md) - Use `<[T]>::array_windows` and `<[T]>::as_chunks` for compile-time-size windows
 - [`perf-atomic-update`](rules/perf-atomic-update.md) - Use `Atomic*::update` and `try_update` for cleaner CAS loops
 - [`perf-copy-range`](rules/perf-copy-range.md) - Use `core::range::Range` for Copy-compatible range storage
-- [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` for conditional extraction (Rust 1.87+)
+- [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` for conditional extraction (Vec: Rust 1.87+, HashMap/HashSet: Rust 1.88+)
 - [`perf-hint-apis`](rules/perf-hint-apis.md) - Use branch hint APIs for hot-path optimization
 
 ### 24. Project Structure (LOW)

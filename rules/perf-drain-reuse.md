@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-`drain()` removes elements from a collection while keeping its allocated capacity. This allows reusing the same allocation across iterations, avoiding repeated allocate/deallocate cycles in loops. Since Rust 1.87, `extract_if` provides conditional drain semantics — removing only selected elements while keeping the rest — without a separate filter pass.
+`drain()` removes elements from a collection while keeping its allocated capacity. This allows reusing the same allocation across iterations, avoiding repeated allocate/deallocate cycles in loops. `extract_if` provides conditional drain semantics — removing only selected elements while keeping the rest — without a separate filter pass. Stabilized across two releases: `Vec::extract_if` and `LinkedList::extract_if` in Rust 1.87, `HashMap::extract_if` and `HashSet::extract_if` in Rust 1.88.
 
 ## Bad
 
@@ -66,7 +66,7 @@ fn reuse_buffer() {
     }
 }
 
-// extract_if (Rust 1.87+) — single pass, no clones
+// extract_if on Vec (Rust 1.87+) — single pass, no clones
 fn extract_high_priority(work: &mut Vec<Task>) -> Vec<Task> {
     work.extract_if(|t| t.priority > 5).collect()
     // work retains only low-priority tasks
@@ -85,15 +85,17 @@ fn extract_high_priority(work: &mut Vec<Task>) -> Vec<Task> {
 | `HashMap<K,V>` | `.drain()` | Remove all entries |
 | `HashSet<T>` | `.drain()` | Remove all elements |
 
-## extract_if (Rust 1.87+)
+## extract_if
 
 `extract_if` replaces the nightly `drain_filter`. It returns an iterator that yields elements matching a predicate, removing them from the original collection. The original collection retains the non-matching elements.
 
-| Collection | Method | Behavior |
-|------------|--------|----------|
-| `Vec<T>` | `.extract_if(pred)` | Extract matching elements |
-| `HashMap<K,V>` | `.extract_if(pred)` | Extract matching entries |
-| `HashSet<T>` | `.extract_if(pred)` | Extract matching elements |
+| Collection | Method | Since | Behavior |
+|------------|--------|-------|----------|
+| `Vec<T>` | `.extract_if(pred)` | 1.87 | Extract matching elements |
+| `LinkedList<T>` | `.extract_if(pred)` | 1.87 | Extract matching elements |
+| `HashMap<K,V>` | `.extract_if(pred)` | 1.88 | Extract matching entries |
+| `HashSet<T>` | `.extract_if(pred)` | 1.88 | Extract matching elements |
+| `BTreeMap<K,V>` | `.extract_if(pred)` | nightly | Not yet stable |
 
 ```rust
 // Vec: extract matching, keep rest
@@ -170,7 +172,7 @@ fn transfer_matching(src: &mut Vec<Item>, dst: &mut Vec<Item>, predicate: impl F
     dst.extend(matching);
 }
 
-// Move matching elements (Rust 1.87+)
+// Move matching elements (Vec: Rust 1.87+, HashMap/HashSet: Rust 1.88+)
 fn transfer_matching_modern(src: &mut Vec<Item>, dst: &mut Vec<Item>, predicate: impl Fn(&Item) -> bool) {
     dst.extend(src.extract_if(predicate));
     // Single pass, no intermediate allocation

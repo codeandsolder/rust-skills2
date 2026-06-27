@@ -174,6 +174,8 @@ match x {
 }
 ```
 
+> **Note**: As of Rust 1.96, the compiler does not yet consider `if let` guard patterns in exhaustiveness checks — same as ordinary `if` guards. A match arm with an `if let` guard does not count as covering the pattern it guards.
+
 ## See Also
 
 - [lint-warn-style](./lint-warn-style.md) — Style warnings

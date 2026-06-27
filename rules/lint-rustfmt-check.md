@@ -56,7 +56,7 @@ edition = "2024"
 max_width = 100
 use_small_heuristics = "Max"
 imports_granularity = "Module"    # Stable since rustfmt 1.72
-group_imports = "StdExternalCrate"
+# group_imports = "StdExternalCrate"  # Unstable; requires nightly + unstable_features
 reorder_imports = true
 ```
 
@@ -132,6 +132,7 @@ Some options still require nightly:
 # rustfmt.toml (nightly only)
 unstable_features = true
 imports_granularity = "Crate"  # "Module" is stable, "Crate" is nightly
+group_imports = "StdExternalCrate"  # Unstable; requires nightly + unstable_features
 wrap_comments = true
 format_code_in_doc_comments = true
 ```
@@ -141,7 +142,7 @@ format_code_in_doc_comments = true
 cargo +nightly fmt
 ```
 
-> Note: `imports_granularity = "Module"` has been stable since rustfmt 1.72 (bundled with Rust 1.72+). Only `"Crate"` and `"Item"` levels require nightly.
+> Note: `imports_granularity = "Module"` has been stable since rustfmt 1.72 (bundled with Rust 1.72+). Only `"Crate"` and `"Item"` levels require nightly. `group_imports` (any value other than the default `"Preserve"`) is also unstable and requires nightly + `unstable_features = true`.
 
 ## IDE Integration
 
