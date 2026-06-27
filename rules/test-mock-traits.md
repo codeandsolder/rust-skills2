@@ -73,7 +73,6 @@ mod tests {
         users: HashMap<u64, User>,
     }
     
-    #[async_trait]
     impl UserRepository for MockUserRepo {
         async fn find_by_id(&self, id: u64) -> Result<Option<User>, DbError> {
             Ok(self.users.get(&id).cloned())

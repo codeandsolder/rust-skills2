@@ -136,37 +136,42 @@ let (tx, rx) = watch::channel::<State>(initial);
 
 ## Worker Pool Pattern
 
+`tokio::sync::mpsc` is single-consumer — only one `Receiver` can exist. For a multi-worker work queue, give each worker its own channel and distribute work across them:
+
 ```rust
 use tokio::task::JoinSet;
 
-async fn process_with_workers(items: Vec<Item>) -> Vec<Result> {
-    let (tx, mut rx) = mpsc::channel(100);
+async fn process_with_workers(items: Vec<Item>) {
     let mut set = JoinSet::new();
-    
-    // Spawn worker pool with JoinSet (no Arc<Mutex> needed)
-    for _ in 0..4 {
-        let mut worker_rx = rx.clone();
+    let num_workers = 4;
+
+    // Spawn workers, each with a dedicated channel
+    let mut senders = Vec::new();
+    for _ in 0..num_workers {
+        let (tx, mut rx) = mpsc::channel::<Item>(10);
+        senders.push(tx);
         set.spawn(async move {
-            while let Some(item) = worker_rx.recv().await {
+            while let Some(item) = rx.recv().await {
                 process(item).await;
             }
         });
     }
-    // Drop original receiver, keeping only worker clones
-    drop(rx);
-    
-    // Send items
-    for item in items {
-        tx.send(item).await.unwrap();
+
+    // Distribute items round-robin across workers
+    for (i, item) in items.into_iter().enumerate() {
+        let sender = &senders[i % num_workers];
+        sender.send(item).await.unwrap();
     }
-    drop(tx);  // Signal workers to stop
-    
+
+    // Drop all senders to signal completion
+    drop(senders);
+
     // Wait for all workers
     while set.join_next().await.is_some() {}
 }
 ```
 
-> **Anti-pattern**: Never wrap an `mpsc::Receiver` in `Arc<Mutex<>>` to share among workers. `mpsc` receivers support `Clone` — clone the receiver before spawning each worker, or use `JoinSet` to manage task lifecycle.
+> **Anti-pattern**: Never wrap an `mpsc::Receiver` in `Arc<Mutex<>>` to share among workers. `mpsc` channels are single-consumer — the `Receiver` is **not** `Clone`. For multiple consumers, use `broadcast` (each worker gets every message), or the per-worker channel pattern above.
 
 ## High-Contention Alternatives
 

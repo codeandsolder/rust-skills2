@@ -211,7 +211,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("transparent")]  // Delegates Display and source to inner
+    #[error(transparent)]  // Delegates Display and source to inner
     Other(#[from] anyhow::Error),
 
     #[error("config error: {0}")]

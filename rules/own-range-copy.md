@@ -6,7 +6,7 @@
 
 ## Why It Matters
 
-`core::ops::Range<T>` does not implement `Copy` (it contains a `Bound` enum internally). Rust 1.96 introduced `core::range::Range<T>` as a `Copy`-compatible replacement, enabling `#[derive(Copy)]` on types that contain ranges.
+`core::ops::Range<T>` does not implement `Copy` (it implements `Iterator`, which requires `&mut self` and thus precludes `Copy`). Rust 1.96 introduced `core::range::Range<T>` as a `Copy`-compatible replacement, enabling `#[derive(Copy)]` on types that contain ranges.
 
 ## Bad
 

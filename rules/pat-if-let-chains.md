@@ -1,14 +1,14 @@
 # pat-if-let-chains
 
-> Use `if let` chains to combine pattern bindings and conditions
+> Use `if let` / `while let` chains to combine pattern bindings and conditions
 
 ## Why It Matters
 
-If-let chains (stabilized in Rust 1.88 under the 2024 edition) let you write a single `if` header that binds multiple patterns and tests arbitrary boolean conditions, all with `&&`. Without chains, each additional binding requires another level of nesting, pushing the happy-path body further right and forcing the reader to track multiple scopes. With chains, all preconditions read left-to-right at the same indentation level.
+Let chains (stabilized in Rust 1.88 under the 2024 edition) let you write a single `if` or `while` header that binds multiple patterns and tests arbitrary boolean conditions, all with `&&`. Without chains, each additional binding requires another level of nesting, pushing the happy-path body further right and forcing the reader to track multiple scopes. With chains, all preconditions read left-to-right at the same indentation level.
 
 ## Prerequisite
 
-If-let chains require the **2024 edition**. Set it in `Cargo.toml`:
+Let chains require the **2024 edition**. Set it in `Cargo.toml`:
 
 ```toml
 [package]
@@ -49,6 +49,39 @@ fn handle(input: Option<String>, limit: Option<u32>) -> Option<String> {
 
 Each `&&` clause is evaluated in order; short-circuit semantics still apply, so later clauses only run if earlier ones succeed.
 
+## `while let` Chains
+
+The same `&&` chaining works in `while` loop conditions:
+
+```rust
+fn process_until_done(stream: &mut impl Iterator<Item = Option<u32>>) {
+    while let Some(Some(n)) = stream.next()
+        && let Ok(processed) = try_process(n)
+        && processed > 0
+    {
+        println!("processed: {processed}");
+    }
+}
+```
+
+## Top-Level Constraint
+
+`let` expressions in a chain must appear at the top level of the condition — they cannot be wrapped in parentheses or grouped with `||`. Only `&&` chaining is supported:
+
+```rust
+// ✅ Valid: top-level && chains
+if let Some(a) = first()
+    && let Some(b) = second()
+    && a < b
+{ ... }
+
+// ❌ Invalid: parentheses wrapping a let
+// if (let Some(a) = first() && let Some(b) = second()) { ... }
+
+// ❌ Invalid: || between let bindings
+// if let Some(a) = first() || let Some(b) = second() { ... }
+```
+
 ## Mixing Patterns and Boolean Guards
 
 Chains can freely interleave `let` bindings with plain boolean expressions:
@@ -73,7 +106,7 @@ fn effective_timeout(cfg: &Config) -> Option<u64> {
 
 ## When to Prefer `let ... else`
 
-Use `let ... else` when the goal is early return on failure; use if-let chains when you have a richer condition that combines multiple optional bindings with a positive body to execute.
+Use `let ... else` when the goal is early return on failure; use `if let` / `while let` chains when you have a richer condition that combines multiple optional bindings with a positive body to execute.
 
 ## See Also
 

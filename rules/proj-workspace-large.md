@@ -224,7 +224,7 @@ cargo publish --workspace --dry-run
 
 - **Feature unification** — workspace members share feature activation. `crate-a` enabling `tokio/full` activates it for all members. See [proj-workspace-deps](./proj-workspace-deps.md) for mitigations.
 - **`default-features = false`** — does not compose with `{dep}.workspace = true` (cargo#12162). Define minimal-feature variants in workspace deps instead.
-- **`resolver = "3"`** — required for Edition 2024. Workspaces created with older editions should update explicitly.
+- **`resolver = "3"`** — required for Edition 2024. Workspaces created with older editions should update explicitly. Virtual workspaces (no root `[package]`) must set `resolver = "3"` explicitly — it is not inferred from member crates' editions.
 
 ## See Also
 

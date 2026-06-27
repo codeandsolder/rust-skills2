@@ -55,14 +55,15 @@ enum Status {
 `rename_all` applies to both serialization and deserialization. Supported values:
 
 | Value | Example field `foo_bar` becomes |
-|---|---|
-| `"camelCase"` | `fooBar` |
-| `"PascalCase"` | `FooBar` |
-| `"kebab-case"` | `foo-bar` |
-| `"SCREAMING_SNAKE_CASE"` | `FOO_BAR` |
-| `"snake_case"` | `foo_bar` (identity) |
-| `"UPPERCASE"` | `FOOBAR` |
+|---|---|---|
 | `"lowercase"` | `foobar` |
+| `"UPPERCASE"` | `FOOBAR` |
+| `"PascalCase"` | `FooBar` |
+| `"camelCase"` | `fooBar` |
+| `"snake_case"` | `foo_bar` (identity) |
+| `"SCREAMING_SNAKE_CASE"` | `FOO_BAR` |
+| `"kebab-case"` | `foo-bar` |
+| `"SCREAMING-KEBAB-CASE"` | `FOO-BAR` |
 
 A field-level `#[serde(rename = "...")]` always wins over the container-level `rename_all`, so use it for exceptions like reserved words or one-off mismatches. For enums, `rename_all` applies to variant names.
 

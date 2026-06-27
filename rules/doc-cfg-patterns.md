@@ -36,10 +36,15 @@ Enable `doc_cfg` annotations on docs.rs by configuring `Cargo.toml`:
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
-features = ["unstable-doc-cfg"]
 ```
 
-Then guard annotations with `#[cfg_attr(docsrs, doc(cfg(...)))]`:
+Then in your crate root, enable the nightly `doc_cfg` feature on docs.rs:
+
+```rust
+#![cfg_attr(docsrs, feature(doc_cfg))]
+```
+
+And guard annotations with `#[cfg_attr(docsrs, doc(cfg(...)))]`:
 
 ```rust
 /// Async HTTP client.

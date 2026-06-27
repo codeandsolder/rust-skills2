@@ -187,16 +187,15 @@ This provides real-time visualization of tasks, resources, and async operations.
 
 ```rust
 use tokio::runtime::RuntimeMetrics;
-use std::sync::Arc;
 
 struct HealthReport {
-    active_tasks: u64,
+    active_tasks: usize,
     blocking_queue_depth: usize,
     total_poll_count: u64,
     remote_schedule_count: u64,
 }
 
-async fn metrics_collector(metrics: Arc<RuntimeMetrics>) -> mpsc::Receiver<HealthReport> {
+async fn metrics_collector(metrics: RuntimeMetrics) -> mpsc::Receiver<HealthReport> {
     let (tx, rx) = mpsc::channel::<HealthReport>(100);
     
     tokio::spawn(async move {

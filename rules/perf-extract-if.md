@@ -1,12 +1,12 @@
 # perf-extract-if
 
-> Use `extract_if` for conditional extraction (Rust 1.88+)
+> Use `extract_if` for conditional extraction (Rust 1.87+)
 
 **Rule**: `perf-extract-if`
 
 ## Why It Matters
 
-`Vec::extract_if`, `HashMap::extract_if`, and `HashSet::extract_if` (stabilized in Rust 1.88) allow removing elements matching a predicate while moving them into an iterator. Unlike the manual `retain` + `clone` + `collect` pattern, `extract_if` does a single pass, avoids cloning, and reuses the existing allocation.
+`Vec::extract_if`, `HashMap::extract_if`, and `HashSet::extract_if` (stabilized in Rust 1.87) allow removing elements matching a predicate while moving them into an iterator. Unlike the manual `retain` + `clone` + `collect` pattern, `extract_if` does a single pass, avoids cloning, and reuses the existing allocation.
 
 ## Bad
 
@@ -70,9 +70,9 @@ fn extract_large(map: &mut HashMap<String, u64>) -> HashMap<String, u64> {
 
 | Collection | Method | Since | Returns |
 |------------|--------|-------|---------|
-| `Vec<T>` | `.extract_if(pred)` | 1.88 | `ExtractIf<'_, T, impl FnMut(&mut T) -> bool>` |
-| `HashMap<K,V>` | `.extract_if(pred)` | 1.88 | `ExtractIf<'_, K, V, impl FnMut(&K, &mut V) -> bool>` |
-| `HashSet<T>` | `.extract_if(pred)` | 1.88 | `ExtractIf<'_, T, impl FnMut(&T) -> bool>` |
+| `Vec<T>` | `.extract_if(pred)` | 1.87 | `ExtractIf<'_, T, impl FnMut(&mut T) -> bool>` |
+| `HashMap<K,V>` | `.extract_if(pred)` | 1.87 | `ExtractIf<'_, K, V, impl FnMut(&K, &mut V) -> bool>` |
+| `HashSet<T>` | `.extract_if(pred)` | 1.87 | `ExtractIf<'_, T, impl FnMut(&T) -> bool>` |
 
 ## Vec Patterns
 

@@ -63,6 +63,7 @@ fn handle_request(req: &Request, status: u16) {
 - Prefer `%` over `?` for values that have a clean `Display` (e.g., `%id`, `%path`) — JSON backends quote Debug output inconsistently.
 - Use namespaced field names like `user.id`, `http.status`, `db.query` when aligning to OpenTelemetry semantic conventions.
 - Avoid placing the same data in both the message and a field (redundant and noisy).
+- Structured fields avoid the allocation cost of `format!()` interpolation — prefer `info!(user_id, items, elapsed_ms, "batch processed")` over `info!("processed {items} items for user {user_id}")`. The message string is a `&'static str` reference, while fields are typed and trivially cheap to skip when the level is disabled. This matters in hot-path and per-item loops.
 
 ## See Also
 

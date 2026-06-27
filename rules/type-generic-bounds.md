@@ -114,6 +114,29 @@ where
 { }
 ```
 
+## Inline Associated Type Bounds (Edition 2024, Rust 1.85+)
+
+Use the shorter inline syntax for bounds on associated types, stabilized in Edition 2024:
+
+```rust
+// Before Edition 2024: separate bound on the associated type
+fn copyable<I: Iterator>(iter: I)
+where
+    I::Item: Copy,
+{ }
+
+// After Edition 2024: inline the bound directly
+fn copyable<I: Iterator<Item: Copy>>(iter: I) { }
+
+// Multiple bounds on associated types
+fn debuggable<I: Iterator<Item: Debug + Display>>(iter: I) { }
+
+// Works with trait objects too
+fn process(iter: &dyn Iterator<Item: Clone + 'static>) { }
+```
+
+The inline syntax is particularly useful for reducing verbosity in function signatures with single-use associated type bounds. For complex bounds involving multiple associated types, the `where` clause style (shown in the previous section) remains clearer.
+
 ## Precise Capturing with `use<...>` (Rust 1.87+)
 
 In Edition 2024, `impl Trait` in return position has stricter capturing rules. Use `use<...>` to precisely specify which generic parameters are captured:

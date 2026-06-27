@@ -103,8 +103,8 @@ assert_eq!(size_of::<Option<NonZeroHandle>>(), size_of::<u64>());
 ## FFI Pattern with Edition 2024 `unsafe extern`
 
 ```rust
-// Edition 2024: `unsafe` goes on the extern block; individual fn
-// declarations inside are implicitly unsafe (no `unsafe` on each fn).
+// Edition 2024: extern blocks require `unsafe` keyword; individual
+// fn declarations inside must be annotated `safe` or `unsafe`.
 mod ffi {
     use std::os::raw::c_int;
 
@@ -112,9 +112,11 @@ mod ffi {
     pub struct FileDescriptor(c_int);
 
     unsafe extern "C" {
-        pub fn open(path: *const i8, flags: c_int) -> FileDescriptor;
-        pub fn close(fd: FileDescriptor) -> c_int;
-        pub fn read(fd: FileDescriptor, buf: *mut u8, len: usize) -> isize;
+        // safe fn: callable from safe code without an unsafe block
+        pub safe fn open(path: *const i8, flags: c_int) -> FileDescriptor;
+        // unsafe fn: requires an unsafe block at the call site
+        pub unsafe fn close(fd: FileDescriptor) -> c_int;
+        pub unsafe fn read(fd: FileDescriptor, buf: *mut u8, len: usize) -> isize;
     }
 }
 
@@ -126,9 +128,14 @@ pub struct File {
 impl File {
     pub fn open(path: &str) -> std::io::Result<Self> {
         let c_path = std::ffi::CString::new(path)?;
-        // Calling an unsafe extern fn still requires an unsafe block at the call site
         let fd = unsafe { ffi::open(c_path.as_ptr(), 0) };
         Ok(File { fd })
+    }
+}
+
+impl Drop for File {
+    fn drop(&mut self) {
+        unsafe { ffi::close(self.fd); }
     }
 }
 ```

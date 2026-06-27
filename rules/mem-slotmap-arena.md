@@ -6,7 +6,7 @@
 
 ## Why It Matters
 
-When you need to store and reference many objects (ECS, graph nodes, self-referencing structs), `Vec<T>` with indices is fast but indices become stale if elements are removed. `Rc<T>` / `Arc<T>` have pointer overhead and refcount cycles. `SlotMap` (1.0.9, actively maintained) provides the best of both: stable, type-safe handles (generation-counted keys) backed by contiguous storage — O(1) access, O(1) insert, O(1) remove without invalidating existing handles.
+When you need to store and reference many objects (ECS, graph nodes, self-referencing structs), `Vec<T>` with indices is fast but indices become stale if elements are removed. `Rc<T>` / `Arc<T>` have pointer overhead and refcount cycles. `SlotMap` (1.1.1, actively maintained) provides the best of both: stable, type-safe handles (generation-counted keys) backed by contiguous storage — O(1) access, O(1) insert, O(1) remove without invalidating existing handles.
 
 ## Bad
 
@@ -164,7 +164,7 @@ let mut simple: Vec<i32> = vec![1, 2, 3];  // No removal needed
 
 ```toml
 [dependencies]
-slotmap = "1.0.9"
+slotmap = "1.1.1"
 ```
 
 ## See Also

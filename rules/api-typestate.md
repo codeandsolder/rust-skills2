@@ -227,11 +227,9 @@ Unlike hand-rolled typestate (which requires phantom types, separate state struc
 Rust 1.86.0 (April 2025) stabilized implicit upcasting of trait objects. This simplifies some typestate designs where you return `Box<dyn State>` or `&dyn State`:
 
 ```rust
-#![feature(trait_upcasting)]  // → stable in 1.86, no feature gate needed
-
 trait Base {}
 trait Derived: Base {}
-// &dyn Derived can now implicitly coerce to &dyn Base
+// &dyn Derived now implicitly coerces to &dyn Base (no feature gate needed since Rust 1.86)
 ```
 
 ## Anti-pattern: Hand-rolling Typestate for Simple Builders

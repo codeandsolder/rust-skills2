@@ -64,7 +64,7 @@ let path: &Path = Path::new("foo");       // Just reference
 |--------|------|-----------|---------|
 | `as_` | Free (O(1)) | Borrows `&T` | `as_str()`, `as_bytes()` |
 | `to_` | Allocates/Computes | Creates new | `to_string()`, `to_vec()` |
-| `into_` | Usually free | Takes ownership | `into_inner()`, `into_vec()` |
+| `into_` | Variable | Takes ownership | `into_inner()`, `into_vec()` |
 
 ## Custom Types
 

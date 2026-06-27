@@ -39,8 +39,9 @@ fn keep_positive(data: &[f64]) -> Vec<f64> {
 }
 
 fn sort_large(data: &mut [f64]) {
-    // parallel unstable sort — faster than std sort for large slices
-    data.par_sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    // parallel unstable sort — faster than std sort for large slices.
+    // `total_cmp` handles NaN safely (orders NaN last) unlike `partial_cmp`.
+    data.par_sort_unstable_by(|a, b| a.total_cmp(b));
 }
 ```
 

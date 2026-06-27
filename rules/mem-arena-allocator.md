@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-Arena allocators (bump allocators) allocate memory from a contiguous region, making allocation extremely fast (just bump a pointer). All allocations are freed at once when the arena is dropped. Perfect for request-scoped or parse-tree allocations. **bumpalo 3.20.3** (March 2026) is the current stable release.
+Arena allocators (bump allocators) allocate memory from a contiguous region, making allocation extremely fast (just bump a pointer). All allocations are freed at once when the arena is dropped. Perfect for request-scoped or parse-tree allocations. **bumpalo 3.20.3** (May 2026) is the current stable release.
 
 ## Bad
 

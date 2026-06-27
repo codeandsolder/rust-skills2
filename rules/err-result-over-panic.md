@@ -103,7 +103,7 @@ fn fallible() -> Result<i32, Error> {
 let result = catch_unwind(|| AssertUnwindSafe(fallible()));
 
 // Rust 1.96:
-let result = catch_unwind(AssertUnwindSafe(fallible()));
+let result = catch_unwind(AssertUnwindSafe(fallible));
 ```
 
 ## When Panic IS Appropriate

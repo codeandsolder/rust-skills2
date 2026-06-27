@@ -1,6 +1,6 @@
 # api-bon-builder
 
-> Use the `bon` crate (v3.9, `elastio/bon`) for ergonomic, compile-time safe builders
+> Use the `bon` crate (v3.9.x, `elastio/bon`) for ergonomic, compile-time safe builders
 
 **Rule**: `api-bon-builder`
 

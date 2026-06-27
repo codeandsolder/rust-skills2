@@ -1,11 +1,11 @@
 # Rust Skills
 
-![rules](https://img.shields.io/badge/rules-320-blue)
+![rules](https://img.shields.io/badge/rules-324-blue)
 ![categories](https://img.shields.io/badge/categories-26-blue)
 ![Rust](https://img.shields.io/badge/Rust-1.96%20%2F%202024%20edition-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-320 Rust rules your AI coding agent can use to write better code. Current for Rust 1.96 (2024 edition).
+324 Rust rules your AI coding agent can use to write better code. Current for Rust 1.96 (2024 edition).
 
 Works with Claude Code, Cursor, Windsurf, Copilot, Codex, Aider, Zed, Amp, Cline, and pretty much any other agent that supports skills.
 
@@ -66,35 +66,35 @@ fn first_word(s: &str) -> Option<&str> {
 
 ## What's in here
 
-320 rules split into 26 categories:
+324 rules split into 26 categories:
 
 | Category | Rules | What it covers |
 |----------|-------|----------------|
-| **Ownership & Borrowing** | 15 | When to borrow vs clone, Arc/Rc, lifetimes, `Cell::update`, `core::range::Range` Copy, Edition 2024 RPIT capture |
+| **Ownership & Borrowing** | 16 | When to borrow vs clone, Arc/Rc, lifetimes, `Cell::update`, `core::range::Range` Copy, Edition 2024 RPIT capture, `LazyLock`/`LazyCell` (1.80+) |
 | **Error Handling** | 17 | thiserror 2.0 for libs (with `no_std`), anyhow for apps, `core::error::Error`, `#[diagnostic::do_not_recommend]`, `#[expect]` over `#[allow]` |
 | **Memory** | 22 | SmallVec, arenas, avoiding allocations, `mem::take`, drop order, `Arc<str>`, `EcoString`, `SlotMap`, `Box::new_uninit` |
-| **Unsafe Code** | 7 | `SAFETY:` comments, Miri, `MaybeUninit`, 2024-edition `unsafe extern` blocks, `#[unsafe(no_mangle)]` |
+| **Unsafe Code** | 8 | `SAFETY:` comments, Miri, `MaybeUninit`, 2024-edition `unsafe extern` blocks, `#[unsafe(no_mangle)]`, strict provenance APIs (`ptr.addr()`, `ptr.map_addr()`, `&raw const`/`&raw mut`) |
 | **API Design** | 20 | Builder pattern (`bon`), newtypes (`nutype`), sealed traits, `FromIterator`, `#[diagnostic::do_not_recommend]` |
 | **Async** | 21 | Tokio patterns, channels, async fn in traits, cancel safety, `RuntimeMetrics`, `JoinSet` + `CancellationToken` |
 | **Concurrency** | 4 | rayon, scoped threads, atomic ordering, thread-locals |
 | **Optimization** | 14 | LTO, inlining, PGO, SIMD, `core::hint::cold_path()` (1.95), `select_unpredictable` (1.88) |
 | **Numeric & Arithmetic** | 5 | Overflow handling, `as` vs `TryFrom`, float compare, `NonZero` |
 | **Type Safety** | 17 | Newtypes, parse don't validate, `Deref`, `Display`/`Debug`, `derive_more`, `nutype`, `NonZero<uN>`, `#[repr(transparent)]` |
-| **Trait & Generics Design** | 6 | dyn vs generic, associated types, blanket impls, object safety, orphan rule |
+| **Trait & Generics Design** | 7 | dyn vs generic, associated types, blanket impls, object safety, orphan rule, trait object upcasting (1.86+) |
 | **Conversions** | 3 | `TryFrom`, `FromStr`, `AsMut` |
 | **Const & Compile-Time** | 4 | `const fn`, const vs static, const generics, `const {}` blocks |
 | **Serde** | 8 | rename_all, default, flatten, enum tagging, validate-on-deserialize |
 | **Pattern Matching** | 5 | `let-else`, `matches!`, if-let chains, exhaustive matches |
 | **Macros** | 8 | `macro_rules!` hygiene, fragment specifiers, proc-macros with syn/quote |
-| **Closures** | 5 | Fn/FnMut/FnOnce bounds, returning `impl Fn`, move & disjoint capture |
+| **Closures** | 6 | Fn/FnMut/FnOnce bounds, returning `impl Fn`, move & disjoint capture, async closures `async || {}` (1.85+) |
 | **Collections** | 4 | HashMap/BTreeMap/IndexMap, Vec/VecDeque, sets, `BinaryHeap` |
 | **Naming** | 18 | Following Rust API Guidelines, C-FEATURE, C-WORD-ORDER (verb-object) |
 | **Testing** | 21 | Proptest, mockall, criterion, loom, snapshot tests, `assert_matches!` (1.96), `cargo-nextest`, `cargo-llvm-cov`, `rstest`, `insta`, `cargo-fuzz` |
 | **Docs** | 16 | Doc examples, intra-doc links, README/crate-doc unification, `#[doc(cfg)]`, `#[doc(hidden)]`, `#[doc = include_str!]`, Edition 2024 doctests |
 | **Observability** | 7 | tracing over log, spans, structured fields, redacting secrets |
-| **Performance** | 18 | Iterators, entry API, faster hashers, I/O buffering, `<[T]>::array_windows`, `extract_if` (1.88), `Atomic*::update` (1.95), branch hint APIs |
+| **Performance** | 18 | Iterators, entry API, faster hashers, I/O buffering, `<[T]>::array_windows`, `extract_if` (1.87), `Atomic*::update` (1.95), branch hint APIs |
 | **Project Structure** | 17 | Workspaces, module layout, features, MSRV, `[lints]` table, `[workspace.package]`, `cargo publish --workspace` (1.90+) |
-| **Linting** | 18 | Clippy config, CI setup, `unexpected_cfgs`, `[lints]` table, Edition 2024 lints, Dylint, uplifted lints (1.86-1.96), `cargo_unused_cargo_features` (1.88+) |
+| **Linting** | 18 | Clippy config, CI setup, `unexpected_cfgs`, `[lints]` table, Edition 2024 lints, Dylint, uplifted lints (1.86-1.96) |
 | **Anti-patterns** | 20 | Common mistakes, `Arc<Mutex<T>>` overuse, async `Drop` blocking, `block_on` in async, `Deref` overuse, `unsafe impl Send/Sync` shortcuts |
 
 Each rule has:

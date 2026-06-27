@@ -159,10 +159,10 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("transparent")]
+    #[error(transparent)]
     Internal(#[from] InternalError),
 
-    #[error("transparent")]
+    #[error(transparent)]
     Io(#[from] std::io::Error),
 
     // Without transparent, wrapping is more verbose

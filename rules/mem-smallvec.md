@@ -131,7 +131,7 @@ fn parse_rgb(s: &str) -> ArrayVec<u8, 3> {
 [dependencies]
 smallvec = "1.15"
 # or for 100%-safe alternative
-tinyvec = "1.9"
+tinyvec = "1.11"
 ```
 
 ## See Also

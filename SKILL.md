@@ -1,7 +1,7 @@
 ---
 name: rust-skills
 description: >
-  Comprehensive Rust coding guidelines with 320 rules across 26 categories.
+  Comprehensive Rust coding guidelines with 324 rules across 26 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
@@ -23,7 +23,7 @@ metadata:
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 320 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.96 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 324 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.96 (2024 edition).
 
 ## When to Apply
 
@@ -41,23 +41,23 @@ Reference these guidelines when:
 
 | Priority | Category | Impact | Prefix | Rules |
 |----------|----------|--------|--------|-------|
-| 1 | Ownership & Borrowing | CRITICAL | `own-` | 15 |
+| 1 | Ownership & Borrowing | CRITICAL | `own-` | 16 |
 | 2 | Error Handling | CRITICAL | `err-` | 17 |
 | 3 | Memory Optimization | CRITICAL | `mem-` | 22 |
-| 4 | Unsafe Code | CRITICAL | `unsafe-` | 7 |
+| 4 | Unsafe Code | CRITICAL | `unsafe-` | 8 |
 | 5 | API Design | HIGH | `api-` | 20 |
 | 6 | Async/Await | HIGH | `async-` | 21 |
 | 7 | Concurrency | HIGH | `conc-` | 4 |
 | 8 | Compiler Optimization | HIGH | `opt-` | 14 |
 | 9 | Numeric & Arithmetic Safety | HIGH | `num-` | 5 |
 | 10 | Type Safety | MEDIUM | `type-` | 17 |
-| 11 | Trait & Generics Design | MEDIUM | `trait-` | 6 |
+| 11 | Trait & Generics Design | MEDIUM | `trait-` | 7 |
 | 12 | Conversions | MEDIUM | `conv-` | 3 |
 | 13 | Const & Compile-Time | MEDIUM | `const-` | 4 |
 | 14 | Serde | MEDIUM | `serde-` | 8 |
 | 15 | Pattern Matching | MEDIUM | `pat-` | 5 |
 | 16 | Macros | MEDIUM | `macro-` | 8 |
-| 17 | Closures | MEDIUM | `closure-` | 5 |
+| 17 | Closures | MEDIUM | `closure-` | 6 |
 | 18 | Collections | MEDIUM | `coll-` | 4 |
 | 19 | Naming Conventions | MEDIUM | `name-` | 18 |
 | 20 | Testing | MEDIUM | `test-` | 21 |
@@ -89,6 +89,7 @@ Reference these guidelines when:
 - [`own-cell-update`](rules/own-cell-update.md) - Use `Cell::update` (Rust 1.88+) for atomic read-modify-write on `Copy`-type interior-mutable data
 - [`own-cow-rpit-edition2024`](rules/own-cow-rpit-edition2024.md) - Edition 2024 RPIT lifetime capture makes `Cow<'_, T>` returns from methods borrowing `&self` dramatically more ergonomic
 - [`own-range-copy`](rules/own-range-copy.md) - Prefer `core::range::Range` (Rust 1.96+, `Copy`) over `core::ops::Range` in new code when the range needs to be `Copy`
+- [`own-lazy-init`](rules/own-lazy-init.md) - Use `std::sync::LazyLock` / `std::cell::LazyCell` for lazily initialized shared data
 
 ### 2. Error Handling (CRITICAL)
 
@@ -144,6 +145,7 @@ Reference these guidelines when:
 - [`unsafe-extern-block`](rules/unsafe-extern-block.md) - In Rust 2024, wrap `extern` blocks in `unsafe extern { }` and annotate each item as `safe` or `unsafe`.
 - [`unsafe-send-sync-manual`](rules/unsafe-send-sync-manual.md) - Document the invariants when manually implementing `Send` or `Sync`; prefer letting the compiler derive them automatically.
 - [`unsafe-no-mangle-unsafe`](rules/unsafe-no-mangle-unsafe.md) - In Rust 2024, write `#[unsafe(no_mangle)]`, `#[unsafe(export_name = "...")]`, and `#[unsafe(link_section = "...")]` — not the bare attribute forms.
+- [`unsafe-strict-provenance`](rules/unsafe-strict-provenance.md) - Prefer strict provenance APIs (`ptr.addr()`, `ptr.map_addr()`, `ptr.with_addr()`) over integer-pointer round-tripping (`as usize` / `as *const T`); prefer raw borrow syntax (`&raw const x` / `&raw mut x`) over `addr_of!` / `addr_of_mut!`.
 
 ### 5. API Design (HIGH)
 
@@ -164,7 +166,7 @@ Reference these guidelines when:
 - [`api-serde-optional`](rules/api-serde-optional.md) - Make serde a feature flag, not a hard dependency for library crates
 - [`api-impl-fromiterator`](rules/api-impl-fromiterator.md) - Implement `FromIterator` and `Extend` for collection types, and `IntoIterator` for all three reference forms
 - [`api-operator-overload`](rules/api-operator-overload.md) - Overload operators only when the semantics are natural and unsurprising
-- [`api-bon-builder`](rules/api-bon-builder.md) - Use the `bon` crate (v3.9, `elastio/bon`) for ergonomic, compile-time safe builders
+- [`api-bon-builder`](rules/api-bon-builder.md) - Use the `bon` crate (v3.9.x, `elastio/bon`) for ergonomic, compile-time safe builders
 - [`api-do-not-recommend`](rules/api-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` (Rust 1.85.0) to hide blanket impls from compiler diagnostics
 - [`api-nutype-validated`](rules/api-nutype-validated.md) - Use `nutype` (v0.7.0, `greyblake/nutype`) for sanitized and validated newtypes with zero overhead
 
@@ -252,6 +254,7 @@ Reference these guidelines when:
 - [`trait-default-methods`](rules/trait-default-methods.md) - Define a trait in terms of a few required methods plus defaulted ones built on top of them
 - [`trait-dyn-vs-generic`](rules/trait-dyn-vs-generic.md) - Choose static dispatch (generics / `impl Trait`) vs dynamic dispatch (`dyn Trait`) deliberately
 - [`trait-object-safety`](rules/trait-object-safety.md) - Keep a trait dyn-compatible (object-safe) when you need `dyn Trait`
+- [`trait-upcasting`](rules/trait-upcasting.md) - Prefer implicit trait object upcasting over hand-written `as_supertrait` helpers (Rust 1.86+)
 
 ### 12. Conversions (MEDIUM)
 
@@ -281,7 +284,7 @@ Reference these guidelines when:
 
 - [`pat-let-else`](rules/pat-let-else.md) - Use `let ... else` for early-return pattern extraction
 - [`pat-matches-macro`](rules/pat-matches-macro.md) - Use `matches!()` for boolean pattern tests
-- [`pat-if-let-chains`](rules/pat-if-let-chains.md) - Use `if let` chains to combine pattern bindings and conditions
+- [`pat-if-let-chains`](rules/pat-if-let-chains.md) - Use `if let` / `while let` chains to combine pattern bindings and conditions
 - [`pat-exhaustive-enum`](rules/pat-exhaustive-enum.md) - Match owned enums exhaustively; avoid catch-all `_` that hides new variants
 - [`pat-at-bindings`](rules/pat-at-bindings.md) - Use `@` bindings to capture a value while matching it against a pattern
 
@@ -303,6 +306,7 @@ Reference these guidelines when:
 - [`closure-move-capture`](rules/closure-move-capture.md) - Use `move` for closures that outlive the current scope; clone before `move` to keep the original
 - [`closure-static-vs-dyn`](rules/closure-static-vs-dyn.md) - Accept `impl Fn` (generic) for hot callbacks; use `&dyn Fn`/`Box<dyn Fn>` to cut code size or to store them
 - [`closure-disjoint-capture`](rules/closure-disjoint-capture.md) - Capture only what you use; lean on edition-2021 disjoint closure captures
+- [`closure-async-closures`](rules/closure-async-closures.md) - Use `async || {}` closures for futures that need to borrow from their environment; prefer them over `|| async {}` when captures span `.await` points
 
 ### 18. Collections (MEDIUM)
 
@@ -394,7 +398,7 @@ Reference these guidelines when:
 - [`perf-drain-reuse`](rules/perf-drain-reuse.md) - Use drain and extract_if to reuse allocations
 - [`perf-extend-batch`](rules/perf-extend-batch.md) - Use extend for batch insertions
 - [`perf-chain-avoid`](rules/perf-chain-avoid.md) - Avoid chain in hot loops
-- [`perf-collect-into`](rules/perf-collect-into.md) - Use collect_into for reusing containers
+- [`perf-collect-into`](rules/perf-collect-into.md) - Use `extend()` for reusing containers; `collect_into` (nightly) for future ergonomics
 - [`perf-black-box-bench`](rules/perf-black-box-bench.md) - Use black_box in benchmarks
 - [`perf-release-profile`](rules/perf-release-profile.md) - Optimize release profile settings
 - [`perf-profile-first`](rules/perf-profile-first.md) - Profile before optimizing
@@ -403,7 +407,7 @@ Reference these guidelines when:
 - [`perf-array-windows`](rules/perf-array-windows.md) - Use `<[T]>::array_windows` and `<[T]>::as_chunks` for compile-time-size windows
 - [`perf-atomic-update`](rules/perf-atomic-update.md) - Use `Atomic*::update` and `try_update` for cleaner CAS loops
 - [`perf-copy-range`](rules/perf-copy-range.md) - Use `core::range::Range` for Copy-compatible range storage
-- [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` for conditional extraction (Rust 1.88+)
+- [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` for conditional extraction (Rust 1.87+)
 - [`perf-hint-apis`](rules/perf-hint-apis.md) - Use branch hint APIs for hot-path optimization
 
 ### 24. Project Structure (LOW)
@@ -441,7 +445,7 @@ Reference these guidelines when:
 - [`lint-workspace-lints`](rules/lint-workspace-lints.md) - Configure lints at workspace level for consistent enforcement
 - [`lint-cfg-check`](rules/lint-cfg-check.md) - Enable `unexpected_cfgs` and declare known cfgs to catch feature-gate typos
 - [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Enable high-value `clippy::nursery` lints selectively, not the whole group
-- [`lint-cargo-unused-features`](rules/lint-cargo-unused-features.md) - Detect unused feature flags declared in Cargo.toml (Rust 1.88+)
+- [`lint-cargo-unused-features`](rules/lint-cargo-unused-features.md) - Detect unused feature flags declared in Cargo.toml (`[lints.cargo]`, nightly-only)
 - [`lint-dylint-custom`](rules/lint-dylint-custom.md) - Use Dylint for project-specific custom lints without forking clippy
 - [`lint-edition-2024`](rules/lint-edition-2024.md) - Track Edition 2024 lints (`unsafe_op_in_unsafe_fn`, `keyword_idents`, etc.)
 - [`lint-lints-table`](rules/lint-lints-table.md) - Use the `[lints]` table in `Cargo.toml` for canonical lint configuration (Rust 1.74+)

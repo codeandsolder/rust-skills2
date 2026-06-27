@@ -127,7 +127,7 @@ if let Some(s) = opt.as_mut_slice().first_mut() {
 }
 ```
 
-## `let_chains` for Multiple Option Checks (Rust 1.88+)
+## `let_chains` for Multiple Option Checks (Edition 2024, Rust 1.85+)
 
 Chain multiple `Option` checks without deep nesting:
 
@@ -140,7 +140,7 @@ fn get_user_country(id: u64) -> Option<String> {
     Some(country)
 }
 
-// After let_chains (Rust 1.88+): flat and readable
+// After let_chains (Edition 2024, Rust 1.85+): flat and readable
 fn get_user_country(id: u64) -> Option<String> {
     if let Some(user) = find_user(id)
         && let Some(address) = user.address

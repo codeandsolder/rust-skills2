@@ -103,6 +103,7 @@ fn demo() {
 - `std::iter::Iterator`, `std::future::Future`, and `std::ops::Deref` all use associated types because there is exactly one `Item`/`Output`/`Target` per implementor.
 - `std::ops::Add<Rhs>`, `std::convert::From<T>`, and `std::convert::Into<T>` use generic parameters because a single type can add to, or convert from, many others.
 - When you need to constrain the associated type in a bound, write `P: Parser<Output = JsonValue>` — less noisy than a free generic parameter.
+- Use inline associated type bounds (stable since Rust 1.60) to constrain that an associated type implements a trait: `I: Iterator<Item: Copy>` rather than the more verbose `I: Iterator<Item = T> where T: Copy`. This syntax also works in `where` clauses, `impl` blocks, and `dyn Trait` contexts.
 
 ## See Also
 

@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-`drain()` removes elements from a collection while keeping its allocated capacity. This allows reusing the same allocation across iterations, avoiding repeated allocate/deallocate cycles in loops. Since Rust 1.88, `extract_if` provides conditional drain semantics — removing only selected elements while keeping the rest — without a separate filter pass.
+`drain()` removes elements from a collection while keeping its allocated capacity. This allows reusing the same allocation across iterations, avoiding repeated allocate/deallocate cycles in loops. Since Rust 1.87, `extract_if` provides conditional drain semantics — removing only selected elements while keeping the rest — without a separate filter pass.
 
 ## Bad
 
@@ -66,7 +66,7 @@ fn reuse_buffer() {
     }
 }
 
-// extract_if (Rust 1.88+) — single pass, no clones
+// extract_if (Rust 1.87+) — single pass, no clones
 fn extract_high_priority(work: &mut Vec<Task>) -> Vec<Task> {
     work.extract_if(|t| t.priority > 5).collect()
     // work retains only low-priority tasks
@@ -85,7 +85,7 @@ fn extract_high_priority(work: &mut Vec<Task>) -> Vec<Task> {
 | `HashMap<K,V>` | `.drain()` | Remove all entries |
 | `HashSet<T>` | `.drain()` | Remove all elements |
 
-## extract_if (Rust 1.88+)
+## extract_if (Rust 1.87+)
 
 `extract_if` replaces the nightly `drain_filter`. It returns an iterator that yields elements matching a predicate, removing them from the original collection. The original collection retains the non-matching elements.
 
@@ -170,7 +170,7 @@ fn transfer_matching(src: &mut Vec<Item>, dst: &mut Vec<Item>, predicate: impl F
     dst.extend(matching);
 }
 
-// Move matching elements (Rust 1.88+)
+// Move matching elements (Rust 1.87+)
 fn transfer_matching_modern(src: &mut Vec<Item>, dst: &mut Vec<Item>, predicate: impl Fn(&Item) -> bool) {
     dst.extend(src.extract_if(predicate));
     // Single pass, no intermediate allocation

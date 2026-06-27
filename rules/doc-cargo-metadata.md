@@ -47,7 +47,6 @@ exclude = ["tests/fixtures/*", ".github/*"]
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
-features = ["unstable-doc-cfg"]
 
 [dependencies]
 # ...
@@ -119,9 +118,6 @@ all-features = true
 
 # Pass --cfg docsrs so you can annotate feature-gated items
 rustdoc-args = ["--cfg", "docsrs"]
-
-# Enable specific features for doc builds
-features = ["unstable-doc-cfg"]
 ```
 
 This enables `#[doc(cfg(feature = "..." ))]` annotations on docs.rs,

@@ -112,8 +112,8 @@ default = ["std"]
 std = []  # Opt-out, not no-std opt-in
 
 [lints.rust]
-# Warn on unused feature flags in [features]
-cargo_unused_cargo_features = "deny"
+# Pass --check-cfg for all declared feature names (1.80+)
+unexpected_cfgs = "warn"
 
 [lints.clippy]
 cargo = "warn"

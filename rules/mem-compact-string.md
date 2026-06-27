@@ -38,7 +38,7 @@ struct User {
 
 ## Compact String Libraries
 
-### compact_str 0.9.0 (branchless, zeroize support)
+### compact_str 0.9.1 (branchless, zeroize support)
 
 ```rust
 use compact_str::{CompactString, ToCompactString, format_compact};

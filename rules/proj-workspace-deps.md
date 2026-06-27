@@ -187,12 +187,14 @@ workspace = true  # Inherit all workspace lints
 
 ## `resolver = "3"` (Edition 2024 Default)
 
-Use `resolver = "3"` in the workspace. This is the default for Edition 2024 (Rust 1.85+) and respects `package.rust-version` for dependency selection.
+Use `resolver = "3"` in the workspace. This is the default for Edition 2024 (Rust 1.85+) and respects `package.rust-version` for dependency selection. A project with `edition = "2024"` in its `[package]` section will use resolver "3" automatically.
+
+> **Virtual workspace caveat**: If the workspace root is a virtual workspace (no `[package]` section), `resolver = "3"` must be **explicitly set** in `[workspace]`. It is not inferred from member crates' editions.
 
 ```toml
 [workspace]
 members = ["crates/*"]
-resolver = "3"  # Edition 2024 default; explicit for older editions
+resolver = "3"  # Required explicitly for virtual workspaces
 ```
 
 | Resolver | Edition | Behavior |

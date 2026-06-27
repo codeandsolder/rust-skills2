@@ -156,7 +156,7 @@ fn swap_first_last(data: &mut [i32]) {
     std::mem::swap(a, b);
 }
 
-// get_disjoint_unchecked_mut (1.86) — unchecked variant
+// get_disjoint_unchecked_mut (nightly) — unchecked variant
 fn swap_disjoint(data: &mut [i32], i: usize, j: usize) {
     // SAFETY: i != j verified by caller
     let [a, b] = unsafe { data.get_disjoint_unchecked_mut([i, j]) };

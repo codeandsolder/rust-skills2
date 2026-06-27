@@ -301,7 +301,8 @@ set.abort_all();  // Cancel all tasks
 | Add tasks dynamically | Yes | No |
 | Results as-completed | Yes | No (all at once) |
 | Abort all on drop | Yes | No |
-| Cancel individual | Yes | No |
+| Cancel all on demand | `abort_all()` / `detach_all()` | No |
+| Per-task cancellation | Via `CancellationToken` per task | No |
 | spawn_blocking support | Yes (1.38+) | No |
 | Shutdown with timeout | Yes (1.40+) | No |
 | Get IDs per task | Yes (1.38+) | No |

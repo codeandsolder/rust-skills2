@@ -102,6 +102,25 @@ fn demo() {
 
 See the Rust Reference — "Object Safety" — at doc.rust-lang.org/reference/items/traits.html#object-safety for the full rules.
 
+### Trait Object Upcasting (Rust 1.86+)
+
+Since Rust 1.86, the compiler supports implicit upcasting from `dyn Sub` to `dyn Super` when `Sub: Super`. Previously you needed hand-written `as_supertrait` helpers; now the coercion is automatic:
+
+```rust
+trait Super {
+    fn super_method(&self) -> &str;
+}
+trait Sub: Super {
+    fn sub_method(&self) -> &str;
+}
+
+fn upcast(x: &dyn Sub) -> &dyn Super {
+    x  // Implicit coercion — no boilerplate needed
+}
+```
+
+Upcasting works for all pointer types (`&dyn`, `Box<dyn>`, `Arc<dyn>`, `*const dyn`). It does not affect dyn-compatibility — it is an operation performed on an already-existing trait object. For a dedicated treatment see [`trait-upcasting`](trait-upcasting.md).
+
 ## See Also
 
 - [trait-dyn-vs-generic](trait-dyn-vs-generic.md) - choose between static and dynamic dispatch deliberately

@@ -1,67 +1,63 @@
 # lint-cargo-unused-features
 
-> Detect unused feature flags declared in Cargo.toml (Rust 1.88+)
+> Detect unused feature flags declared in Cargo.toml (`[lints.cargo]`, nightly-only)
 
 **Rule**: `lint-cargo-unused-features`
 
+**Status**: 🚧 Unstable — this lint has not yet been stabilized. The Cargo linting
+infrastructure (`-Zcargo-lints` / `[lints.cargo]`) is still nightly-only.
+Tracking issue: [rust-lang/cargo#12158](https://github.com/rust-lang/cargo/issues/12158).
+
 ## Why It Matters
 
-The `cargo_unused_cargo_features` lint (stabilized in Rust 1.88) detects feature flags declared in `Cargo.toml` `[features]` that are never used anywhere in the crate. Unused features accumulate over time, making the API surface misleading and increasing maintenance burden. This lint keeps the feature set honest.
+Feature flags declared in `Cargo.toml` `[features]` that are never referenced in
+code, `cfg()` expressions, or dependency gates accumulate over time. They make
+the API surface misleading and increase maintenance burden. A future Cargo lint
+will detect these automatically; until then, review and prune features manually.
 
 ## Bad
 
 ```toml
-[package]
-name = "my-crate"
-version = "0.1.0"
-edition = "2024"
-
 [features]
 default = ["std"]
 std = []              # Used — OK
 experimental = []      # BAD: never referenced in cfg or dependencies
 legacy_v2 = []         # BAD: was used by v0.2 migration, now dead
-
-[dependencies]
-serde = { version = "1", optional = true }
 ```
 
 ## Good
 
 ```toml
-[package]
-name = "my-crate"
-version = "0.1.0"
-edition = "2024"
-
 [features]
 default = ["std"]
 std = []
 
 # Only features that are actually used in cfg(feature = "...") or
 # as optional dependency gates
-
-[dependencies]
-serde = { version = "1", optional = true }
 ```
 
-## Configuration
+## Configuration (Nightly Only)
+
+When the Cargo linting infrastructure is available, configure under `[lints.cargo]`:
 
 ```toml
-# Cargo.toml
-[lints.rust]
-cargo_unused_cargo_features = "deny"
+# Cargo.toml (requires nightly + -Zcargo-lints)
+[lints.cargo]
+unused_features = "deny"
 ```
 
 Or at the workspace level:
 
 ```toml
-# Root Cargo.toml
-[workspace.lints.rust]
-cargo_unused_cargo_features = "deny"
+# Root Cargo.toml (requires nightly + -Zcargo-lints)
+[workspace.lints.cargo]
+unused_features = "deny"
 ```
 
-## What It Catches
+> **Note**: The exact lint name and stabilization version are pending. Track
+> [cargo#12158](https://github.com/rust-lang/cargo/issues/12158) for progress.
+
+## What It Would Catch
 
 ### Unused Feature Flags
 
@@ -81,28 +77,26 @@ my_feature = []  # Not used in any cfg(feature = "my_feature")
 unstable_api = []  # No references in code → flagged
 ```
 
-## Integration with Cargo Cache (1.88)
+## Manual Cleanup Workflow
 
-Since Rust 1.88, Cargo's feature resolution integrates with the global cache. The `cargo_unused_cargo_features` lint works with:
-
-- `cargo tree -e features` — visualize feature usage
-- `cargo metadata` — inspect declared vs used features
-- `cargo update` — cache-aware feature resolution
-
-## Cleanup Workflow
+While the lint is unstable, prune unused features manually:
 
 ```bash
-# 1. Enable the lint
-cargo clippy  # Reports unused features
+# 1. List declared features
+grep -r 'cfg(feature\s*=' src/ | sort -u
 
-# 2. Remove unused features from Cargo.toml
-# 3. Verify nothing broke
+# 2. Cross-reference with Cargo.toml [features]
+#    Features not appearing in any cfg!(feature = "...") are candidates
+
+# 3. Remove unused features from Cargo.toml
+# 4. Verify nothing broke
 cargo check --all-features
 cargo test --all-features
 ```
 
 ## See Also
 
-- [Rust 1.88.0 release notes](https://blog.rust-lang.org/2025/06/26/Rust-1.88.0/)
+- [Cargo issue #12158 — Cargo lints](https://github.com/rust-lang/cargo/issues/12158)
+- [Cargo unstable features — lints.cargo](https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#lintscargo)
 - [Cargo reference — Features](https://doc.rust-lang.org/cargo/reference/features.html)
 - [lint-cargo-metadata](./lint-cargo-metadata.md) — Cargo metadata lints

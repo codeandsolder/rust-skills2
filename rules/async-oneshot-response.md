@@ -150,12 +150,21 @@ if tx.is_closed() {
     tx.send(result).ok();
 }
 
-// Async wait for close
-let tx_clone = tx.clone();  // Note: can't actually clone, just showing concept
-tokio::select! {
-    _ = tx.closed() => println!("Receiver dropped"),
-    result = compute() => { tx.send(result).ok(); }
-}
+// Async wait for close — no clone needed, select! handles the
+// ownership split between branches internally.
+// `tx.closed()` borrows `&mut self`, `tx.send()` consumes `self`.
+let (mut tx, rx) = oneshot::channel::<String>();
+
+tokio::spawn(async move {
+    tokio::select! {
+        _ = tx.closed() => {
+            println!("Receiver dropped, aborting computation");
+        }
+        value = compute() => {
+            let _ = tx.send(value);
+        }
+    }
+});
 ```
 
 ## Racing Multiple Responses

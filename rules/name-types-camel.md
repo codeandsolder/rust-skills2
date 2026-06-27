@@ -44,10 +44,7 @@ struct HttpServer { ... }      // Not HTTPServer
 struct JsonParser { ... }      // Not JSONParser
 struct Uuid { ... }            // Not UUID
 struct TcpStream { ... }       // Not TCPStream
-
-// Exception: Two-letter acronyms can be all caps
-struct IOError { ... }         // Acceptable
-struct IoError { ... }         // Also acceptable (preferred)
+struct IoError { ... }         // Not IOError (two-letter acronyms too)
 ```
 
 ## Type Aliases

@@ -127,9 +127,9 @@ impl Counter {
 }
 ```
 
-## HashMap extract_if (Rust 1.88+)
+## HashMap extract_if (Rust 1.87+)
 
-For conditional removal of entries, `HashMap::extract_if` (stable since 1.88) avoids the double-iteration of `retain` + separate collection:
+For conditional removal of entries, `HashMap::extract_if` (stable since 1.87) avoids the double-iteration of `retain` + separate collection:
 
 ```rust
 use std::collections::HashMap;

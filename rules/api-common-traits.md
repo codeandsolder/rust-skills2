@@ -160,17 +160,21 @@ pub struct MyType { ... }
 
 ## Standard Library Additions (Rust 1.85+)
 
-Rust 1.85 stabilized `FromIterator` and `Extend` implementations for tuples of arity 1-12:
+Rust 1.85 stabilized `FromIterator` and `Extend` implementations for tuples of arity 1–12 (previously only 2-tuples worked):
 
 ```rust
-// Collect into a tuple of collections
-let (evens, odds): (Vec<i32>, Vec<i32>) = (1..=10)
-    .into_iter()
-    .partition(|n| n % 2 == 0);
+// Collect an iterator of 4-tuples into a 4-tuple of collections
+let (nums, names, scores, flags): (Vec<i32>, Vec<String>, Vec<f64>, Vec<bool>) =
+    (0..3).map(|i| (i, format!("item-{i}"), i as f64 * 1.5, i % 2 == 0))
+          .collect();
 
-// Extend multiple collections at once
-let mut names = (vec!["Alice".to_string()], vec!["Bob".to_string()]);
-names.extend([("Charlie".to_string(), "Diana".to_string())]);
+assert_eq!(nums, vec![0, 1, 2]);
+assert_eq!(scores, vec![0.0, 1.5, 3.0]);
+
+// Extend multiple collections at once (arity 3)
+let mut triple = (vec![1], vec![10], vec![100]);
+triple.extend([(2, 20, 200), (3, 30, 300)]);
+assert_eq!(triple.0, vec![1, 2, 3]);
 ```
 
 ## See Also

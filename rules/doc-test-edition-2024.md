@@ -38,7 +38,7 @@ If a doc test must compile as its own crate (e.g., `#![no_std]`,
 ///
 /// // This compiles as its own binary crate
 /// #[panic_handler]
-/// fn panic(_: &core::panic::PanickInfo) -> ! {
+/// fn panic(_: &core::panic::PanicInfo) -> ! {
 ///     loop {}
 /// }
 /// ```

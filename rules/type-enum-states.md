@@ -91,7 +91,7 @@ impl Connection {
 }
 ```
 
-## `let_chains` for Peeling Nested States (Rust 1.88+)
+## `let_chains` for Peeling Nested States (Edition 2024, Rust 1.85+)
 
 When enums are nested (e.g., `Option<Result<T, E>>` or multi-level enums), `let_chains` eliminates deep nesting:
 
@@ -105,7 +105,7 @@ fn process(response: Option<Result<Data, Error>>) {
     }
 }
 
-// After let_chains (Rust 1.88+): flat and readable
+// After let_chains (Edition 2024, Rust 1.85+): flat and readable
 fn process(response: Option<Result<Data, Error>>) {
     if let Some(Ok(data)) = response {
         handle_data(data);

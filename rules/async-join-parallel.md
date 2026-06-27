@@ -128,7 +128,7 @@ async fn fetch_with_semaphore(ids: &[u64]) -> Vec<User> {
 
 ## Biased Polling
 
-By default, `join!` polls futures in random order for fairness. Use `select!` with `biased;` when you need deterministic priority:
+`join!` polls futures in declaration order. `select!`, on the other hand, uses random polling by default for fairness. Use `select!` with `biased;` when you need deterministic priority:
 
 ```rust
 use tokio::select;

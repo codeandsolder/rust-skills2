@@ -86,7 +86,10 @@ mod tests {
 - Reserve `as` for:
   - Pointer casts (e.g., `*const u8 as *mut u8`) that are intentional.
   - Float-to-integer when you have verified the range and documented the intent.
-  - `usize` ↔ pointer-sized integer when exact semantics are required.
+  - `usize` ↔ pointer-sized integer only when you explicitly need to expose or
+    inject provenance. Prefer strict provenance pointer APIs (stable since Rust 1.84):
+    `ptr.addr()` instead of `ptr as usize`, and `ptr.map_addr(|a| ...)` instead of
+    casting through an integer to manipulate a pointer's address.
 - When using `.try_into()`, the turbofish or type annotation is often needed to help inference: `let n: u8 = x.try_into()?;`
 
 ## See Also

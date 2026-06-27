@@ -60,7 +60,8 @@ fn test_parse() {
 }
 
 // 2. Const/static initialization (compile-time guaranteed)
-static REGEX: Lazy<Regex> = Lazy::new(|| {
+use std::sync::LazyLock;
+static REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^\d+$").unwrap()  // Known-valid pattern
 });
 
