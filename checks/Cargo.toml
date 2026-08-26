@@ -48,5 +48,15 @@ syn = { version = "2", features = ["full", "extra-traits", "derive"] }
 quote = "1"
 proc-macro2 = "1"
 
+# Third-party APIs explicitly taught by the rule corpus. Keeping them in the
+# harness prevents missing-crate errors from hiding API drift behind the
+# "standalone fragment" classifier.
+bon = "3"
+nutype = { version = "0.7", features = ["serde"] }
+derive_more = { version = "2", features = ["full"] }
+slotmap = { version = "1", features = ["serde"] }
+ecow = "0.3"
+enum_dispatch = "0.3"
+
 [profile.dev]
 debug = false
