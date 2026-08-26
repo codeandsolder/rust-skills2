@@ -16,7 +16,7 @@ Out of the box, coding agents write *average* Rust — they clone to dodge the b
 ## Install
 
 ```bash
-npx add-skill leonardomso/rust-skills
+npx add-skill codeandsolder/rust-skills2
 ```
 
 That's it. The CLI figures out which agents you have and installs the skill to the right place.
@@ -108,7 +108,7 @@ Each rule has:
 The design is built for low token cost and easy auditing:
 
 - **[`SKILL.md`](./SKILL.md)** is a lightweight index — every rule listed as a one-line summary, grouped by category, with a link to its file. The agent reads this first.
-- **[`rules/`](./rules)** holds one Markdown file per rule (`<prefix>-<name>.md`). The agent opens only the handful relevant to your code instead of loading all 218 — progressive disclosure keeps context small.
+- **[`rules/`](./rules)** holds one Markdown file per rule (`<prefix>-<name>.md`). The agent opens only the handful relevant to your code instead of loading all 324 — progressive disclosure keeps context small.
 - **Prefixes** (`own-`, `err-`, `unsafe-`, `async-`, …) map directly to categories, so an agent reviewing async code can pull just `async-`, `conc-`, and `own-` rules.
 
 `CLAUDE.md` and `AGENTS.md` are symlinks to `SKILL.md`, so the same content works across agent conventions.
@@ -122,12 +122,12 @@ If `add-skill` doesn't work for your setup, here's how to install manually:
 
 Global (applies to all projects):
 ```bash
-git clone https://github.com/leonardomso/rust-skills.git ~/.claude/skills/rust-skills
+git clone https://github.com/codeandsolder/rust-skills2.git ~/.claude/skills/rust-skills
 ```
 
 Or just for one project:
 ```bash
-git clone https://github.com/leonardomso/rust-skills.git .claude/skills/rust-skills
+git clone https://github.com/codeandsolder/rust-skills2.git .claude/skills/rust-skills
 ```
 </details>
 
@@ -135,7 +135,7 @@ git clone https://github.com/leonardomso/rust-skills.git .claude/skills/rust-ski
 <summary><b>OpenCode</b></summary>
 
 ```bash
-git clone https://github.com/leonardomso/rust-skills.git .opencode/skills/rust-skills
+git clone https://github.com/codeandsolder/rust-skills2.git .opencode/skills/rust-skills
 ```
 </details>
 
@@ -143,12 +143,12 @@ git clone https://github.com/leonardomso/rust-skills.git .opencode/skills/rust-s
 <summary><b>Cursor</b></summary>
 
 ```bash
-git clone https://github.com/leonardomso/rust-skills.git .cursor/skills/rust-skills
+git clone https://github.com/codeandsolder/rust-skills2.git .cursor/skills/rust-skills
 ```
 
 Or just grab the skill file:
 ```bash
-curl -o .cursorrules https://raw.githubusercontent.com/leonardomso/rust-skills/master/SKILL.md
+curl -o .cursorrules https://raw.githubusercontent.com/codeandsolder/rust-skills2/main/SKILL.md
 ```
 </details>
 
@@ -157,7 +157,7 @@ curl -o .cursorrules https://raw.githubusercontent.com/leonardomso/rust-skills/m
 
 ```bash
 mkdir -p .windsurf/rules
-curl -o .windsurf/rules/rust-skills.md https://raw.githubusercontent.com/leonardomso/rust-skills/master/SKILL.md
+curl -o .windsurf/rules/rust-skills.md https://raw.githubusercontent.com/codeandsolder/rust-skills2/main/SKILL.md
 ```
 </details>
 
@@ -165,12 +165,12 @@ curl -o .windsurf/rules/rust-skills.md https://raw.githubusercontent.com/leonard
 <summary><b>OpenAI Codex</b></summary>
 
 ```bash
-git clone https://github.com/leonardomso/rust-skills.git .codex/skills/rust-skills
+git clone https://github.com/codeandsolder/rust-skills2.git .codex/skills/rust-skills
 ```
 
 Or use the AGENTS.md standard:
 ```bash
-curl -o AGENTS.md https://raw.githubusercontent.com/leonardomso/rust-skills/master/SKILL.md
+curl -o AGENTS.md https://raw.githubusercontent.com/codeandsolder/rust-skills2/main/SKILL.md
 ```
 </details>
 
@@ -179,7 +179,7 @@ curl -o AGENTS.md https://raw.githubusercontent.com/leonardomso/rust-skills/mast
 
 ```bash
 mkdir -p .github
-curl -o .github/copilot-instructions.md https://raw.githubusercontent.com/leonardomso/rust-skills/master/SKILL.md
+curl -o .github/copilot-instructions.md https://raw.githubusercontent.com/codeandsolder/rust-skills2/main/SKILL.md
 ```
 </details>
 
@@ -201,7 +201,7 @@ aider --read path/to/rust-skills/SKILL.md
 <summary><b>Zed</b></summary>
 
 ```bash
-curl -o AGENTS.md https://raw.githubusercontent.com/leonardomso/rust-skills/master/SKILL.md
+curl -o AGENTS.md https://raw.githubusercontent.com/codeandsolder/rust-skills2/main/SKILL.md
 ```
 </details>
 
@@ -209,7 +209,7 @@ curl -o AGENTS.md https://raw.githubusercontent.com/leonardomso/rust-skills/mast
 <summary><b>Amp</b></summary>
 
 ```bash
-git clone https://github.com/leonardomso/rust-skills.git .agents/skills/rust-skills
+git clone https://github.com/codeandsolder/rust-skills2.git .agents/skills/rust-skills
 ```
 </details>
 
@@ -218,7 +218,7 @@ git clone https://github.com/leonardomso/rust-skills.git .agents/skills/rust-ski
 
 ```bash
 mkdir -p .clinerules
-curl -o .clinerules/rust-skills.md https://raw.githubusercontent.com/leonardomso/rust-skills/master/SKILL.md
+curl -o .clinerules/rust-skills.md https://raw.githubusercontent.com/codeandsolder/rust-skills2/main/SKILL.md
 ```
 </details>
 
@@ -227,7 +227,7 @@ curl -o .clinerules/rust-skills.md https://raw.githubusercontent.com/leonardomso
 
 If your agent supports the [AGENTS.md](https://agents.md) standard:
 ```bash
-curl -o AGENTS.md https://raw.githubusercontent.com/leonardomso/rust-skills/master/SKILL.md
+curl -o AGENTS.md https://raw.githubusercontent.com/codeandsolder/rust-skills2/main/SKILL.md
 ```
 </details>
 
