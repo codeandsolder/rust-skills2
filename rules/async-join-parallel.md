@@ -1,179 +1,157 @@
 # async-join-parallel
 
-> Use `join!` or `try_join!` for concurrent independent futures
+> Use `join!` / `try_join!` for a fixed set of independent futures; they run concurrently on one task, not in parallel by themselves
 
 ## Why It Matters
 
-Awaiting futures sequentially takes the sum of their durations. `join!` runs futures concurrently, taking only as long as the slowest one. For independent operations like multiple API calls or parallel file reads, this can dramatically reduce latency.
+Awaiting independent I/O operations one after another serializes their waiting time. Tokio's `join!` and `try_join!` poll several futures as part of one parent task, allowing their waits to overlap without spawning separate tasks or allocating a collection.
 
-> **Important**: `join!` runs all futures on the **same task** — they are interleaved via cooperative polling, not truly parallel. For CPU-bound parallelism, use `tokio::spawn` to distribute work across threads. For IO-bound work where futures spend most time waiting, the interleaving is sufficient.
+That is **concurrency**, not automatic parallel execution: the joined futures are multiplexed on the current task. If one branch performs blocking work or a long CPU loop without yielding, it prevents the other branches from progressing too.
 
-## Bad
+## Bad: Unnecessarily Sequential Independent Work
 
 ```rust
-async fn fetch_data() -> (User, Posts, Comments) {
-    // Sequential: 300ms total (100 + 100 + 100)
-    let user = fetch_user().await;        // 100ms
-    let posts = fetch_posts().await;      // 100ms  
-    let comments = fetch_comments().await; // 100ms
-    
-    (user, posts, comments)
+async fn operation_a() -> u32 {
+    tokio::task::yield_now().await;
+    10
 }
 
-async fn read_configs() -> Result<(Config, Settings)> {
-    // Sequential: 20ms + 20ms = 40ms
-    let config = fs::read_to_string("config.toml").await?;
-    let settings = fs::read_to_string("settings.json").await?;
-    
-    Ok((parse_config(&config)?, parse_settings(&settings)?))
+async fn operation_b() -> u32 {
+    tokio::task::yield_now().await;
+    20
+}
+
+async fn sequential() -> (u32, u32) {
+    let a = operation_a().await;
+    let b = operation_b().await;
+    (a, b)
 }
 ```
 
-## Good
+When `b` does not depend on `a`, this waits for the first future before even beginning to poll the second.
+
+## Good: Join Independent Futures
 
 ```rust
-use tokio::join;
+async fn operation_a() -> u32 {
+    tokio::task::yield_now().await;
+    10
+}
 
-async fn fetch_data() -> (User, Posts, Comments) {
-    // Concurrent: ~100ms total (max of all three)
-    let (user, posts, comments) = join!(
-        fetch_user(),
-        fetch_posts(),
-        fetch_comments(),
+async fn operation_b() -> u32 {
+    tokio::task::yield_now().await;
+    20
+}
+
+async fn concurrent() -> (u32, u32) {
+    tokio::join!(operation_a(), operation_b())
+}
+```
+
+The futures are stored inline in the generated `join!` future and are polled until both complete.
+
+## Fallible Operations
+
+```rust
+async fn load_a() -> Result<u32, &'static str> {
+    tokio::task::yield_now().await;
+    Ok(10)
+}
+
+async fn load_b() -> Result<u32, &'static str> {
+    tokio::task::yield_now().await;
+    Ok(20)
+}
+
+async fn load_both() -> Result<(u32, u32), &'static str> {
+    tokio::try_join!(load_a(), load_b())
+}
+```
+
+`try_join!` returns when all branches succeed or when one branch returns `Err`. See the dedicated rule for the cancellation consequences of that early error.
+
+## Polling Fairness
+
+Tokio `join!` does **not** always poll branches in declaration order. By default, the generated future rotates which branch is polled first whenever it wakes. `try_join!` behaves the same way.
+
+Use the macro's own `biased;` mode only when fixed top-to-bottom polling order is intentional:
+
+```rust
+async fn first() {
+    tokio::task::yield_now().await;
+}
+
+async fn second() {
+    tokio::task::yield_now().await;
+}
+
+async fn ordered_polling() {
+    tokio::join!(
+        biased;
+        first(),
+        second(),
     );
-    
-    (user, posts, comments)
-}
-
-use tokio::try_join;
-
-async fn read_configs() -> Result<(Config, Settings)> {
-    // Concurrent: ~20ms total
-    let (config_str, settings_str) = try_join!(
-        fs::read_to_string("config.toml"),
-        fs::read_to_string("settings.json"),
-    )?;
-    
-    Ok((parse_config(&config_str)?, parse_settings(&settings_str)?))
 }
 ```
 
-## join! vs try_join!
+With `biased;`, fairness becomes the caller's responsibility. A branch that is frequently ready and expensive per poll can delay branches listed later.
 
-```rust
-// join! - all futures run to completion, returns tuple
-let (a, b, c) = join!(future_a, future_b, future_c);
+## Dynamic Collections
 
-// try_join! - short-circuits on first error
-let (a, b, c) = try_join!(fallible_a, fallible_b, fallible_c)?;
-// If fallible_b fails, returns Err immediately
-// Other futures may still be running (cancellation is async)
-```
+For a runtime-sized set of futures, a tuple macro is the wrong shape. `FuturesUnordered`, buffered streams, `JoinSet`, or `join_all` may fit depending on whether you need bounded concurrency, task spawning, completion-order processing, or ordered collection.
 
-## futures::join_all for Dynamic Collections
-
-```rust
-use futures::future::join_all;
-
-async fn fetch_all_users(ids: &[u64]) -> Vec<User> {
-    let futures: Vec<_> = ids.iter()
-        .map(|id| fetch_user(*id))
-        .collect();
-    
-    join_all(futures).await
-}
-
-// With fallible futures
-use futures::future::try_join_all;
-
-async fn fetch_all_users(ids: &[u64]) -> Result<Vec<User>> {
-    let futures: Vec<_> = ids.iter()
-        .map(|id| fetch_user(*id))
-        .collect();
-    
-    try_join_all(futures).await
-}
-```
-
-## Limiting Concurrency
-
+<!-- rust-check: fragment; reason=requires futures crate and application fetch_user function -->
 ```rust
 use futures::stream::{self, StreamExt};
 
-async fn fetch_with_limit(ids: &[u64]) -> Vec<Result<User>> {
-    stream::iter(ids)
-        .map(|id| fetch_user(*id))
-        .buffer_unordered(10)  // Max 10 concurrent requests
-        .collect()
-        .await
-}
-
-// Or with tokio::sync::Semaphore
-use tokio::sync::Semaphore;
-
-async fn fetch_with_semaphore(ids: &[u64]) -> Vec<User> {
-    let semaphore = Arc::new(Semaphore::new(10));
-    
-    let futures: Vec<_> = ids.iter().map(|id| {
-        let semaphore = semaphore.clone();
-        async move {
-            let _permit = semaphore.acquire().await.unwrap();
-            fetch_user(*id).await
-        }
-    }).collect();
-    
-    join_all(futures).await
-}
+let users = stream::iter(ids)
+    .map(fetch_user)
+    .buffer_unordered(16)
+    .collect::<Vec<_>>()
+    .await;
 ```
 
-## Biased Polling
+Prefer a bounded form when the input can be large or each future consumes scarce resources.
 
-`join!` polls futures in declaration order. `select!`, on the other hand, uses random polling by default for fairness. Use `select!` with `biased;` when you need deterministic priority:
+## Concurrency Is Not CPU Parallelism
+
+`join!` cannot make CPU-heavy synchronous work run on two cores because both branches are polled by the same task. `tokio::spawn` can place independent `Send + 'static` async tasks on different runtime workers on a multi-thread runtime, but sustained CPU-bound workloads are usually better isolated with a bounded `spawn_blocking` workload or a CPU-oriented pool such as Rayon.
+
+Do not turn compute functions into fake async functions merely to put them inside `join!`.
+
+## Dependent Work Should Stay Sequential
 
 ```rust
-use tokio::select;
+async fn create_id() -> u64 {
+    7
+}
 
-async fn prioritized() -> Result<(), Error> {
-    select! {
-        biased;  // Check branches in order
-        result = critical_operation() => result?,
-        _ = cancellation_token.cancelled() => Err(Error::Cancelled),
-        result = best_effort() => result?,
-    }
+async fn populate(id: u64) -> usize {
+    id as usize
+}
+
+async fn create_and_populate() -> usize {
+    let id = create_id().await;
+    populate(id).await
 }
 ```
 
-For `join!`, polling order rarely matters because all futures complete. When it does, restructure into `select!` with `biased;` or use `JoinSet` for dynamic prioritization.
+The second operation genuinely depends on the first result, so joining them would not express the dependency.
 
-## When NOT to Use join!
+## Choosing the Primitive
 
-```rust
-// ❌ Dependent futures - must be sequential
-async fn create_and_populate() -> Result<()> {
-    let db = create_database().await?;   // Must complete first
-    populate_tables(&db).await?;          // Depends on db
-    Ok(())
-}
-
-// ❌ Short-circuiting logic
-async fn find_first() -> Option<Data> {
-    // Want to stop when one succeeds
-    // Use select! instead
-}
-
-// ❌ Shared mutable state
-async fn bad_shared_state() {
-    let counter = Arc::new(Mutex::new(0));
-    // This might work but can cause contention
-    join!(
-        increment(counter.clone()),
-        increment(counter.clone()),
-    );
-}
-```
+| Need | Typical primitive |
+|------|-------------------|
+| Fixed independent futures, keep all outputs | `join!` |
+| Fixed fallible futures, fail on first error | `try_join!` |
+| First branch to complete | `select!` |
+| Dynamic spawned task set | `JoinSet` |
+| Dynamic futures with bounded concurrency | buffered stream / `FuturesUnordered` + admission bound |
+| Sustained CPU parallelism | CPU-oriented pool / explicitly bounded blocking work |
 
 ## See Also
 
-- [async-try-join](./async-try-join.md) - Error handling in concurrent futures
-- [async-select-racing](./async-select-racing.md) - Racing futures
-- [async-joinset-structured](./async-joinset-structured.md) - Dynamic task sets
+- [async-try-join](./async-try-join.md) — fallible joined futures
+- [async-select-racing](./async-select-racing.md) — first-to-complete semantics
+- [async-joinset-structured](./async-joinset-structured.md) — dynamic task sets
+- [async-spawn-blocking](./async-spawn-blocking.md) — blocking and CPU work

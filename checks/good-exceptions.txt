@@ -3,12 +3,6 @@
 # Migration debt only; new signatures fail and stale entries must be removed.
 
 api-nutype-validated.md :: Good :: block 2 :: E0433,P:to validate string types with || legacy compile failure: repair example or add explicit rust-check metadata
-async-blocking-detection.md :: Good :: block 2 :: E0433,E0599,P:cannot find macro `error` in,P:cannot find macro `warn` in || legacy compile failure: repair example or add explicit rust-check metadata
-async-join-parallel.md :: Good :: block 2 :: E0107,E0425,E0433 || legacy compile failure: repair example or add explicit rust-check metadata
-async-tokio-fs.md :: Good :: block 2 :: E0107,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
-async-tokio-runtime.md :: Good :: block 2 :: E0425,E0428,E0433 || legacy compile failure: repair example or add explicit rust-check metadata
-async-try-join.md :: Good :: block 2 :: E0107,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
-closure-async-closures.md :: Good :: block 2 :: E0728 || legacy compile failure: repair example or add explicit rust-check metadata
 doc-cfg-patterns.md :: Good :: block 2 :: E0583,E0658 || legacy compile failure: repair example or add explicit rust-check metadata
 doc-question-mark.md :: Good :: block 2 :: E0425,E0601,P:`self` parameter is only allowed || legacy compile failure: repair example or add explicit rust-check metadata
 err-diagnostic-do-not-recommend.md :: Good :: block 2 :: E0210 || legacy compile failure: repair example or add explicit rust-check metadata
