@@ -4,164 +4,106 @@
 
 ## Why It Matters
 
-Premature optimization wastes time, complicates code, and often targets the wrong bottlenecks. Most code isn't performance-critical; the hot 10% matters. Profile first, then optimize the actual bottlenecks with data-driven decisions.
+Optimization has costs: engineering time, extra complexity, portability constraints, and sometimes worse performance on workloads you did not measure. Start with clear code, measure a representative build/workload, then optimize the bottlenecks that matter.
+
+This does not mean “ignore obvious asymptotic problems until production.” Choose sensible algorithms and data structures up front; reserve low-level tuning and added complexity for cases backed by measurements or hard requirements.
 
 ## Bad
 
 ```rust
-// "Optimizing" without measurement
+// Unsafe bounds-check removal without evidence that bounds checks remain.
 fn sum(data: &[i32]) -> i32 {
-    // Using unsafe "for performance" without profiling
     unsafe {
-        let mut sum = 0;
+        let mut total = 0;
         for i in 0..data.len() {
-            sum += *data.get_unchecked(i);
+            total += *data.get_unchecked(i);
         }
-        sum
+        total
     }
 }
-
-// Complex caching with no evidence it's needed
-static CACHE: LazyLock<RwLock<HashMap<String, Arc<Result>>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
-
-// Hand-rolled data structures "for speed"
-struct MyVec<T> {
-    ptr: *mut T,
-    len: usize,
-    cap: usize,
-}
 ```
+
+Idiomatic iteration already gives the optimizer a straightforward bounds-check-free shape on common targets, without adding an unsafe invariant.
 
 ## Good
 
 ```rust
-// Simple, idiomatic - let compiler optimize
+use std::collections::HashMap;
+
 fn sum(data: &[i32]) -> i32 {
-    data.iter().sum()
+    data.iter().copied().sum()
 }
 
-// Profile, then optimize if needed
-fn sum_optimized(data: &[i32]) -> i32 {
-    // After profiling showed this is a bottleneck,
-    // we measured that manual SIMD gives 3x speedup
-    #[cfg(target_arch = "x86_64")]
-    {
-        // SIMD implementation with benchmark data
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        data.iter().sum()
-    }
+fn sum_after_profiling(data: &[i32]) -> i32 {
+    // Keep the measured implementation here. This placeholder deliberately
+    // remains simple until a benchmark demonstrates a better implementation.
+    data.iter().copied().sum()
 }
 
-// Use standard library - it's well-optimized
-let cache: HashMap<String, Result> = HashMap::new();
+let cache: HashMap<String, u64> = HashMap::new();
+assert!(cache.is_empty());
 ```
+
+If profiling later shows `sum_after_profiling` is important, benchmark candidate implementations on the supported targets and keep the simplest version that meets the requirement.
 
 ## Profiling Workflow
 
 ```bash
-# 1. Write correct code first
 cargo build --release
 
-# 2. Profile with real workloads
+# Sampling/flamegraph with a representative workload
 cargo flamegraph --bin my_app -- --real-args
-# or
+
+# Focused benchmarks where a stable microbenchmark is meaningful
 cargo bench
-
-# 3. Identify hotspots (top 10% of time)
-
-# 4. Measure before optimizing
-# 5. Optimize ONE thing
-# 6. Measure after - verify improvement
-# 7. Repeat if still slow
 ```
 
-## Optimization Principles
+Then:
 
-| Do | Don't |
-|----|-------|
-| Profile first | Guess at bottlenecks |
-| Optimize hotspots | Optimize everything |
-| Measure improvement | Assume it's faster |
-| Keep it simple | Add complexity speculatively |
-| Trust the compiler | Outsmart the compiler |
+1. Identify a material bottleneck.
+2. Record a baseline.
+3. Change one thing.
+4. Measure the new implementation under representative inputs.
+5. Keep the complexity only if the improvement is meaningful and robust.
 
-## When to Optimize
+## When Up-Front Optimization Is Justified
+
+Measurement can include constraints known before implementation, not only profiler output. Examples include:
+
+- a protocol or realtime deadline,
+- a strict memory budget,
+- an algorithm whose asymptotic behavior is obviously unacceptable at the required scale,
+- an allocation-free/no-std environment,
+- a latency or throughput SLO backed by load estimates.
+
+The point is to connect complexity to evidence or requirements rather than folklore.
+
+## Common Traps
+
+| Speculative change | Better first question |
+|--------------------|-----------------------|
+| `#[inline(always)]` everywhere | Is call overhead or missed inlining visible in profiles/codegen? |
+| unsafe indexing | Does optimized code still contain relevant checks? |
+| custom allocator | Are allocations actually material, and which sizes/paths dominate? |
+| object pooling | Is allocation/reclamation the bottleneck under concurrency? |
+| manual SIMD | Does auto-vectorized code miss the target throughput, and on which CPUs? |
+| cache layer | Is recomputation expensive enough to justify invalidation/state complexity? |
+
+## Document Non-Obvious Optimizations
+
+When optimized code is less obvious, leave enough evidence to reevaluate it later:
 
 ```rust
-// AFTER profiling shows this is 40% of runtime
-#[inline]
-fn hot_function(data: &[u8]) -> u64 {
-    // Optimized implementation justified by benchmarks
-}
-
-// Clear, measurable benefit documented
-/// Pre-allocated buffer for repeated formatting.
-/// Benchmarks show 3x speedup for >1000 calls/sec workloads.
-struct FormatterPool {
-    buffers: Vec<String>,
-}
-
-// Use LazyLock (Rust 1.80+) or LazyCell (1.80+) instead of lazy_static!
-use std::sync::LazyLock;
-
-static CONFIG: LazyLock<Config> = LazyLock::new(|| {
-    Config::load().expect("embedded config is valid")
-});
-
-// LazyCell for !Sync values (Rust 1.80+)
-use std::cell::LazyCell;
-thread_local! {
-    static BUFFER: LazyCell<String> = LazyCell::new(|| String::with_capacity(256));
-}
+/// Uses a lookup table because benchmark `char_class` showed this path is a
+/// material parser hotspot on the supported workloads. Keep the benchmark when
+/// changing the representation.
+static CHAR_CLASS: [u8; 256] = [0; 256];
 ```
 
-## Common Premature Optimizations
-
-| Premature | Reality |
-|-----------|---------|
-| `#[inline(always)]` everywhere | Compiler usually knows better |
-| `unsafe` for bounds check removal | Iterator does this safely |
-| Custom allocator | Default is usually fine |
-| Object pooling | Allocator is fast enough |
-| Manual SIMD | Auto-vectorization works |
-
-## Profile Tools
-
-```bash
-# Sampling profiler
-perf record ./target/release/app && perf report
-
-# Flamegraph
-cargo install flamegraph
-cargo flamegraph
-
-# Criterion benchmarks
-cargo bench
-
-# Memory profiling
-valgrind --tool=massif ./target/release/app
-```
-
-## Document Optimizations
-
-```rust
-/// Lookup table for fast character classification.
-/// 
-/// # Performance
-/// 
-/// Benchmarked with criterion (benchmarks/char_class.rs):
-/// - Table lookup: 2.3ns/op
-/// - Match statement: 8.7ns/op
-/// 
-/// Justified for hot path in parser (called 10M+ times).
-static CHAR_CLASS: [CharClass; 256] = [/* ... */];
-```
+Prefer references to checked-in benchmarks/profiles over timeless numeric claims copied into comments.
 
 ## See Also
 
-- [perf-profile-first](./perf-profile-first.md) - Profile before optimize
+- [perf-profile-first](./perf-profile-first.md) - Profile before optimizing
 - [test-criterion-bench](./test-criterion-bench.md) - Benchmarking
 - [opt-inline-small](./opt-inline-small.md) - Inline guidelines

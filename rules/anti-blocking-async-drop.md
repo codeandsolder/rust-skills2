@@ -1,29 +1,31 @@
 # anti-blocking-async-drop
 
-> Don't block, spawn, or do I/O in `Drop` of async types
+> Don't block or depend on asynchronous work completing from `Drop` of async types
 
 ## Why It Matters
 
-`Drop::drop()` runs synchronously on the current thread — including inside a Tokio worker. Blocking (`std::thread::sleep`, synchronous mutex, I/O) blocks the entire worker thread, preventing other tasks from making progress. `tokio::spawn` in `Drop` is even worse: the spawned future may never run if the runtime is shutting down. Async cleanup must be explicit.
+`Drop::drop()` is synchronous and runs on the thread that drops the value. In an async program that may be an executor worker, so blocking I/O, sleeps, or nested runtime entry can stall unrelated tasks. Spawning async cleanup from `Drop` is also unreliable as a completion guarantee: the runtime may be shutting down, and `Drop` cannot await the spawned task.
+
+Make required asynchronous cleanup an explicit operation. Keep `Drop` for fast synchronous resource release or best-effort diagnostics.
 
 ## Bad
 
 ```rust
-use std::thread;
-use tokio::runtime::Handle;
+use std::time::Duration;
 
-struct AsyncClient { /* ... */ }
+struct AsyncClient;
 
 impl Drop for AsyncClient {
     fn drop(&mut self) {
-        // BLOCKS TOKIO WORKER: never do this
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        // BAD: blocks whichever thread happened to drop the client.
+        std::thread::sleep(Duration::from_secs(1));
 
-        // Even worse: spawn in Drop — may never run
-        let handle = Handle::current();
-        handle.block_on(async {
-            self.flush().await;
-        });
+        // Also bad as a correctness requirement: Drop cannot wait for this task.
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async {
+                // Required cleanup cannot safely depend on this completing.
+            });
+        }
     }
 }
 ```
@@ -31,98 +33,79 @@ impl Drop for AsyncClient {
 ## Good
 
 ```rust
-struct AsyncClient { /* ... */ }
+use std::io;
+
+struct AsyncClient {
+    closed: bool,
+}
 
 impl AsyncClient {
-    /// Explicit async cleanup — caller must call this.
-    pub async fn close(&mut self) -> Result<()> {
+    fn new() -> Self {
+        Self { closed: false }
+    }
+
+    async fn flush(&mut self) -> io::Result<()> {
+        tokio::task::yield_now().await;
+        Ok(())
+    }
+
+    async fn shutdown(&mut self) -> io::Result<()> {
+        tokio::task::yield_now().await;
+        Ok(())
+    }
+
+    /// Required asynchronous cleanup is explicit and awaitable.
+    pub async fn close(&mut self) -> io::Result<()> {
         self.flush().await?;
         self.shutdown().await?;
+        self.closed = true;
         Ok(())
     }
 }
 
-// In usage:
-async fn use_client() {
+async fn use_client() -> io::Result<()> {
     let mut client = AsyncClient::new();
-    // ... work ...
-    client.close().await?;  // Explicit, deterministic cleanup
-    drop(client);            // Drop is a no-op
+    // ... use client ...
+    client.close().await?;
+    Ok(())
 }
 ```
 
-## Pattern: Track Whether Cleanup Is Needed
+## Optional Diagnostic in `Drop`
 
-If you must ensure cleanup runs unless explicitly closed, use a flag:
+If forgetting explicit cleanup is important, `Drop` can record a synchronous warning without pretending to finish async work:
 
 ```rust
-struct AsyncClient {
-    needs_cleanup: bool,
-    // ...
+struct Connection {
+    closed: bool,
 }
 
-impl AsyncClient {
-    pub async fn close(&mut self) -> Result<()> {
-        if self.needs_cleanup {
-            self.flush().await?;
-            self.needs_cleanup = false;
-        }
-        Ok(())
-    }
-}
-
-impl Drop for AsyncClient {
+impl Drop for Connection {
     fn drop(&mut self) {
-        if self.needs_cleanup {
-            // Can't do async — log a warning
-            tracing::warn!("AsyncClient dropped without calling close()");
+        if !self.closed {
+            eprintln!("Connection dropped without explicit async close()");
         }
     }
 }
 ```
 
-## Pattern: Tokio Console Cleanup
-
-If you must run async cleanup on drop (last resort), spawn it as a background task. But this is **not recommended** — the task may be cancelled or never run:
-
-```rust
-impl Drop for AsyncClient {
-    fn drop(&mut self) {
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.spawn(async {
-                // May never complete
-            });
-        }
-    }
-}
-```
+Logging itself should remain appropriate for the environment; avoid a logger path that can block indefinitely during teardown.
 
 ## Decision Guide
 
-| Situation | Action |
-|-----------|--------|
-| Sync data flush | OK in Drop (fast, no blocking) |
-| File close | Usually OK (kernel handles it) |
-| Network flush | Move to `async fn close()` |
-| Async shutdown protocol | Move to `async fn close()` |
-| Any blocking I/O | Move to `async fn close()` |
-| Known runtime being dropped | Can't safely spawn — log warning |
+| Situation | Preferred approach |
+|-----------|--------------------|
+| Memory/RAII handle release | ordinary `Drop` |
+| OS handle whose close is synchronous | ordinary `Drop` |
+| Protocol flush / graceful network shutdown | explicit `async fn close` |
+| Required remote acknowledgement | explicit async operation |
+| Blocking I/O or sleeps | never perform in async-type `Drop` |
+| Best-effort background cleanup | only if loss is acceptable; do not treat spawn as a guarantee |
 
-## Detection
-
-```toml
-[lints.clippy]
-await_holding_lock = "deny"
-# No built-in lint for this pattern — code review is essential.
-```
+A useful API pattern is to make `close(self)` consume the object when possible, so successful explicit cleanup also prevents accidental reuse.
 
 ## See Also
 
-- [async-blocking-detection](./async-blocking-detection.md) — Discover blocking in async via metrics
-- [anti-block-on-async](./anti-block-on-async.md) — Don't use block_on inside async code
-- [async-runtime-metrics](./async-runtime-metrics.md) — Monitor runtime health metrics
-
-## References
-
-- [Tokio: Drop and async cleanup](https://docs.rs/tokio/latest/tokio/runtime/struct.Runtime.html#dropping)
-- [Rust Users Forum: Block on drop in tokio](https://users.rust-lang.org/t/common-newbie-mistakes-and-bad-practices-in-rust-bad-habits/65243)
+- [async-blocking-detection](./async-blocking-detection.md) — Discover blocking in async code
+- [anti-block-on-async](./anti-block-on-async.md) — Keep `block_on` at sync→async boundaries
+- [async-runtime-metrics](./async-runtime-metrics.md) — Monitor runtime health

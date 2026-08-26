@@ -150,8 +150,8 @@ Reference these guidelines when:
 ### 5. API Design (HIGH)
 
 - [`api-builder-pattern`](rules/api-builder-pattern.md) - Use Builder pattern for complex construction
-- [`api-builder-must-use`](rules/api-builder-must-use.md) - Mark builder methods with `#[must_use]` to prevent silent drops
-- [`api-newtype-safety`](rules/api-newtype-safety.md) - Use newtypes to prevent mixing semantically different values
+- [`api-builder-must-use`](rules/api-builder-must-use.md) - Mark consuming builder methods or the builder type `#[must_use]` when ignoring the returned builder is likely a bug
+- [`api-newtype-safety`](rules/api-newtype-safety.md) - Use newtypes when identical representation hides meaning the compiler should distinguish
 - [`api-typestate`](rules/api-typestate.md) - Use typestate pattern to encode state machine invariants in the type system
 - [`api-sealed-trait`](rules/api-sealed-trait.md) - Use sealed traits to prevent external implementations while allowing use
 - [`api-extension-trait`](rules/api-extension-trait.md) - Use extension traits to add methods to external types
@@ -163,7 +163,7 @@ Reference these guidelines when:
 - [`api-from-not-into`](rules/api-from-not-into.md) - Implement `From<T>`, not `Into<U>` - From gives you Into for free
 - [`api-default-impl`](rules/api-default-impl.md) - Implement `Default` for types with sensible default values
 - [`api-common-traits`](rules/api-common-traits.md) - Implement standard traits (Debug, Clone, PartialEq, etc.) for public types
-- [`api-serde-optional`](rules/api-serde-optional.md) - Make serde a feature flag, not a hard dependency for library crates
+- [`api-serde-optional`](rules/api-serde-optional.md) - Make serde optional in general-purpose libraries when serialization is not part of the core API
 - [`api-impl-fromiterator`](rules/api-impl-fromiterator.md) - Implement `FromIterator` and `Extend` for collection types, and `IntoIterator` for all three reference forms
 - [`api-operator-overload`](rules/api-operator-overload.md) - Overload operators only when the semantics are natural and unsurprising
 - [`api-bon-builder`](rules/api-bon-builder.md) - Use `bon` when typestate builders for structs or functions improve the API; account for proc-macro and typestate compile cost
@@ -453,7 +453,7 @@ Reference these guidelines when:
 
 ### 26. Anti-patterns (REFERENCE)
 
-- [`anti-unwrap-abuse`](rules/anti-unwrap-abuse.md) - Don't use `.unwrap()` in production code
+- [`anti-unwrap-abuse`](rules/anti-unwrap-abuse.md) - Avoid `unwrap()` for recoverable production errors; reserve panics for proven invariants and bugs
 - [`anti-expect-lazy`](rules/anti-expect-lazy.md) - Don't use expect for recoverable errors
 - [`anti-clone-excessive`](rules/anti-clone-excessive.md) - Don't clone when borrowing works
 - [`anti-lock-across-await`](rules/anti-lock-across-await.md) - Avoid holding blocking lock guards across `.await`; async mutex guards may cross `.await` when resource serialization requires it
@@ -467,10 +467,10 @@ Reference these guidelines when:
 - [`anti-type-erasure`](rules/anti-type-erasure.md) - Don't use Box<dyn Trait> when impl Trait works
 - [`anti-format-hot-path`](rules/anti-format-hot-path.md) - Don't use format! in hot paths
 - [`anti-collect-intermediate`](rules/anti-collect-intermediate.md) - Don't collect intermediate iterators
-- [`anti-stringly-typed`](rules/anti-stringly-typed.md) - Don't use strings where enums or newtypes would provide type safety
+- [`anti-stringly-typed`](rules/anti-stringly-typed.md) - Don't use strings where enums or newtypes provide a meaningful domain type
 - [`anti-arc-mutex-everything`](rules/anti-arc-mutex-everything.md) - Don't default to `Arc<Mutex<T>>` for every shared state problem
-- [`anti-blocking-async-drop`](rules/anti-blocking-async-drop.md) - Don't block, spawn, or do I/O in `Drop` of async types
-- [`anti-block-on-async`](rules/anti-block-on-async.md) - Don't use `handle.block_on()` inside async code
+- [`anti-blocking-async-drop`](rules/anti-blocking-async-drop.md) - Don't block or depend on asynchronous work completing from `Drop` of async types
+- [`anti-block-on-async`](rules/anti-block-on-async.md) - Don't call `block_on` from code that is already running asynchronously
 - [`anti-deref-overuse`](rules/anti-deref-overuse.md) - Don't use `Deref<Target = InnerType>` for newtype method delegation
 - [`anti-unsafe-send-sync`](rules/anti-unsafe-send-sync.md) - Don't use `unsafe impl Send` / `Sync` as a thread-safety shortcut
 
