@@ -1,218 +1,149 @@
 # async-blocking-detection
 
-> Detect and prevent blocking in async code using `RuntimeMetrics` and runtime configuration
+> Detect async worker stalls with latency/console instrumentation; treat blocking-pool metrics as pool pressure, not proof that async workers are blocked
 
 **Rule**: `async-blocking-detection`
 
 ## Why It Matters
 
-Blocking in async is the #1 production mistake in Rust async systems. A single `std::thread::sleep`, synchronous mutex hold, or CPU-intensive loop on an async worker thread stalls the entire task scheduler. Because tasks are cooperatively scheduled, blocking doesn't cause crashes—it causes starvation that is hard to diagnose. Runtime metrics and configuration options now make blocking observable.
+Rust async executors are cooperatively scheduled. A future that calls a blocking API or performs a long CPU loop without yielding can occupy a runtime worker and delay unrelated tasks. On a current-thread runtime, one such operation can stop all async progress until it returns.
+
+The important distinction is **where the blocking happens**:
+
+- direct blocking inside a future stalls an async worker;
+- `spawn_blocking` deliberately moves blocking work to Tokio's separate blocking pool;
+- a deep `spawn_blocking` queue indicates pressure in that pool, not evidence that a future is directly blocking a worker.
+
+Use development instrumentation such as `tokio-console`, application latency/heartbeat signals, and targeted profiling. Runtime metrics are useful context, but no single counter proves that a worker is stuck in synchronous code.
 
 ## Bad
 
 ```rust
-use tokio::runtime::Runtime;
+use std::time::Duration;
 
-fn main() {
-    let rt = Runtime::new().unwrap();
-    rt.block_on(async {
-        // BAD: Blocks the async worker thread
-        std::thread::sleep(std::time::Duration::from_secs(5));
-        
-        // No metrics, no detection, no alerting
-        // This starves ALL other tasks on this thread
-    });
+async fn handle_request() {
+    // BAD: this thread cannot poll other futures while sleeping.
+    std::thread::sleep(Duration::from_secs(1));
 }
 ```
 
-## Good
+The same problem applies to synchronous filesystem/network calls, long lock waits on blocking mutexes, FFI that blocks, and long compute loops that do not yield.
+
+## Good: Move Blocking Work Off Async Workers
 
 ```rust
-use tokio::runtime::{Builder, RuntimeMetrics};
+use std::time::Duration;
 
-fn main() {
-    let rt = Builder::new_multi_thread()
-        .worker_threads(4)
-        .build()
-        .unwrap();
-    
-    let metrics = rt.metrics();
-    
-    // Monitor blocking pool pressure
-    rt.spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(5));
-        loop {
-            interval.tick().await;
-            
-            // Rising blocking queue depth = tasks are blocking
-            let depth = metrics.blocking_queue_depth();
-            let blocking_threads = metrics.num_blocking_threads();
-            
-            if depth > 0 {
-                warn!("Blocking on async: {} tasks queued, {} blocking threads active",
-                    depth, blocking_threads);
-            }
-            
-            if depth > 10 {
-                error!("CRITICAL: High blocking pressure in async runtime");
-            }
-        }
-    });
-    
-    rt.block_on(async { /* application */ });
+async fn handle_request() -> Result<u64, tokio::task::JoinError> {
+    tokio::task::spawn_blocking(|| {
+        std::thread::sleep(Duration::from_millis(10));
+        42u64
+    })
+    .await
 }
 ```
 
-## Using UnhandledPanic for Detection
+`spawn_blocking` is for synchronous operations that eventually finish. For many CPU-bound jobs, bound concurrency explicitly or use a CPU-oriented executor such as Rayon rather than allowing Tokio's large blocking pool to run an arbitrary number of computations at once.
+
+## Good: External Heartbeat for Whole-Runtime Stalls
+
+A watchdog running on an ordinary OS thread can observe whether an async heartbeat stops advancing even when the runtime itself is stalled:
 
 ```rust
-use tokio::runtime::{Builder, UnhandledPanic};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
+use std::time::Duration;
 
-// Option A: Shutdown runtime on panic (discover blocking via crashes)
-let rt = Builder::new_multi_thread()
-    .unhandled_panic(UnhandledPanic::ShutdownRuntime)
-    .build()
-    .unwrap();
-// Any task panic = entire runtime shuts down
-// Useful in safety-critical systems
-
-// Option B: Default (ignore) + metrics monitoring
-let rt = Builder::new_multi_thread()
-    .unhandled_panic(UnhandledPanic::Ignore)
-    .build()
-    .unwrap();
-// Tasks panic silently, metrics reveal the symptoms
-```
-
-## Metrics-Based Detection
-
-```rust
-use tokio::runtime::RuntimeMetrics;
-
-async fn detect_blocking(metrics: &RuntimeMetrics) {
-    let mut prev_blocking = metrics.blocking_queue_depth();
-    let num_workers = metrics.num_workers();
-    let mut prev_polls: u64 = (0..num_workers).map(|w| metrics.worker_poll_count(w)).sum();
-    
+async fn runtime_heartbeat(counter: Arc<AtomicU64>) {
+    let mut tick = tokio::time::interval(Duration::from_millis(100));
     loop {
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        
-        // Signal 1: Blocking queue depth grows
-        let depth = metrics.blocking_queue_depth();
-        if depth > prev_blocking + 5 {
-            warn!("Blocking tasks accumulating: depth {}", depth);
-        }
-        prev_blocking = depth;
-        
-        // Signal 2: Poll count stagnates while tasks are active
-        let num_workers = metrics.num_workers();
-        let polls: u64 = (0..num_workers).map(|w| metrics.worker_poll_count(w)).sum();
-        let delta_polls = polls - prev_polls;
-        let active = metrics.num_alive_tasks();
-        
-        if delta_polls < 5 && active > 5 {
-            warn!("Possible starvation: only {} polls with {} active tasks",
-                delta_polls, active);
-        }
-        prev_polls = polls;
+        tick.tick().await;
+        counter.fetch_add(1, Ordering::Relaxed);
     }
 }
-```
 
-## Fixing Blocking Code
-
-```rust
-use tokio::task;
-
-// BAD: Direct blocking
-async fn bad() {
-    std::thread::sleep(Duration::from_secs(1));  // Blocks!
-}
-
-// GOOD: spawn_blocking
-async fn good() {
-    task::spawn_blocking(move || {
-        std::thread::sleep(Duration::from_secs(1));
-    }).await.unwrap();
-}
-
-// ALTERNATIVE: block_in_place (for unavoidable sync boundaries)
-async fn alternative() {
-    task::block_in_place(move || {
-        // Temporarily removes the task from the scheduler
-        std::thread::sleep(Duration::from_secs(1));
-    });
+fn start_watchdog(counter: Arc<AtomicU64>) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        let mut previous = counter.load(Ordering::Relaxed);
+        loop {
+            std::thread::sleep(Duration::from_secs(1));
+            let current = counter.load(Ordering::Relaxed);
+            if current == previous {
+                eprintln!("async runtime heartbeat made no progress");
+            }
+            previous = current;
+        }
+    })
 }
 ```
 
-## block_in_place vs spawn_blocking
+A stalled heartbeat is still only a symptom: CPU starvation, process suspension, scheduler pressure, or an overloaded host can produce similar observations. Correlate it with profiles, task instrumentation, and workload metrics.
 
+## `tokio-console` During Development
+
+`tokio-console`/`console-subscriber` can expose task poll durations, long busy periods, and resource activity. It is particularly useful for finding tasks that spend too long between yielding points.
+
+<!-- rust-check: fragment; reason=requires console-subscriber dependency and Tokio tracing instrumentation -->
 ```rust
-use tokio::task;
-
-// spawn_blocking: runs on the blocking thread pool
-// Use for: CPU-intensive work, long-running sync operations
-// Does not block worker threads at all
-async fn blocking() {
-    task::spawn_blocking(|| {
-        expensive_sync_work()
-    }).await.unwrap();
-}
-
-// block_in_place: runs on the current thread but yields
-// Use for: sync FFI calls, short blocking operations
-// Temporarily allows blocking on the worker thread
-async fn in_place() {
-    task::block_in_place(|| {
-        // The worker thread can run other tasks while we block
-        sync_ffi_call()
-    });
-}
-```
-
-## Detecting Blocking at Development Time
-
-```rust
-// Use tokio-console to visualize blocking:
-// 1. Add console-subscriber dependency
-// 2. Initialize early in main()
-// 3. Run tokio-console in another terminal
-
 #[tokio::main]
 async fn main() {
     console_subscriber::init();
-    // Tasks that block will be visible in the console UI
     run_app().await;
 }
 ```
 
-## Configuration: max_blocking_threads
+Use a build configured for the instrumentation required by the console and reproduce the real workload; a task that is never polled cannot be diagnosed from its source location by a magic runtime counter.
+
+## Runtime Metrics: What They Do and Do Not Mean
+
+Stable `RuntimeMetrics` includes useful values such as worker count and alive-task count:
 
 ```rust
-use tokio::runtime::Builder;
-
-// Default: 512 max blocking threads
-// If you see blocking_queue_depth growing, cap it:
-let rt = Builder::new_multi_thread()
-    .worker_threads(4)
-    .max_blocking_threads(64)  // Explicit cap
-    .build()?;
-
-// A saturated blocking pool is a strong signal
-// that tasks are blocking instead of using spawn_blocking
+async fn report_basic_metrics() {
+    let metrics = tokio::runtime::Handle::current().metrics();
+    println!("workers={}", metrics.num_workers());
+    println!("alive_tasks={}", metrics.num_alive_tasks());
+}
 ```
+
+Many more detailed scheduler and blocking-pool metrics remain behind Tokio's `tokio_unstable` configuration. In particular, `num_blocking_threads` and blocking-pool queue metrics describe work submitted **to the blocking pool**. A growing queue can indicate that `spawn_blocking`, filesystem, DNS, or other blocking-pool users are saturated; it does not detect `std::thread::sleep` executed directly on an async worker.
+
+## `block_in_place` Is Specialized
+
+`tokio::task::block_in_place` tells the multi-thread runtime that the current task is about to block so Tokio can hand other tasks to another worker. The closure still blocks its current thread, all concurrent code inside that same task is suspended, and it is not available on a current-thread runtime.
+
+Prefer `spawn_blocking` when the synchronous work can naturally be moved into a `'static` closure. Use `block_in_place` only when its specific execution semantics are required.
+
+## Blocking-Pool Configuration
+
+Tokio's blocking-thread limit is intentionally large by default because the pool serves APIs such as filesystem operations and DNS resolution as well as explicit `spawn_blocking` calls. Setting `max_blocking_threads` too low can create an unbounded queue and delay unrelated blocking-pool users.
+
+Do not lower the limit merely to make queue depth easier to alert on. Bound a CPU-heavy workload at its own admission point (for example with a semaphore or CPU pool), and size runtime limits from measured workload behavior.
+
+## Review Checklist
+
+Look for:
+
+- `std::thread::sleep` inside async code;
+- synchronous filesystem/network/database clients on async workers;
+- blocking mutex/RwLock acquisition held across slow operations;
+- FFI whose blocking behavior is unknown;
+- long loops without `.await`, cooperative yielding, or offloading;
+- large `spawn_blocking` bursts without workload-level backpressure.
+
+Then validate suspected paths with traces/profiles rather than inferring causality from one metric.
 
 ## See Also
 
-- [async-runtime-metrics](./async-runtime-metrics.md) — RuntimeMetrics deep dive
-- [async-spawn-blocking](./async-spawn-blocking.md) — spawn_blocking patterns
-- [async-tokio-runtime](./async-tokio-runtime.md) — Runtime configuration
+- [async-spawn-blocking](./async-spawn-blocking.md) — moving blocking work off workers
+- [async-tokio-runtime](./async-tokio-runtime.md) — runtime configuration
+- [async-runtime-metrics](./async-runtime-metrics.md) — runtime metrics
 
 ## References
 
-- [RuntimeMetrics docs](https://docs.rs/tokio/latest/tokio/runtime/struct.RuntimeMetrics.html)
-- [RuntimeBuilder docs](https://docs.rs/tokio/latest/tokio/runtime/struct.Builder.html)
-- [async-runtime-metrics](./async-runtime-metrics.md) - RuntimeMetrics deep dive
-- [async-spawn-blocking](./async-spawn-blocking.md) - spawn_blocking patterns
-- [async-tokio-runtime](./async-tokio-runtime.md) - Runtime configuration
+- [Tokio `spawn_blocking`](https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html)
+- [Tokio `RuntimeMetrics`](https://docs.rs/tokio/latest/tokio/runtime/struct.RuntimeMetrics.html)
+- [Tokio runtime `Builder`](https://docs.rs/tokio/latest/tokio/runtime/struct.Builder.html)
 - [tokio-console](https://github.com/tokio-rs/console)
