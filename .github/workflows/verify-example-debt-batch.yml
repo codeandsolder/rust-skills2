@@ -1,0 +1,52 @@
+name: Verify recommended example debt batch
+
+on:
+  push:
+    branches: [fix/recommended-example-debt-1]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - name: Remove repaired debt, regenerate index, and verify
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('checks/good-exceptions.txt')
+          files = {
+              'mem-arrayvec.md',
+              'name-word-order.md',
+              'perf-atomic-update.md',
+              'perf-extract-if.md',
+              'test-assert-matches.md',
+              'unsafe-strict-provenance.md',
+          }
+          lines = path.read_text().splitlines()
+          kept = [line for line in lines if not any(line.startswith(name + ' :: ') for name in files)]
+          path.write_text('\n'.join(kept) + '\n')
+          PY
+          python3 checks/gen_index.py
+          bash checks/check.sh
+      - name: Commit generated verifier state
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add checks/good-exceptions.txt SKILL.md README.md
+          git commit -m 'Remove repaired recommended-example debt'
+          git push
