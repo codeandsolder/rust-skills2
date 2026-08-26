@@ -1,0 +1,50 @@
+name: Repair post-merge verifier ledger
+
+on:
+  push:
+    branches: [fix/post-merge-verifier-drift]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - name: Remove stale migration debt and verify
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('checks/good-exceptions.txt')
+          stale = {
+              'anti-lock-across-await.md :: Good :: block 2 :: E0425',
+              'api-bon-builder.md :: Good :: block 2 :: E0425,E0433',
+              'async-spawn-blocking.md :: Good :: block 2 :: E0425,E0433',
+              'perf-copy-range.md :: Good :: block 2 :: E0425',
+              'type-repr-transparent.md :: Good :: block 2 :: E0425,P:extern blocks must be unsafe',
+          }
+          lines = path.read_text().splitlines()
+          kept = [line for line in lines if line.split(' || ', 1)[0] not in stale]
+          path.write_text('\n'.join(kept) + '\n')
+          PY
+          bash checks/check.sh
+      - name: Commit repaired ledger
+        shell: bash
+        run: |
+          if git diff --quiet -- checks/good-exceptions.txt; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add checks/good-exceptions.txt
+          git commit -m 'Remove stale verifier debt after correctness merge'
+          git push
