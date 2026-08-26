@@ -1,34 +1,28 @@
 # anti-stringly-typed
 
-> Don't use strings where enums or newtypes would provide type safety
+> Don't use strings where enums or newtypes provide a meaningful domain type
 
 ## Why It Matters
 
-Strings are the most primitive way to represent data—they accept any value, provide no validation, and offer no IDE support. When you have a fixed set of valid values or a semantic type, use enums or newtypes. The compiler catches mistakes at compile time instead of runtime.
+Strings are appropriate for free-form text and external wire formats, but they are a poor internal representation for a closed set of states or a value with important invariants. Encoding those concepts as enums or newtypes lets the compiler reject swapped arguments and invalid states, centralizes validation, and makes APIs self-documenting.
+
+Parse untrusted strings at boundaries, then use typed values internally.
 
 ## Bad
 
 ```rust
-fn process_order(status: &str, priority: &str) {
-    // What are valid statuses? "pending"? "Pending"? "PENDING"?
-    // What are valid priorities? "high"? "1"? "urgent"?
-    match status {
-        "pending" => { ... }
-        "completed" => { ... }
-        _ => panic!("unknown status"),  // Runtime error
-    }
+fn process_order(status: &str, priority: &str) -> bool {
+    matches!((status, priority),
+        ("pending" | "processing" | "completed" | "cancelled",
+         "low" | "medium" | "high" | "critical"))
 }
 
-struct User {
-    email: String,    // Any string, even "not an email"
-    phone: String,    // Any string, even "hello"
-    user_id: String,  // Could be confused with other string IDs
-}
-
-// Easy to make mistakes
-process_order("complete", "high");  // Typo: "complete" vs "completed"
-process_order("high", "pending");   // Swapped arguments - compiles!
+// These mistakes still type-check because both arguments are &str.
+assert!(!process_order("complete", "high"));
+assert!(!process_order("high", "pending"));
 ```
+
+Runtime checks have to rediscover invariants that could instead be represented in the type system.
 
 ## Good
 
@@ -49,47 +43,70 @@ enum Priority {
     Critical,
 }
 
-fn process_order(status: OrderStatus, priority: Priority) {
-    match status {
-        OrderStatus::Pending => { ... }
-        OrderStatus::Processing => { ... }
-        OrderStatus::Completed => { ... }
-        OrderStatus::Cancelled => { ... }
-    }  // Exhaustive - compiler checks all cases
+fn process_order(status: OrderStatus, priority: Priority) -> &'static str {
+    match (status, priority) {
+        (OrderStatus::Cancelled, _) => "cancelled",
+        (OrderStatus::Completed, _) => "complete",
+        (_, Priority::Critical) => "expedite",
+        _ => "normal",
+    }
 }
 
-// Validated newtypes
-struct Email(String);
-struct PhoneNumber(String);
+assert_eq!(
+    process_order(OrderStatus::Completed, Priority::High),
+    "complete"
+);
+```
+
+A call such as `process_order(Priority::High, OrderStatus::Pending)` does not compile because the two concepts are different types.
+
+## Validated Newtypes
+
+Use a newtype when the set of values is open-ended but construction has invariants:
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct UserId(u64);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Email(String);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum EmailError {
+    MissingAtSign,
+}
+
 impl Email {
-    pub fn new(s: &str) -> Result<Self, ValidationError> {
-        if is_valid_email(s) {
-            Ok(Email(s.to_string()))
+    fn parse(input: impl Into<String>) -> Result<Self, EmailError> {
+        let input = input.into();
+        if input.contains('@') {
+            Ok(Self(input))
         } else {
-            Err(ValidationError::InvalidEmail)
+            Err(EmailError::MissingAtSign)
         }
     }
 }
 
 struct User {
-    email: Email,       // Must be valid email
-    phone: PhoneNumber, // Must be valid phone
-    user_id: UserId,    // Can't confuse with other IDs
+    id: UserId,
+    email: Email,
 }
 
-// Compile errors catch mistakes
-process_order(OrderStatus::Completed, Priority::High);  // Clear and correct
-process_order(Priority::High, OrderStatus::Pending);    // Compile error!
+let user = User {
+    id: UserId(42),
+    email: Email::parse("user@example.com").unwrap(),
+};
+assert_eq!(user.id, UserId(42));
 ```
+
+Real email validation is more involved than checking for `@`; the example only demonstrates where validation belongs. Use a domain-appropriate parser for the actual invariant.
 
 ## Parsing Strings to Types
 
 ```rust
 use std::str::FromStr;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OrderStatus {
     Pending,
     Processing,
@@ -97,34 +114,37 @@ enum OrderStatus {
     Cancelled,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParseStatusError(String);
+
 impl FromStr for OrderStatus {
-    type Err = ParseError;
-    
+    type Err = ParseStatusError;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "pending" => Ok(OrderStatus::Pending),
-            "processing" => Ok(OrderStatus::Processing),
-            "completed" => Ok(OrderStatus::Completed),
-            "cancelled" | "canceled" => Ok(OrderStatus::Cancelled),
-            _ => Err(ParseError::UnknownStatus(s.to_string())),
+        match s {
+            "pending" => Ok(Self::Pending),
+            "processing" => Ok(Self::Processing),
+            "completed" => Ok(Self::Completed),
+            "cancelled" | "canceled" => Ok(Self::Cancelled),
+            other => Err(ParseStatusError(other.to_owned())),
         }
     }
 }
 
-// Parse at boundary, use types internally
-fn handle_request(status_str: &str) -> Result<(), Error> {
-    let status: OrderStatus = status_str.parse()?;  // Validate once
-    process_order(status);  // Type-safe from here
-    Ok(())
+fn handle_request(status: &str) -> Result<OrderStatus, ParseStatusError> {
+    status.parse()
 }
+
+assert_eq!(handle_request("completed"), Ok(OrderStatus::Completed));
 ```
 
 ## With Serde
 
-Serde provides built-in enum representation options that eliminate string matching at the boundary:
+Serde can perform the boundary conversion directly:
 
+<!-- rust-check: fragment; reason=requires serde derive dependency/features in the consuming crate -->
 ```rust
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -133,47 +153,13 @@ enum Status {
     InProgress,
     Completed,
 }
-
-// JSON: {"status": "in_progress"}
-// Deserialization validates automatically
-
-// Use adjacently tagged or internally tagged enums for richer representations:
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type", content = "payload")]
-enum Message {
-    Text { body: String },
-    Image { url: String, alt: String },
-}
-
-// JSON: {"type": "text", "payload": {"body": "hello"}}
-// Compiler checks exhaustiveness; no manual string dispatch
 ```
 
-> **Why this matters**: Stringly-typed serde patterns (manual `match` on string fields, `serde_json::Value` soup, runtime error handling on every access) negate the type-safety benefits of Rust. Use serde's derive and enum representations to parse validated types at the boundary.
+This is usually preferable to carrying `serde_json::Value` or manually matched string fields deep into application logic.
 
-## Error Messages
+## When Strings Are Fine
 
-```rust
-#[derive(Debug, Clone, Copy)]
-enum Color {
-    Red,
-    Green,
-    Blue,
-}
-
-impl std::fmt::Display for Color {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Color::Red => write!(f, "red"),
-            Color::Green => write!(f, "green"),
-            Color::Blue => write!(f, "blue"),
-        }
-    }
-}
-
-// Type-safe and displayable
-println!("Selected color: {}", Color::Red);
-```
+Keep `String`/`str` for genuinely unconstrained text, opaque user-provided data, or a boundary representation that is immediately parsed. Do not create a newtype merely to make every string nominally distinct; the extra type should encode useful semantics or prevent a realistic class of mistakes.
 
 ## See Also
 
