@@ -1,169 +1,153 @@
 # anti-unwrap-abuse
 
-> Don't use `.unwrap()` in production code
+> Avoid `unwrap()` for recoverable production errors; reserve panics for proven invariants and bugs
 
 ## Why It Matters
 
-`.unwrap()` panics on `None` or `Err`, crashing your program. In production, this means lost data, failed requests, and unhappy users. It also makes debugging harder since panic messages often lack context.
+`unwrap()` turns `None` or `Err` into a panic. That is appropriate when failure would prove a programmer invariant is broken, but it is poor handling for expected conditions such as missing files, malformed user input, disconnected channels, or absent map keys.
+
+The goal is not “zero unwraps at any cost.” Make the failure policy explicit: propagate recoverable errors, handle expected alternatives, and use `expect`/`unwrap` only where panic is genuinely the intended response.
 
 ## Bad
 
 ```rust
-// Crashes if file doesn't exist
-let content = std::fs::read_to_string("config.toml").unwrap();
+use std::collections::HashMap;
+use std::fs;
 
-// Crashes on invalid input
-let num: i32 = user_input.parse().unwrap();
-
-// Crashes if key missing
-let value = map.get("key").unwrap();
-
-// Crashes if channel closed
-let msg = receiver.recv().unwrap();
+fn load_port(path: &str, values: &HashMap<String, String>) -> u16 {
+    let config = fs::read_to_string(path).unwrap();
+    let port: u16 = config.trim().parse().unwrap();
+    let _mode = values.get("mode").unwrap();
+    port
+}
 ```
+
+A missing file, bad configuration value, or omitted key is ordinary input failure here, not evidence that Rust program invariants were violated.
 
 ## Good
 
 ```rust
-// Propagate with ?
-fn load_config() -> Result<Config, Error> {
-    let content = std::fs::read_to_string("config.toml")?;
-    Ok(toml::from_str(&content)?)
+use std::collections::HashMap;
+use std::fs;
+use std::io;
+
+#[derive(Debug)]
+enum ConfigError {
+    Io(io::Error),
+    InvalidPort(std::num::ParseIntError),
+    MissingMode,
 }
 
-// Provide default
+impl From<io::Error> for ConfigError {
+    fn from(error: io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+impl From<std::num::ParseIntError> for ConfigError {
+    fn from(error: std::num::ParseIntError) -> Self {
+        Self::InvalidPort(error)
+    }
+}
+
+fn load_port(
+    path: &str,
+    values: &HashMap<String, String>,
+) -> Result<(u16, &str), ConfigError> {
+    let config = fs::read_to_string(path)?;
+    let port = config.trim().parse()?;
+    let mode = values.get("mode").ok_or(ConfigError::MissingMode)?;
+    Ok((port, mode.as_str()))
+}
+```
+
+The caller can now decide whether to retry, report configuration errors, fall back, or terminate.
+
+## Expected Alternatives
+
+Use the operation that matches the policy instead of panicking by default:
+
+```rust
+use std::collections::HashMap;
+
+let user_input = "not a number";
 let num: i32 = user_input.parse().unwrap_or(0);
+assert_eq!(num, 0);
 
-// Handle missing key
-let value = map.get("key").ok_or(Error::MissingKey)?;
-
-// Or use if-let
+let mut map = HashMap::from([("key", 7)]);
 if let Some(value) = map.get("key") {
-    process(value);
+    assert_eq!(*value, 7);
 }
 
-// Channel with proper handling
-match receiver.recv() {
-    Ok(msg) => handle(msg),
-    Err(_) => break,  // Channel closed
-}
+let removed = map.remove("missing");
+assert_eq!(removed, None);
 ```
 
-## When unwrap() Is Acceptable
+For channels, EOF, iterator exhaustion, and similar control flow, handle the corresponding `Result`/`Option` rather than calling `unwrap` and converting normal shutdown into a panic.
+
+## When `unwrap()` / `expect()` Can Be Appropriate
 
 ```rust
-// 1. Tests - panics are expected failures
+// Tests: a panic is an ordinary test failure.
 #[test]
-fn test_parse() {
-    let result = parse("valid").unwrap();  // OK in tests
-    assert_eq!(result, expected);
+fn parses_literal() {
+    let value: u32 = "42".parse().unwrap();
+    assert_eq!(value, 42);
 }
 
-// 2. Const/static initialization (compile-time guaranteed)
-use std::sync::LazyLock;
-static REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\d+$").unwrap()  // Known-valid pattern
-});
+// A source-code literal whose validity is part of the program itself.
+let loopback: std::net::IpAddr = "127.0.0.1"
+    .parse()
+    .expect("hard-coded loopback address is valid");
 
-// 3. After a check that guarantees success
-if map.contains_key("key") {
-    let value = map.get("key").unwrap();  // Just checked
+// After construction establishes an invariant locally.
+let mut values = vec![1, 2, 3];
+if !values.is_empty() {
+    let last = values.pop().expect("checked non-empty immediately above");
+    assert_eq!(last, 3);
 }
-// Better: use if-let or entry API instead
-
-// 4. Truly impossible cases with proof comment
-let last = vec.pop().unwrap();  
-// OK only if you just checked !vec.is_empty()
-// Better: use last() or pattern match
 ```
 
-## Alternatives to unwrap()
+Prefer `expect("reason")` over a bare `unwrap()` when the invariant is not self-evident. The message should explain **why failure is impossible**, not merely restate the operation.
+
+## Common Alternatives
+
+| Intent | Typical API |
+|--------|-------------|
+| Propagate an error | `?` |
+| Add context / map error | `map_err`, error-context crate |
+| Provide an eager default | `unwrap_or` |
+| Provide a lazy default | `unwrap_or_else` |
+| Convert `Option` to `Result` | `ok_or` / `ok_or_else` |
+| Handle both cases locally | `match`, `if let`, `let ... else` |
+| Assert a true program invariant | `expect` / `unwrap` with justification |
+
+## `unwrap_unchecked()` Is a Separate Unsafe Operation
+
+`unwrap_unchecked()` is unsafe because calling it on `None`/`Err` is undefined behavior, not a panic. It should only appear when the invariant is proved and the unsafe operation is justified like any other unsafe code.
 
 ```rust
-// unwrap_or - provide default
-let x = opt.unwrap_or(default);
+let opt = Some(5u32);
 
-// unwrap_or_default - use Default trait
-let x = opt.unwrap_or_default();
-
-// unwrap_or_else - compute default lazily
-let x = opt.unwrap_or_else(|| expensive_default());
-
-// ? operator - propagate errors
-let x = opt.ok_or(Error::Missing)?;
-
-// if let - handle Some/Ok case
-if let Some(x) = opt {
-    use_x(x);
-}
-
-// match - handle all cases
-match opt {
-    Some(x) => use_x(x),
-    None => handle_none(),
-}
-
-// map - transform if present
-let y = opt.map(|x| x + 1);
-
-// and_then - chain fallible operations
-let z = opt.and_then(|x| x.checked_add(1));
-```
-
-## expect() Is Slightly Better
-
-```rust
-// unwrap() - no context
-let file = File::open(path).unwrap();
-// Panics with: "called `Result::unwrap()` on an `Err` value: Os { code: 2, ... }"
-
-// expect() - adds context
-let file = File::open(path)
-    .expect("config file should exist at startup");
-// Panics with: "config file should exist at startup: Os { code: 2, ... }"
-
-// But still use only for invariants, not error handling
-```
-
-## Clippy Lint
-
-```rust
-// Enable these lints to catch unwrap usage:
-#![warn(clippy::unwrap_used)]
-#![warn(clippy::expect_used)]  // Stricter
-
-// Or per-function:
-#[allow(clippy::unwrap_used)]
-fn tests_only() { }
-```
-
-## unwrap_unchecked() — Separate Concern
-
-`unwrap_unchecked()` is an `unsafe` variant (`unsafe { opt.unwrap_unchecked() }`) that skips the panic entirely via UB if the value is `None`/`Err`. **This is not a performance fix for `unwrap()`** — it's an `unsafe` optimization for extreme hot paths where you have proven (through profiling) that the bounds check is a bottleneck.
-
-```rust
-// BAD: Unsafe performance hack without evidence
-unsafe { some_option.unwrap_unchecked() }
-
-// GOOD: Safe, idiomatic — compiler often elides the branch anyway
-some_option.unwrap()
-```
-
-Reserve `unwrap_unchecked()` for:
-- Profile-validated hot loops (sub-nanosecond per iteration matters).
-- When you hold an invariant proven above the call site.
-- Document the safety justification in the `// SAFETY:` comment.
-
-```rust
-// SAFETY: We just checked `.is_some()` on the line above.
-// The compiler may not fuse the check, so this saves one branch.
 if opt.is_some() {
-    let val = unsafe { opt.unwrap_unchecked() };
+    // SAFETY: `is_some()` was checked on the same value and it cannot change.
+    let value = unsafe { opt.unwrap_unchecked() };
+    assert_eq!(value, 5);
 }
 ```
+
+Do not assume `unwrap_unchecked()` improves performance. Measure optimized code before replacing a safe invariant check with unsafe code.
+
+## Clippy
+
+```rust
+#![warn(clippy::unwrap_used)]
+```
+
+This can be useful as a review aid in production modules. Scope exceptions where panic is intentional rather than weakening the lint globally.
 
 ## See Also
 
-- [err-question-mark](err-question-mark.md) - Use ? for propagation
-- [err-result-over-panic](err-result-over-panic.md) - Return Result instead of panicking
-- [anti-expect-lazy](anti-expect-lazy.md) - Don't use expect for recoverable errors
+- [err-question-mark](err-question-mark.md) - Use `?` for propagation
+- [err-result-over-panic](err-result-over-panic.md) - Return `Result` for recoverable failures
+- [err-expect-bugs-only](err-expect-bugs-only.md) - Reserve `expect` for invariants
