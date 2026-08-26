@@ -334,7 +334,7 @@ Reference these guidelines when:
 - [`name-acronym-word`](rules/name-acronym-word.md) - Treat acronyms as words in identifiers: `HttpServer`, not `HTTPServer`
 - [`name-crate-no-rs`](rules/name-crate-no-rs.md) - Don't suffix crate names with `-rs` or `-rust`
 - [`name-feature`](rules/name-feature.md) - Name Cargo features without placeholder words like `abc`, `use-abc`, or `with-abc`
-- [`name-word-order`](rules/name-word-order.md) - Name error types verb-object: `ParseIntError`, not `IntParseError`
+- [`name-word-order`](rules/name-word-order.md) - Keep compound names in a consistent, idiomatic word order
 
 ### 20. Testing (MEDIUM)
 
@@ -405,9 +405,9 @@ Reference these guidelines when:
 - [`perf-ahash`](rules/perf-ahash.md) - Use a faster hasher (`ahash` / `FxHashMap`) when DoS resistance is not needed
 - [`perf-io-buffering`](rules/perf-io-buffering.md) - Wrap `Read`/`Write` in `BufReader`/`BufWriter` for many small operations
 - [`perf-array-windows`](rules/perf-array-windows.md) - Use `<[T]>::array_windows` and `<[T]>::as_chunks` for compile-time-size windows
-- [`perf-atomic-update`](rules/perf-atomic-update.md) - Use `Atomic*::update` and `try_update` for cleaner CAS loops
+- [`perf-atomic-update`](rules/perf-atomic-update.md) - Use `Atomic*::update` and `try_update` for cleaner compare-and-update loops
 - [`perf-copy-range`](rules/perf-copy-range.md) - Treat `Copy` ranges as an ownership and ergonomics choice, not an automatic performance optimization
-- [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` for conditional extraction (Vec: Rust 1.87+, HashMap/HashSet: Rust 1.88+)
+- [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` for conditional extraction when you need to keep both removed and retained elements
 - [`perf-hint-apis`](rules/perf-hint-apis.md) - Use branch hint APIs for hot-path optimization
 
 ### 24. Project Structure (LOW)
