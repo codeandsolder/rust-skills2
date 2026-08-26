@@ -1,206 +1,135 @@
 # api-serde-optional
 
-> Make serde a feature flag, not a hard dependency for library crates
+> Make serde optional in general-purpose libraries when serialization is not part of the core API
 
 ## Why It Matters
 
-Not all users of your library need serialization. Making serde a required dependency adds compile time and binary size for everyone. Feature flags let users opt-in to serde support only when needed, following Rust's philosophy of zero-cost abstractions and minimal dependencies.
+A public library should not force every downstream build to enable serialization support when many users do not need it. An optional dependency plus a feature lets consumers choose serde integration while keeping the core API usable without serde.
+
+This is a design choice, not a universal rule. If serialization is fundamental to the crate's purpose or public types, making serde required can be simpler and more honest.
 
 ## Bad
 
-```rust
-// Cargo.toml
+For a general-purpose library whose core functionality does not require serialization:
+
+```toml
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+```
 
-// lib.rs
-use serde::{Serialize, Deserialize};
+```rust
+use serde::{Deserialize, Serialize};
 
-// Every user pays for serde, even if they don't need it
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub name: String,
     pub value: i32,
 }
 ```
+
+Every build now includes serde as a normal dependency of the library, even when the consumer never serializes `Config`.
 
 ## Good
 
-```rust
-// Cargo.toml
+Put the dependency configuration in `Cargo.toml`:
+
+```toml
 [dependencies]
-serde = { version = "1.0", features = ["derive"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 
 [features]
 default = []
 serde = ["dep:serde"]
+```
 
-// lib.rs
+Then gate only the serde-specific implementations in Rust:
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Config {
     pub name: String,
     pub value: i32,
 }
 
-// Users opt-in:
-// my_crate = { version = "1.0", features = ["serde"] }
+let config = Config {
+    name: "demo".into(),
+    value: 7,
+};
+assert_eq!(config.value, 7);
 ```
 
-## Macro Pattern
+A downstream user opts in with:
 
-```rust
-// Reusable macro for serde derives
-#[cfg(feature = "serde")]
-macro_rules! impl_serde {
-    ($($t:ty),*) => {
-        $(
-            impl serde::Serialize for $t {
-                // ...
-            }
-            impl<'de> serde::Deserialize<'de> for $t {
-                // ...
-            }
-        )*
-    };
-}
-
-#[cfg(not(feature = "serde"))]
-macro_rules! impl_serde {
-    ($($t:ty),*) => {};
-}
-
-// Or use cfg_attr for derived impls
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Point {
-    pub x: f64,
-    pub y: f64,
-}
-```
-
-## Feature Documentation
-
-```rust
-// lib.rs
-
-//! # Features
-//!
-//! - `serde`: Enables `Serialize` and `Deserialize` implementations for all types.
-//!
-//! # Example with serde
-//!
-//! ```toml
-//! [dependencies]
-//! my_crate = { version = "1.0", features = ["serde"] }
-//! ```
-
-#![cfg_attr(docsrs, feature(doc_cfg))]
-
-/// A configuration type.
-/// 
-/// When the `serde` feature is enabled, this type implements
-/// `Serialize` and `Deserialize`.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
-pub struct Config {
-    pub name: String,
-}
-```
-
-## Multiple Optional Dependencies
-
-```rust
-// Cargo.toml
+```toml
 [dependencies]
-serde = { version = "1.0", features = ["derive"], optional = true }
-rkyv = { version = "0.7", optional = true }
-borsh = { version = "0.10", optional = true }
-
-[features]
-default = []
-serde = ["dep:serde"]
-rkyv = ["dep:rkyv"]
-borsh = ["dep:borsh"]
-
-// lib.rs
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
-#[cfg_attr(feature = "borsh", derive(borsh::BorshSerialize, borsh::BorshDeserialize))]
-pub struct Message {
-    pub id: u64,
-    pub content: String,
-}
+my_crate = { version = "1", features = ["serde"] }
 ```
 
-## Testing with Features
+Using `dep:serde` keeps the dependency name from implicitly becoming a separate public feature.
+
+## Keep Feature-Off Builds Healthy
+
+The crate should compile and test both without and with the feature:
 
 ```bash
-# Test without serde
 cargo test
-
-# Test with serde
 cargo test --features serde
-
-# Test all feature combinations
 cargo test --all-features
 ```
 
+For crates with several interacting optional features, add CI coverage for combinations that matter instead of assuming `--all-features` catches feature-isolation mistakes.
+
+## Serde-Specific Attributes
+
+Attributes that only exist when serde is enabled should be gated together with the derive or otherwise arranged so the feature-off build remains valid:
+
 ```rust
-// Test serde round-trip when feature enabled
-#[cfg(feature = "serde")]
-#[test]
-fn test_serde_roundtrip() {
-    let config = Config { name: "test".into() };
-    let json = serde_json::to_string(&config).unwrap();
-    let parsed: Config = serde_json::from_str(&json).unwrap();
-    assert_eq!(config, parsed);
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum Status {
+    Pending,
+    InProgress,
+    Complete,
 }
 ```
 
-## When to Make Serde Required
+## Optional Serialization for Validated Newtypes
 
-```rust
-// ✅ Required: Library is about serialization
-// (e.g., json-schema, config-file parser)
+The same feature boundary applies when a helper macro supplies serde implementations. Enable the macro crate's serde support only under your crate's serde feature, and test that deserialization preserves validation invariants.
+
+For example, a crate can forward its feature to an optional dependency:
+
+```toml
 [dependencies]
-serde = "1.0"
+nutype = { version = "0.7", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 
-// ✅ Required: Domain heavily uses serde
-// (e.g., API client, data format library)
-
-// ❌ Optional: General-purpose utility library
-// ❌ Optional: Math/algorithm library
-// ❌ Optional: Most libraries!
+[features]
+validated-types = ["dep:nutype"]
+serde = ["dep:serde", "nutype?/serde"]
 ```
 
-## nutype Integration
+The exact feature names depend on the dependency; verify them against the version your crate uses rather than copying feature wiring blindly.
 
-The `nutype` crate (v0.7.0) provides built-in serde support with validation on deserialization, making it a modern ergonomic alternative to manual `#[derive(Serialize, Deserialize)]` for validated types:
+## When Serde Should Be Required
 
-```rust
-use nutype::nutype;
+Making serde non-optional is reasonable when, for example:
 
-#[nutype(
-    sanitize(trim),
-    validate(not_empty, len_char_max = 100),
-    derive(Debug, Clone, Serialize, Deserialize)
-)]
-pub struct Email(String);
+- the crate is itself a serialization/data-format library,
+- nearly every public operation consumes or produces serialized data,
+- serde traits are intentionally part of the core public API contract,
+- an optional feature would create misleading or poorly tested API variants.
 
-// Deserializing from JSON runs validation
-let email: Email = serde_json::from_str(r#""user@example.com""#)?;
-// Invalid data gets rejected at deserialization time
-```
+Optional dependencies reduce unnecessary coupling only when the feature-off API remains useful.
 
-When using `nutype` in a library, gate the `nutype` dependency behind a feature flag following the same pattern.
+## Documentation
 
-See [api-nutype-validated](./api-nutype-validated.md) for details.
+Document feature names and what they add to public types. If docs.rs is configured to build all features, make it clear that serde impls shown there may require enabling the feature in downstream Cargo manifests.
 
 ## See Also
 
-- [api-nutype-validated](./api-nutype-validated.md) - nutype validated newtypes with serde
-- [proj-lib-main-split](./proj-lib-main-split.md) - Library structure
-- [api-common-traits](./api-common-traits.md) - Core trait implementations
-- [lint-deny-correctness](./lint-deny-correctness.md) - Feature testing
+- [api-nutype-validated](./api-nutype-validated.md) - Validated newtypes
+- [proj-features-additive](./proj-features-additive.md) - Feature design
+- [api-common-traits](./api-common-traits.md) - Public trait implementations
