@@ -1,0 +1,75 @@
+name: Migrate explicit fragment debt
+
+on:
+  push:
+    branches: [checks/reduce-example-debt]
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - name: Convert known fragment debt to inline metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from collections import defaultdict
+          from pathlib import Path
+          import re
+
+          ledger = Path('checks/good-exceptions.txt')
+          rows = ledger.read_text().splitlines()
+          targets = defaultdict(list)
+          kept = []
+          moved = 0
+
+          for row in rows:
+              if not row or row.startswith('#') or ' || ' not in row:
+                  kept.append(row)
+                  continue
+              sig, reason = row.split(' || ', 1)
+              if not reason.startswith(('standalone fragment:', 'extraction artifact:')):
+                  kept.append(row)
+                  continue
+              parts = sig.split(' :: ')
+              filename = parts[0]
+              block_part = next(p for p in parts if p.startswith('block '))
+              block_no = int(block_part.removeprefix('block '))
+              targets[filename].append((block_no, reason))
+              moved += 1
+
+          for filename, entries in targets.items():
+              path = Path('rules') / filename
+              lines = path.read_text().splitlines()
+              fences = [i for i, line in enumerate(lines) if re.match(r'^```rust(?:\s*,[^`]*)?\s*$', line.strip())]
+              for block_no, reason in sorted(entries, reverse=True):
+                  fence = fences[block_no - 1]
+                  marker = f'<!-- rust-check: fragment; reason={reason} -->'
+                  lines.insert(fence, marker)
+              path.write_text('\n'.join(lines) + '\n')
+
+          ledger.write_text('\n'.join(kept) + '\n')
+          print(f'migrated {moved} recommended fragment exceptions into rule metadata')
+          PY
+          bash checks/check.sh
+      - name: Commit migration
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rules checks/good-exceptions.txt
+          git commit -m 'Move fragment debt into explicit example metadata'
+          git push
