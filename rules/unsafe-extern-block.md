@@ -1,51 +1,65 @@
 # unsafe-extern-block
 
-> In Rust 2024, wrap `extern` blocks in `unsafe extern { }` and annotate each item as `safe` or `unsafe`.
+> In Rust 2024, use `unsafe extern { }` blocks and mark an item `safe` only when every safe Rust caller can satisfy its contract.
 
 ## Why It Matters
 
-Before Rust 2024, every function declared inside an `extern "C" { }` block was implicitly unsafe to call — but the block itself carried no `unsafe` keyword. This made it easy to forget that the FFI contract (correct types, valid pointers, no aliasing violations) was entirely the programmer's responsibility. Rust 2024 makes this explicit: the block must be `unsafe extern`, which signals that the *programmer* is asserting the declarations are accurate. Individual items can then be marked `safe` (callable without an `unsafe` block by the caller) or `unsafe` (the default — caller must use `unsafe {}`).
+Before Rust 2024, every function declared inside an `extern "C" { }` block was implicitly unsafe to call, while the block itself carried no `unsafe` keyword. Rust 2024 makes the declaration boundary explicit: the block must be `unsafe extern`, signaling that the programmer is responsible for declaring the external ABI accurately.
 
-This change makes FFI boundaries auditable at a glance and lets wrappers expose a safe API while keeping raw declarations accurate.
+Items remain unsafe by default. Marking an item `safe` is a much stronger promise: **all values expressible by its Rust signature must be valid inputs for the foreign function**. Raw-pointer APIs with validity, lifetime, aliasing, initialization, or null-termination preconditions should therefore normally remain `unsafe` and be wrapped by a separately implemented safe Rust API.
 
 ## Bad
 
 ```rust
-// Rust 2021 style — compiles but forbidden in 2024 edition
+// Rust 2021 style — forbidden in the 2024 edition
 extern "C" {
     fn strlen(s: *const std::ffi::c_char) -> usize;
     fn memcpy(dst: *mut u8, src: *const u8, n: usize) -> *mut u8;
-    static errno: std::ffi::c_int;
+}
+```
+
+```rust
+// UNSOUND: safe Rust callers can pass null, dangling, overlapping,
+// or otherwise invalid pointers.
+unsafe extern "C" {
+    pub safe fn memcpy(dst: *mut u8, src: *const u8, n: usize) -> *mut u8;
 }
 ```
 
 ## Good
 
 ```rust
-// Rust 2024 style
 unsafe extern "C" {
-    // `strlen` is genuinely unsafe: caller must pass a null-terminated pointer.
+    // Caller must provide a valid NUL-terminated C string.
     pub unsafe fn strlen(s: *const std::ffi::c_char) -> usize;
 
-    // `memcpy` is unsafe: caller must ensure non-overlapping, valid regions.
+    // Caller must provide valid, non-overlapping regions of at least n bytes.
     pub unsafe fn memcpy(dst: *mut u8, src: *const u8, n: usize) -> *mut u8;
 
-    // A function that is always safe to call (hypothetical pure query).
+    // Hypothetical function whose complete contract really is represented by
+    // its Rust signature. Only such items should be declared `safe`.
     pub safe fn rust_version_major() -> u32;
 
-    // Statics are unsafe to access unless you can guarantee no data races.
+    // Access to an extern static may rely on initialization, validity,
+    // synchronization, mutability, and other foreign-code invariants.
     pub unsafe static errno: std::ffi::c_int;
 }
 
-// Call sites remain unchanged for `unsafe` items:
-fn copy_bytes(dst: *mut u8, src: *const u8, n: usize) {
-    // SAFETY: dst and src are non-overlapping, both valid for n bytes.
+// If the Rust API accepts raw pointers, preserve the caller-side contract.
+/// Copies `n` bytes from `src` to `dst`.
+///
+/// # Safety
+/// `src` and `dst` must each be valid for `n` bytes and must not overlap.
+unsafe fn copy_bytes(dst: *mut u8, src: *const u8, n: usize) {
+    // SAFETY: forwarded directly from this function's documented preconditions.
     unsafe { memcpy(dst, src, n) };
 }
 
-// Call sites for `safe` items need no unsafe block:
-fn show_version() {
-    println!("major: {}", rust_version_major());
+// Prefer a genuinely safe wrapper when Rust types can establish the contract.
+fn copy_slice(dst: &mut [u8], src: &[u8]) {
+    assert_eq!(dst.len(), src.len());
+    // Distinct Rust borrows establish valid, non-overlapping regions.
+    unsafe { memcpy(dst.as_mut_ptr(), src.as_ptr(), src.len()) };
 }
 ```
 
@@ -54,19 +68,20 @@ fn show_version() {
 | 2021 | 2024 |
 |------|------|
 | `extern "C" { fn foo(); }` | `unsafe extern "C" { unsafe fn foo(); }` |
-| `extern "C" { fn bar(); }` (safe to call) | `unsafe extern "C" { safe fn bar(); }` |
+| `extern "C" { fn bar(); }` where every call is safe | `unsafe extern "C" { safe fn bar(); }` |
 | `extern "C" { static X: i32; }` | `unsafe extern "C" { unsafe static X: i32; }` |
 
-Run `cargo fix --edition` to apply the mechanical part of this migration automatically. Review each item afterward to decide whether `safe` is warranted.
+Run `cargo fix --edition` for the mechanical syntax migration, then review every declaration's actual safety contract. Do not convert items to `safe` merely to remove `unsafe` blocks at call sites.
 
 ## Key Points
 
-- The `unsafe` on the block means "I assert these declarations faithfully describe the external ABI". It does not make calls to the items safe by itself.
-- Marking an item `safe` is a promise: if that item is actually unsafe to call, adding `safe` is itself unsound — the compiler will not catch a wrong annotation.
-- `bindgen` (0.70+) and `cbindgen` have been updated to emit `unsafe extern` blocks for Rust 2024 output. Update your code generator if you use one.
-- The `extern "Rust"` ABI for cross-crate `#[no_mangle]` functions follows the same rules (see `unsafe-no-mangle-unsafe`).
+- `unsafe` on the block means the declarations themselves are trusted to match the foreign ABI.
+- An `unsafe` item may impose caller obligations; document them and expose a safe wrapper only when the wrapper establishes them.
+- A `safe` extern item must be safe for every call permitted by its Rust signature.
+- Raw pointers in a signature are not automatically unsafe, but any unchecked validity, aliasing, lifetime, initialization, or provenance requirement is a strong sign that the item must remain `unsafe`.
+- Extern statics require the same careful invariant analysis; data races are only one possible source of unsoundness.
 
 ## See Also
 
 - [unsafe-no-mangle-unsafe](unsafe-no-mangle-unsafe.md) - mark `#[no_mangle]` as `#[unsafe(no_mangle)]` in Rust 2024
-- [type-repr-transparent](type-repr-transparent.md) - use `#[repr(transparent)]` for FFI newtypes
+- [type-repr-transparent](type-repr-transparent.md) - layout guarantees for intentional transparent wrappers
