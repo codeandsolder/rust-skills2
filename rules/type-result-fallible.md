@@ -32,6 +32,7 @@ fn divide(a: i32, b: i32) -> i32 {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Result with clear error type
 fn read_config(path: &str) -> Result<Config, ConfigError> {

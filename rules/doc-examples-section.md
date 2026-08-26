@@ -24,6 +24,7 @@ pub struct Widget {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 /// Parses a string into a Foo.
 ///

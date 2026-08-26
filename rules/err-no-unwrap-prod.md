@@ -23,6 +23,7 @@ fn process_request(req: Request) -> Response {
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 // Option 1: Propagate with ?
 fn process_request(req: Request) -> Result<Response, AppError> {

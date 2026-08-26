@@ -26,6 +26,7 @@ struct Handle<T> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 use std::marker::PhantomData;
 

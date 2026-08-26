@@ -24,6 +24,7 @@ pub async fn connect(url: &str) -> Result<Connection, DbError> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 /// Opens a file and reads its contents as a UTF-8 string.
 ///

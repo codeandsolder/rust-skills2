@@ -33,6 +33,7 @@ fn classify(n: i32) -> String {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Return &'static str for constants
 fn get_error_message() -> &'static str {

@@ -27,6 +27,7 @@ fn connect_database(url: &str) -> Result<Db, Error> { /* ... */ }
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // src/main.rs - thin entry point
 use my_app::{run, Config};

@@ -40,6 +40,7 @@ trait FactoryFactory<F: Factory<T>, T> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Concrete implementation - clear and simple
 fn add_i32(a: i32, b: i32) -> i32 {

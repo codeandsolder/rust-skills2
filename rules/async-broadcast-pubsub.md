@@ -20,6 +20,7 @@ let mut rx2 = ???;  // Can't clone receiver
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use tokio::sync::broadcast;
 

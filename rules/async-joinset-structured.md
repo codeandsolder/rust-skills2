@@ -26,6 +26,7 @@ let results = futures::future::join_all(handles).await;
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use tokio::task::JoinSet;
 

@@ -24,6 +24,7 @@ impl SomeExternalTrait for Vec<u8> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Define an extension trait
 pub trait ByteSliceExt {

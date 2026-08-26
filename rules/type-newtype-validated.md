@@ -30,6 +30,7 @@ fn add_recipient(list: &mut Vec<String>, email: &str) -> Result<(), Error> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Email(String);

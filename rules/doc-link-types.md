@@ -21,6 +21,7 @@ pub fn parse(input: &str) -> ParseResult {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 /// Parses input and returns a [`ParseResult`].
 ///

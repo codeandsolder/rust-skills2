@@ -30,6 +30,7 @@ let copy = point.clone();  // Error: Clone not implemented
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point {

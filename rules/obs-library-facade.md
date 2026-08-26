@@ -38,6 +38,7 @@ pub fn connect(url: &str) {
 }
 ```
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // In the binary: src/main.rs
 fn main() {

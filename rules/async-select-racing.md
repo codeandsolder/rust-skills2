@@ -31,6 +31,7 @@ async fn fetch_with_timeout() -> Option<Data> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use tokio::select;
 

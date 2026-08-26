@@ -25,6 +25,7 @@ for byte in data {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 #[inline]
 fn is_ascii_digit(b: u8) -> bool {

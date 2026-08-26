@@ -22,6 +22,7 @@ struct Parser<'parser_instance_lifetime> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 // Standard short lifetimes
 fn parse<'a>(input: &'a str) -> Result<&'a str, Error> { ... }

@@ -73,6 +73,7 @@ fn is_terminal(s: &Status) -> bool {
 
 `matches!` pairs especially well with the `is_`/`has_`/`can_` naming convention for boolean predicate methods:
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 impl Status {
     pub fn is_active(&self) -> bool {

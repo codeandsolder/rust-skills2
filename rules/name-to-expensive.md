@@ -24,6 +24,7 @@ impl Name {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 impl Name {
     // to_ = allocates/computes

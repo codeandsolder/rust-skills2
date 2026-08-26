@@ -22,6 +22,7 @@ fn load_user(id: u64) -> Result<User, Error> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use anyhow::{Context, Result};
 

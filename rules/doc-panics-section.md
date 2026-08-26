@@ -24,6 +24,7 @@ pub fn divide(a: i32, b: i32) -> i32 {
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 /// Returns the element at the given index.
 ///

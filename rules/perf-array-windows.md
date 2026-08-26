@@ -28,6 +28,7 @@ fn batch_process(data: &[f64]) -> f64 {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: type inference needs surrounding context -->
 ```rust
 // array_windows::<3>() returns &[i32; 3] — zero bounds checks
 fn sliding_sum(data: &[i32]) -> Vec<i32> {

@@ -37,6 +37,7 @@ let config = Config { name: "test".into(), value: 42 };
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 // Can add variants in minor versions
 #[non_exhaustive]

@@ -34,6 +34,7 @@ match validate_user(&user) {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use thiserror::Error;
 

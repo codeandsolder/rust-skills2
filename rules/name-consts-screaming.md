@@ -17,6 +17,7 @@ static globalCounter: AtomicU64 = AtomicU64::new(0);  // warning
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // SCREAMING_SNAKE_CASE for constants
 const MAX_CONNECTIONS: u32 = 100;

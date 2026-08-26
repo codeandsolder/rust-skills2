@@ -25,6 +25,7 @@ fn load_document(data: &[u8]) -> Document {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 struct Document {
     // Box<[T]> signals "fixed size" - clear intent

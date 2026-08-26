@@ -28,6 +28,7 @@ fn load_config(path: &str) -> Result<Config, ConfigError> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use thiserror::Error;
 

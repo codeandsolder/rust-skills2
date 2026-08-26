@@ -32,6 +32,7 @@ tokio::spawn(async move {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use tokio::sync::mpsc;
 

@@ -24,6 +24,7 @@ read_file("/file");  // Error! &str != &Path
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Accept anything that can be viewed as the target type
 fn process_text(text: impl AsRef<str>) {

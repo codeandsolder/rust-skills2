@@ -36,6 +36,7 @@ running.store(false, Ordering::Relaxed);
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use tokio_util::sync::CancellationToken;
 

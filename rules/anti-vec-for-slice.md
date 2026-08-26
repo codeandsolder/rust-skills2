@@ -25,6 +25,7 @@ let slice: &[i32] = &[1, 2, 3];
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Accept slice - works with Vec, arrays, slices
 fn sum(numbers: &[i32]) -> i32 {

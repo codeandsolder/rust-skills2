@@ -24,6 +24,7 @@ compute_checksum(&data);  // Result discarded - pointless call
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 #[must_use = "this `Result` may be an `Err` that should be handled"]
 fn send_email(to: &str, body: &str) -> Result<(), EmailError> { ... }

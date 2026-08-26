@@ -45,6 +45,7 @@ fn update_or_default(map: &mut HashMap<String, Config>, key: &str, value: i32) {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;

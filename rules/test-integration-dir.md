@@ -34,6 +34,7 @@ fn integration_test_full_workflow() {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // tests/integration_test.rs
 use my_crate::{Client, Config};  // Uses public API only

@@ -43,6 +43,7 @@ fn sum_valid(items: &[Item]) -> i64 {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Single allocation, single pass
 fn process(data: Vec<i32>) -> Vec<i32> {

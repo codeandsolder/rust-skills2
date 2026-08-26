@@ -25,6 +25,7 @@ fn process_data(data: &[u8]) -> Result<Output, Error> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 fn process_data(data: &[u8]) -> Result<Output, Error> {
     if data.is_empty() {

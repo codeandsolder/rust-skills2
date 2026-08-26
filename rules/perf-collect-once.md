@@ -35,6 +35,7 @@ fn count_valid(items: &[Item]) -> usize {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // One allocation, one pass
 fn process_users(users: Vec<User>) -> Vec<String> {

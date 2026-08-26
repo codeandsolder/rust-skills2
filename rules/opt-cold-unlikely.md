@@ -30,6 +30,7 @@ fn validate(input: &str) -> Result<Data, ValidationError> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 fn validate(input: &str) -> Result<Data, ValidationError> {
     if input.is_empty() {

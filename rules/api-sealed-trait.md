@@ -33,6 +33,7 @@ pub trait DatabaseDriver {
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 // Create a private module with a private trait
 mod private {

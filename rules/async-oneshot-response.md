@@ -25,6 +25,7 @@ while result.lock().await.is_none() {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use tokio::sync::oneshot;
 

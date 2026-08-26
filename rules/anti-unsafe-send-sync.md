@@ -39,6 +39,7 @@ unsafe impl Sync for Cache {}   // Allows &Cache across threads → data race
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Use safe synchronization primitives instead
 use std::sync::Mutex;
@@ -58,6 +59,7 @@ impl FfiWrapper {
 // Mutex<T>: Send + Sync when T: Send, so this compiles safely
 ```
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // For FFI types that are genuinely thread-safe:
 use std::sync::atomic::AtomicBool;

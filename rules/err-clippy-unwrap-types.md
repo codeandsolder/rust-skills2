@@ -41,6 +41,7 @@ allow-unwrap-types = [
 
 Now `Mutex::lock().unwrap()` no longer triggers:
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // No false positive — LockResult is whitelisted
 fn handle_request(state: &AppState) {

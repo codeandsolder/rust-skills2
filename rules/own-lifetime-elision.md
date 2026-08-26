@@ -29,6 +29,7 @@ impl<'a> Display for Wrapper<'a> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Let elision do its job
 fn first_word(s: &str) -> &str {

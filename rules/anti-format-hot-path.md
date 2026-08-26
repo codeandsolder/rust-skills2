@@ -34,6 +34,7 @@ fn greet(name: &str) -> String {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use std::fmt::Write;
 
