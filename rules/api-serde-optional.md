@@ -131,5 +131,5 @@ Document feature names and what they add to public types. If docs.rs is configur
 ## See Also
 
 - [api-nutype-validated](./api-nutype-validated.md) - Validated newtypes
-- [proj-features-additive](./proj-features-additive.md) - Feature design
+- [proj-features-additive](./proj-feature-additive.md) - Feature design
 - [api-common-traits](./api-common-traits.md) - Public trait implementations
