@@ -4,62 +4,61 @@
 
 ## Why It Matters
 
-`ArrayVec` from the `arrayvec` crate (currently **0.7.7**) provides Vec-like API with a compile-time maximum capacity, storing all elements inline on the stack. Unlike `SmallVec` which can spill to heap, `ArrayVec` guarantees no heap allocation—if you exceed capacity, it returns an error or panics. This is ideal for embedded systems, real-time code, or when you have a hard upper bound.
+`ArrayVec` from the `arrayvec` 0.7 series stores up to `N` values inline and never grows onto the heap. Unlike `SmallVec`, which may spill to a heap allocation when its inline capacity is exceeded, `ArrayVec` has a hard compile-time capacity.
+
+That makes it useful when a hard upper bound is part of the design—for example embedded/no-alloc code, bounded protocol fields, or small temporary buffers. It is not automatically better than `Vec`: large capacities increase the size of the containing value and can put substantial objects on the stack.
 
 ## Bad
 
 ```rust
-// Vec always heap-allocates, even for small collections
-fn parse_options(input: &str) -> Vec<Option> {
-    let mut options = Vec::new();  // Heap allocation
-    for part in input.split(',').take(8) {  // Know we never exceed 8
-        options.push(parse_option(part));
-    }
-    options
-}
-
-// Or SmallVec when you truly can't exceed capacity
-use smallvec::SmallVec;
-fn get_flags() -> SmallVec<[Flag; 4]> {
-    // SmallVec CAN heap-allocate if pushed beyond 4
-    // That might be unexpected in no-alloc contexts
+// If the protocol guarantees at most eight items, an unbounded Vec does not
+// express that invariant in the type.
+fn collect_codes(input: &str) -> Vec<u16> {
+    input.split(',')
+        .filter_map(|part| part.parse().ok())
+        .collect()
 }
 ```
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: domain parser and sensor context -->
 ```rust
 use arrayvec::ArrayVec;
 
-// Guaranteed no heap allocation
-fn parse_options(input: &str) -> ArrayVec<Option, 8> {
+struct ParsedOption;
+
+fn parse_options(input: &str) -> ArrayVec<ParsedOption, 8> {
     let mut options = ArrayVec::new();
     for part in input.split(',') {
-        if options.try_push(parse_option(part)).is_err() {
-            break;  // Capacity reached, stop
+        let option = parse_option(part);
+        if options.try_push(option).is_err() {
+            break;
         }
     }
     options
 }
 
-// For embedded/no_std contexts
-#[no_std]
+// In a no_std crate, ArrayVec can be used with arrayvec's default `std`
+// feature disabled.
 fn collect_readings() -> ArrayVec<SensorReading, 16> {
     let mut readings = ArrayVec::new();
-    for sensor in SENSORS.iter() {
-        readings.push(sensor.read());  // Panics if > 16
+    for sensor in SENSORS.iter().take(readings.capacity()) {
+        readings.push(sensor.read());
     }
     readings
 }
 ```
 
-## ArrayVec vs SmallVec vs Vec
+Do not put `#[no_std]` on an individual function. `#![no_std]` is a crate-level attribute; configure the dependency/features for the crate that needs no-std operation.
 
-| Type | Stack | Heap | Use When |
-|------|-------|------|----------|
-| `Vec<T>` | Never | Always | Unknown size, may grow indefinitely |
-| `SmallVec<[T; N]>` | Up to N | Beyond N | Usually small, occasionally large |
-| `ArrayVec<T, N>` | Always | Never | Hard limit, no heap allowed |
+## `ArrayVec` vs `SmallVec` vs `Vec`
+
+| Type | Storage behavior | Use when |
+|------|------------------|----------|
+| `Vec<T>` | Heap-backed, grows dynamically | Size is not tightly bounded |
+| `SmallVec<[T; N]>` | Inline up to N, may spill to heap | Usually small but growth is allowed |
+| `ArrayVec<T, N>` | Always inline, hard capacity N | Exceeding N is an error/panic by policy |
 
 ## API Patterns
 
@@ -67,76 +66,47 @@ fn collect_readings() -> ArrayVec<SensorReading, 16> {
 use arrayvec::ArrayVec;
 
 let mut arr: ArrayVec<i32, 4> = ArrayVec::new();
+arr.push(1);                    // panics if already full
+arr.try_push(2).unwrap();       // returns CapacityError on overflow
 
-// Push with potential panic (like Vec)
-arr.push(1);
-arr.push(2);
+assert_eq!(arr.capacity(), 4);
+assert_eq!(arr.remaining_capacity(), 2);
+assert!(!arr.is_full());
 
-// Safe push - returns Err if full
-match arr.try_push(3) {
-    Ok(()) => println!("Added"),
-    Err(err) => println!("Full, couldn't add {}", err.element()),
-}
-
-// Check capacity
-assert!(arr.len() < arr.capacity());
-
-// Remaining capacity
-let remaining = arr.remaining_capacity();
-
-// Is it full?
-if arr.is_full() {
-    arr.pop();
-}
-
-// From iterator with limit
-let arr: ArrayVec<_, 10> = (0..100)
-    .filter(|x| x % 2 == 0)
-    .take(10)  // Important: don't exceed capacity
-    .collect();
+let collected: ArrayVec<i32, 4> = (0..4).collect();
+assert_eq!(&collected[..], &[0, 1, 2, 3]);
 ```
 
-## ArrayString for Stack Strings
+`FromIterator` cannot return a capacity error, so collecting more than `N` items into an `ArrayVec<T, N>` panics. When the input length is not statically bounded, prefer `try_push` or another explicitly fallible construction path.
+
+## `ArrayString` for Bounded Strings
 
 ```rust
 use arrayvec::ArrayString;
+use std::fmt::Write as _;
 
-// Stack-allocated string with max capacity
-let mut s: ArrayString<64> = ArrayString::new();
-s.push_str("Hello, ");
-s.push_str("world!");
-
-// No heap allocation for small strings
 fn format_code(code: u32) -> ArrayString<16> {
     let mut s = ArrayString::new();
-    write!(&mut s, "CODE-{:04}", code).unwrap();
+    write!(&mut s, "CODE-{code:04}").unwrap();
     s
 }
 ```
 
-## When NOT to Use ArrayVec
+## When Not to Use It
 
-```rust
-// ❌ When size varies widely
-fn parse_json_array(json: &str) -> ArrayVec<Value, ???> {
-    // What capacity? JSON arrays can be any size
-}
-
-// ❌ When capacity is very large
-let big: ArrayVec<u8, 1_000_000> = ArrayVec::new();  // 1MB on stack = bad
-
-// ✅ Use SmallVec or Vec instead for these cases
-```
+Avoid choosing an arbitrary large capacity merely to avoid allocation. An `ArrayVec<u8, 1_000_000>` makes every value roughly a megabyte even when empty. If the size is genuinely variable, use `Vec`; if a small inline fast path with heap fallback is desirable, consider `SmallVec`.
 
 ## Cargo.toml
 
 ```toml
 [dependencies]
-arrayvec = "0.7.7"
+arrayvec = "0.7"
 ```
+
+As of August 2026, the current 0.7 release line is 0.7.8. Prefer a compatible-series requirement unless the project has a reason to pin a patch release.
 
 ## See Also
 
 - [mem-smallvec](./mem-smallvec.md) - When heap fallback is acceptable
 - [mem-with-capacity](./mem-with-capacity.md) - Pre-allocating Vec capacity
-- [own-move-large](./own-move-large.md) - Large stack types considerations
+- [own-move-large](./own-move-large.md) - Large inline types and move cost

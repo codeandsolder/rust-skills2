@@ -1,73 +1,58 @@
 # name-word-order
 
-> Name error types verb-object: `ParseIntError`, not `IntParseError`
+> Keep compound names in a consistent, idiomatic word order
 
 ## Why It Matters
 
-Rust convention places the verb or action first in compound names for error types and other domain entities. `ParseIntError` reads as "error while parsing int" — the action (parsing) comes first. `IntParseError` reads ambiguously as "int parse error" or "error belonging to IntParse". Consistent word order improves scannability and follows standard library patterns.
+Rust's API Guidelines recommend consistency in the order of words in compound names. For similar error types, the standard library commonly uses **verb-object-error** names such as `ParseIntError`, `ParseBoolError`, `JoinPathsError`, and `StripPrefixError`.
+
+The important rule is not that every Rust type must start with a verb. Use ordinary English modifier-noun order for names such as `HttpServer` and `TcpListener`, and match established terminology in the surrounding API. Prefer consistency with closely related standard-library or crate-local names over mechanically rearranging words.
 
 ## Bad
 
 ```rust
-// Verb-object swapped - reads awkwardly
-struct IntParseError;
-struct StringConversionError;  // ConversionStringError would be worse, but
-struct HttpServerError;        // ServerHttpError is confusing
+// Inconsistent names for the same kind of operation.
+struct IntParseFailure;
+struct FloatParsingFailure;
+struct ParseBoolFailure;
 
-// Inconsistent ordering in a crate
-enum DataError {
-    FileNotFound,
-    NetworkTimeout,
-    SerializationError,  // Action verb after noun
-}
+// Awkward modifier order.
+struct ServerHttp;
+struct ListenerTcp;
 ```
 
 ## Good
 
 ```rust
-// Verb-object order: action first
-struct ParseIntError;        // "error while parsing int"
-struct ConvertStringError;   // "error while converting string"
-struct ServeHttpError;       // "error while serving HTTP"
+// Consistent verb-object-error order for a family of parsing errors.
+struct ParseWidgetError;
+struct ParseHeaderError;
+struct ParsePacketError;
 
-// Standard library examples follow this pattern
-use std::num::ParseIntError;
-use std::num::ParseFloatError;
-use std::str::ParseBoolError;
-use std::char::ParseCharError;
-use std::net::AddrParseError;
+// Ordinary modifier-noun names where that is the natural phrase.
+struct HttpServer;
+struct TcpListener;
+struct DataProcessor;
 
-// Consistent crate-internal ordering
-enum DataError {
-    FileNotFound,
-    NetworkTimeout,
-    SerializeError,   // Action verb first
-}
+// Closely related standard-library types use the same Parse*Error family.
+let _: Option<std::num::ParseIntError> = None;
+let _: Option<std::num::ParseFloatError> = None;
+let _: Option<std::str::ParseBoolError> = None;
+let _: Option<std::char::ParseCharError> = None;
 ```
 
-## Domain Entities
-
-The same principle applies to non-error types:
-
-```rust
-// Verb-object order for domain operations
-struct HttpServer;             // Not ServerHttp
-struct TcpListener;            // Not ListenerTcp
-struct DataProcessor;          // Not ProcessorData
-struct FileReader;             // Not ReaderFile
-struct LogWriter;              // Not WriterLog
-```
+`std::net::AddrParseError` is a historical counterexample to the otherwise common `Parse*Error` family. The API Guidelines explicitly use it to illustrate that consistency with a family can be preferable to copying an inconsistent legacy name when designing a new API.
 
 ## Decision Guide
 
-| Pattern | Example | Correct? |
-|---------|---------|----------|
-| Verb-Noun | `ParseIntError` | ✅ Correct |
-| Noun-Verb | `IntParseError` | ❌ Wrong |
-| Modifier-Noun | `HttpServer` | ✅ Correct |
-| Noun-Modifier | `ServerHttp` | ❌ Wrong |
+| Situation | Prefer | Example |
+|-----------|--------|---------|
+| Family of operation errors | Match the family's established order | `ParseIntError`, `ParseWidgetError` |
+| Modifier + noun | Natural English order | `HttpServer`, `TcpListener` |
+| Existing public API family | Consistency with sibling names | `FooReader`, `FooWriter` |
+| No established convention | Pick a clear order and use it consistently | crate-specific |
 
-The general rule: **action/operation first, then the thing it acts on or produces.**
+The guideline is **consistent word order**, not a universal grammar rule that every compound Rust name must be verb-first.
 
 ## See Also
 
