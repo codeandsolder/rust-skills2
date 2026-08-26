@@ -1,145 +1,38 @@
 # perf-copy-range
 
-> Use `core::range::Range` for Copy-compatible range storage
-
-**Rule**: `perf-copy-range`
+> Treat `Copy` ranges as an ownership and ergonomics choice, not an automatic performance optimization
 
 ## Why It Matters
 
-`core::ops::Range` implements `Iterator`, which makes it non-Copy — an Iterator can't be Copy because it has mutable iteration state. `core::range::Range` (stabilized in Rust 1.96) implements `IntoIterator` instead, enabling `Copy`. This allows storing range bounds in Copy types and passing them by value without ownership semantics.
+Rust 1.96's `core::range::Range<T>` can be `Copy` when `T: Copy`, which can simplify small data structures that store ranges by value. But `Copy` does not by itself prove faster code, eliminate all references, or guarantee better generated machine code.
 
-## Bad
+Use the newer range where its value semantics make an API or data structure clearer. Benchmark before presenting the choice as a hot-path optimization.
 
-```rust
-use std::ops::Range;
-
-// core::ops::Range is not Copy
-#[derive(Clone)]  // Can't derive Copy!
-struct ChunkMeta {
-    offset: Range<usize>,
-    length: usize,
-}
-
-// Passing ops::Range requires ownership or &mut
-fn process_chunks(chunks: Vec<Range<usize>>) {
-    for range in chunks {
-        // Range is consumed by the for loop (IntoIterator)
-        process(range);
-        // Can't use `range` again
-    }
-}
-```
-
-## Good
-
-```rust
-use core::range::Range;
-
-// core::range::Range is Copy
-#[derive(Clone, Copy)]
-struct ChunkMeta {
-    offset: Range<usize>,  // Now Copy!
-    length: usize,
-}
-
-// Passing by value without ownership issues
-fn process_chunks(chunks: &[Range<usize>]) {
-    for &range in chunks {
-        // Copy, so we can iterate
-        for i in range {
-            process_index(i);
-        }
-        // range is still available
-    }
-}
-
-// Store in arrays without cloning
-const RANGES: [Range<usize>; 3] = [
-    Range { start: 0, end: 10 },
-    Range { start: 10, end: 20 },
-    Range { start: 20, end: 30 },
-];
-```
-
-## Conversion
-
-`core::range::Range` and `core::ops::Range` are interconvertible:
-
-```rust
-use core::ops::Range as OpsRange;
-use core::range::Range;
-
-// Convert ops::Range to range::Range (always succeeds)
-let ops: OpsRange<usize> = 0..10;
-let range: Range<usize> = ops.into();
-
-// Convert range::Range to ops::Range (always succeeds)
-let range: Range<usize> = Range { start: 0, end: 10 };
-let ops: OpsRange<usize> = range.into();
-```
-
-## Use Cases
-
-### Storing range metadata in Copy-heavy structs
+## Example
 
 ```rust
 use core::range::Range;
 
 #[derive(Clone, Copy)]
-struct Span {
-    range: Range<usize>,
-    source_id: u32,
-}
-
-fn merge_spans(a: Span, b: Span) -> Span {
-    Span {
-        range: Range {
-            start: a.range.start.min(b.range.start),
-            end: a.range.end.max(b.range.end),
-        },
-        source_id: a.source_id,
-    }
+struct TokenSpan {
+    bytes: Range<usize>,
 }
 ```
 
-### Passing ranges without lifetime or ownership friction
+This can make passing and storing `TokenSpan` convenient. Whether it improves performance depends on the surrounding code and optimizer.
 
-```rust
-use core::range::Range;
+## Interoperability Matters
 
-// Previously needed &Range<usize> or Clone
-fn contains(range: Range<usize>, point: usize) -> bool {
-    range.start <= point && point < range.end
-}
+Existing APIs frequently accept `core::ops::Range` or `RangeBounds`. Conversions or adapter code may cost more complexity than any hypothetical micro-optimization.
 
-// Can now be Copy — no borrow issues
-fn intersect(a: Range<usize>, b: Range<usize>) -> Option<Range<usize>> {
-    let start = a.start.max(b.start);
-    let end = a.end.min(b.end);
-    if start < end {
-        Some(Range { start, end })
-    } else {
-        None
-    }
-}
-```
+## Key Points
 
-## API Compatibility
-
-| API | Since | Implements Iterator | Implements Copy |
-|-----|-------|-------------------|-----------------|
-| `core::ops::Range` | 1.0 | Yes | No |
-| `core::range::Range` | 1.96 | No (IntoIterator) | Yes |
-
-## Performance
-
-Using `core::range::Range` in Copy types avoids:
-- Reference indirection when passing ranges by value
-- Clone calls when reusing a range
-- Lifetime annotations in function signatures
+- Choose `core::range::Range` for useful `Copy` value semantics.
+- Do not claim that `Iterator` inherently prevents `Copy`.
+- Do not claim automatic speedups from the type change.
+- Measure hot paths and keep API compatibility in view.
 
 ## See Also
 
-- [perf-iter-over-index](./perf-iter-over-index.md) - Prefer iterators over indexing
-- [own-copy-small](./own-copy-small.md) - Derive Copy for small, trivial types
-- [type-newtype-ids](./type-newtype-ids.md) - Newtype patterns
+- [own-range-copy](./own-range-copy.md) — canonical ownership guidance
+- [own-copy-small](./own-copy-small.md) — `Copy` design
