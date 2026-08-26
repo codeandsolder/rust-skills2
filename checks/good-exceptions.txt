@@ -1,0 +1,5 @@
+# Exact known failures of examples whose expectation is `compile`.
+# Format: file :: section :: sorted(error-tokens) || reason
+#
+# This is migration debt, not a general baseline. A changed error signature is
+# NOT accepted automatically, and stale entries fail CI so fixed debt is removed.

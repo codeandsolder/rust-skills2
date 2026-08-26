@@ -1,63 +1,83 @@
 # checks — compile-verify the rule examples
 
-A dev tool that type-checks the ` ```rust ` code blocks in `../rules/*.md` so the
-"Good" examples we tell agents to write actually compile. Not part of the
-published skill.
+This dev tool type-checks Rust blocks in `../rules/*.md`. Its primary invariant is
+that recommended examples compile unless the rule explicitly says why they are a
+fragment, compile-fail example, ignored snippet, or nightly-only example.
 
 ## Run
 
 ```bash
-# structural / link / index checks (no toolchain needed)
-python3 checks/validate.py
-
-# compile-check the examples
-cd checks
-python3 gen.py                                              # extract blocks -> examples/
-cargo check --examples --keep-going --message-format=json > check.json
-python3 analyze.py check.json                               # classify results
-python3 analyze.py check.json --check-baseline baseline.txt # CI gate: fail on NEW suspects
+bash checks/check.sh
 ```
 
-Both run in CI (`.github/workflows/ci.yml`): `validate` (Python only) and
-`examples` (pinned to Rust 1.95.0, the toolchain `baseline.txt` was generated on).
+The command runs structural/link/index checks, extracts examples, compiles them
+with the pinned Rust 1.98 toolchain, and enforces both explicit expectations and
+the remaining legacy baseline.
 
-## Updating the baseline
+## Example expectations
 
-`baseline.txt` lists the currently-accepted suspects (fragments/pseudocode the
-heuristics can't auto-classify). The CI gate fails only on signatures *not* in
-it. After intentionally adding/changing examples, regenerate it on the pinned
-toolchain and review the diff:
+A Rust block under a heading beginning with `Good` defaults to **`compile`**.
+Other existing sections keep the legacy classifier during migration.
+
+Override an example by placing a hidden marker immediately above the fence:
+
+```markdown
+<!-- rust-check: fragment; reason=uses domain types defined elsewhere -->
+```rust
+use crate::domain::Request;
+```
+```
+
+Supported expectations:
+
+- `compile` — must produce zero compiler errors.
+- `fragment` — may fail only because surrounding names/context are absent.
+- `compile_fail` — must fail to compile.
+- `ignore` — not compiled; requires a reason.
+- `nightly(feature_name)` — not checked by the stable harness; records the required feature.
+
+Examples:
+
+```markdown
+<!-- rust-check: compile -->
+<!-- rust-check: compile_fail; reason=demonstrates ownership error -->
+<!-- rust-check: ignore; reason=requires a proc-macro crate -->
+<!-- rust-check: nightly(portable_simd); reason=nightly-only API -->
+```
+
+## Two debt files, two meanings
+
+`baseline.txt` is only for **legacy `auto` examples**. It no longer has authority
+to bless a failing recommended (`compile`) example.
+
+`good-exceptions.txt` is a temporary migration ledger for exact known failures of
+recommended examples. Every entry has a reason. Error signatures are exact, so a
+new or changed failure is rejected, and stale entries fail CI so fixed examples
+must be removed from the ledger.
+
+To inspect current state:
 
 ```bash
-rustup run 1.95.0 cargo check --examples --keep-going --message-format=json > check.json
-python3 analyze.py check.json --emit-baseline > baseline.txt
+cd checks
+python3 gen.py
+cargo check --examples --target x86_64-unknown-linux-gnu --keep-going \
+  --message-format=json > check.json 2> check.err || true
+python3 analyze.py check.json
 ```
 
-When bumping the pinned toolchain in `ci.yml`, regenerate `baseline.txt` on the
-same version in the same commit.
+Migration helpers (review their output before committing it):
 
-## How it works
+```bash
+python3 analyze.py check.json --emit-baseline > baseline.txt
+python3 analyze.py check.json --emit-good-exceptions > good-exceptions.generated.txt
+```
 
-`gen.py` extracts each candidate block into `examples/<name>.rs`, wrapping
-fragments in an `async fn -> Result<...>` so `?` and `.await` type-check. It
-skips blocks that can't compile standalone by design: `## Bad` anti-patterns,
-nightly `#![feature]` gates, procedural-macro code, placeholder crate names
-(`my_crate`, …), and bare `...` pseudocode.
-
-`analyze.py` buckets each failing example by compiler error code:
-
-- **fragment** — every error is name resolution (undefined symbol/crate). These
-  reference helpers defined elsewhere in the rule; expected, ignored.
-- **artifact** — caused by extraction (a `&self` method body wrapped as a free
-  fn, pseudocode `...`/`???` tokens, dangling doc comments). Not real bugs.
-- **low** — only "type annotations needed"; compiles in the rule's real context.
-- **SUSPECT** — anything else (type mismatch, no-method, bad syntax, wrong
-  arity, missing trait impl). These are the ones to review and fix.
+Do **not** regenerate either file merely to make CI green. Fix real example bugs
+or add explicit metadata first; debt entries are for acknowledged existing cases.
 
 ## Notes
 
-- Run on Rust ≥ 1.95: some examples use APIs stabilized in 1.95 (e.g. the
-  `MaybeUninit` array `From` conversions) and will spuriously fail on older
-  toolchains.
-- Generated files (`examples/`, `*.json`, `manifest.json`, `target/`) are
-  gitignored; only the source (`gen.py`, `analyze.py`, `Cargo.toml`) is tracked.
+- The harness is pinned by `checks/rust-toolchain.toml` to Rust 1.98.0.
+- Generated `examples/`, `check.json`, `check.err`, and `manifest.json` are ignored.
+- `gen.py` still auto-skips legacy `Bad`, placeholder, proc-macro, ellipsis, and
+  nightly snippets outside `Good`; new/edited rules should prefer explicit markers.
