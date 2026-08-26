@@ -6,7 +6,7 @@ description: >
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
   matching, macros, closures, observability, testing, and common anti-patterns.
-  Modernized for Rust 1.96 (2024 edition). Invoke with /rust-skills.
+  Modernized for Rust 1.98 (2024 edition). Invoke with /rust-skills.
 license: MIT
 metadata:
   author: leonardomso
@@ -18,12 +18,12 @@ metadata:
     - The Rustonomicon
     - ripgrep, tokio, serde, polars, axum, cargo codebases
     - This Week in Rust 2024-2026
-    - blog.rust-lang.org release posts 1.85-1.96
+    - blog.rust-lang.org release posts 1.85-1.98
 ---
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 324 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.96 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 324 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.98 (2024 edition).
 
 ## When to Apply
 
@@ -478,26 +478,16 @@ Reference these guidelines when:
 
 ## Recommended Cargo.toml Settings
 
+There is no universally optimal Cargo profile. Start from Cargo's defaults and change settings only for a measured goal. `panic = "abort"` changes panic/unwinding semantics, stripping can reduce diagnostic and profiling information, and fat LTO plus `codegen-units = 1` can substantially increase build time.
+
+A conservative starting point for performance-sensitive release builds is:
+
 ```toml
 [profile.release]
 opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "abort"
-strip = true
-
-[profile.bench]
-inherits = "release"
-debug = true
-strip = false
-
-[profile.dev]
-opt-level = 0
-debug = true
-
-[profile.dev.package."*"]
-opt-level = 3  # Optimize dependencies in dev
 ```
+
+Then benchmark the relevant tradeoff before adding settings such as `lto = "thin"`/`"fat"` or `codegen-units = 1`. Choose `panic = "abort"` only when abort-on-panic semantics are acceptable, and choose `strip` based on deployment, crash-reporting, and profiling requirements. Keep benchmark symbols when your profiler needs them.
 
 ---
 
