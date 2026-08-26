@@ -1,28 +1,36 @@
 # api-newtype-safety
 
-> Use newtypes to prevent mixing semantically different values
+> Use newtypes when identical representation hides meaning the compiler should distinguish
 
 ## Why It Matters
 
-Raw primitives like `u64` or `String` carry no semantic meaning. A function taking `(u64, u64)` can easily be called with arguments swapped. Newtypes wrap primitives in distinct types, making the compiler catch mistakes at compile time rather than runtime.
+Raw primitives such as `u64` or `String` carry little domain meaning. If two values share the same representation but are not interchangeable—user IDs and group IDs, meters and seconds, validated and unvalidated strings—a newtype lets the compiler enforce that distinction with no runtime tagging requirement.
+
+Use newtypes for meaningful invariants or confusion risks, not merely to wrap every primitive.
 
 ## Bad
 
 ```rust
+#[derive(Debug)]
 struct User {
     id: u64,
     group_id: u64,
-    created_at: u64,  // Unix timestamp
+    created_at_unix: u64,
 }
 
-fn add_user_to_group(user_id: u64, group_id: u64) { ... }
+fn membership_key(user_id: u64, group_id: u64) -> (u64, u64) {
+    (user_id, group_id)
+}
 
-// Bug: arguments swapped - compiles fine, fails at runtime
-let user = User { id: 100, group_id: 5, created_at: 1234567890 };
-add_user_to_group(user.group_id, user.id);  // Silent bug!
+let user = User {
+    id: 100,
+    group_id: 5,
+    created_at_unix: 1_234_567_890,
+};
 
-// Bug: wrong field used - timestamp passed as ID
-add_user_to_group(user.created_at, user.group_id);  // Compiles fine!
+// Swapping values or passing a timestamp still type-checks.
+let _swapped = membership_key(user.group_id, user.id);
+let _nonsense = membership_key(user.created_at_unix, user.group_id);
 ```
 
 ## Good
@@ -37,31 +45,34 @@ struct GroupId(u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Timestamp(u64);
 
+#[derive(Debug)]
 struct User {
     id: UserId,
     group_id: GroupId,
     created_at: Timestamp,
 }
 
-fn add_user_to_group(user_id: UserId, group_id: GroupId) { ... }
+fn membership_key(user_id: UserId, group_id: GroupId) -> (UserId, GroupId) {
+    (user_id, group_id)
+}
 
-// Compile error: expected UserId, found GroupId
-let user = User { ... };
-add_user_to_group(user.group_id, user.id);  // Error!
+let user = User {
+    id: UserId(100),
+    group_id: GroupId(5),
+    created_at: Timestamp(1_234_567_890),
+};
 
-// Compile error: expected UserId, found Timestamp
-add_user_to_group(user.created_at, user.group_id);  // Error!
+let key = membership_key(user.id, user.group_id);
+assert_eq!(key, (UserId(100), GroupId(5)));
+let _created_at = user.created_at;
 ```
 
-## Derive Common Traits
+A call such as `membership_key(user.group_id, user.id)` now fails to compile because `GroupId` is not `UserId`. The same applies to accidentally passing `Timestamp` as an ID.
+
+## Derive the Traits the Semantics Support
 
 ```rust
-// Minimal: just enough for your use case
-#[derive(Debug, Clone, Copy)]
-struct MeterId(u32);
-
-// Full ID type: hashable, comparable, displayable
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct OrderId(u64);
 
 impl std::fmt::Display for OrderId {
@@ -70,140 +81,85 @@ impl std::fmt::Display for OrderId {
     }
 }
 
-// With serde for serialization
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]  // Serializes as raw u64
-struct ProductId(u64);
+assert_eq!(OrderId(42).to_string(), "ORD-00000042");
 ```
 
-## Constructor Patterns
+Do not derive traits merely because the wrapped field supports them. For example, ordering may be meaningless for some identifiers even though `u64: Ord`.
+
+## Validated Newtypes
+
+A private field plus a validating constructor can make invalid states unconstructible through the public API:
 
 ```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Email(String);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum EmailError {
+    MissingAtSign,
+}
+
 impl Email {
-    /// Creates a new Email, validating the format.
-    pub fn new(s: &str) -> Result<Self, EmailError> {
-        if is_valid_email(s) {
-            Ok(Email(s.to_string()))
+    fn parse(input: impl Into<String>) -> Result<Self, EmailError> {
+        let input = input.into();
+        if input.contains('@') {
+            Ok(Self(input))
         } else {
-            Err(EmailError::InvalidFormat)
+            Err(EmailError::MissingAtSign)
         }
     }
-    
-    /// Returns the email as a string slice.
-    pub fn as_str(&self) -> &str {
+
+    fn as_str(&self) -> &str {
         &self.0
     }
 }
 
-// Usage enforces validation
-let email = Email::new("user@example.com")?;  // Must go through validation
+let email = Email::parse("user@example.com").unwrap();
+assert_eq!(email.as_str(), "user@example.com");
 ```
 
-## Zero-Cost Abstraction
+The validation here is intentionally minimal; real domain types should encode the actual invariant required by the application.
+
+## Representation Is a Separate Decision
+
+A single-field Rust newtype is often optimized exactly like its field, but source-level size equality is not itself a stable ABI/layout promise. Add `#[repr(transparent)]` only when the wrapper intentionally needs the wrapped field's layout/ABI contract, such as some FFI interfaces.
 
 ```rust
 use std::mem::size_of;
 
-#[derive(Clone, Copy)]
 struct Miles(f64);
-
-#[derive(Clone, Copy)]
 struct Kilometers(f64);
 
-// Same size as raw f64
 assert_eq!(size_of::<Miles>(), size_of::<f64>());
 assert_eq!(size_of::<Kilometers>(), size_of::<f64>());
+```
 
-// But can't accidentally mix them
-fn drive(distance: Miles) { ... }
+Do not infer from this assertion that arbitrary transmutation or FFI interchange is safe; see the representation rule for those requirements.
 
-let km = Kilometers(100.0);
-drive(km);  // Error: expected Miles, found Kilometers
+## Serialization
 
-// Explicit conversion
-impl From<Kilometers> for Miles {
-    fn from(km: Kilometers) -> Self {
-        Miles(km.0 * 0.621371)
-    }
-}
+When serialization should use the wrapped representation, serde can support transparent newtypes. Keep optional serialization dependencies feature-gated in general-purpose libraries.
 
-drive(km.into());  // Explicit, visible conversion
+<!-- rust-check: fragment; reason=requires serde derive dependency/features in the consuming crate -->
+```rust
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+struct ProductId(u64);
 ```
 
 ## When Newtypes Help Most
 
-```rust
-// ✅ IDs that could be confused
-fn transfer(from: AccountId, to: AccountId, amount: Money) { ... }
+- identifiers that are easy to swap,
+- physical units or coordinate spaces,
+- validated/sanitized values,
+- secrets vs ordinary strings/bytes,
+- values with different domain semantics but identical storage.
 
-// ✅ Units that shouldn't mix
-struct Celsius(f64);
-struct Fahrenheit(f64);
-
-// ✅ Validated strings
-struct Username(String);  // Validated alphanumeric
-struct Password(String);  // Never logged
-
-// ✅ Different meanings of same type
-struct Milliseconds(u64);
-struct Seconds(u64);
-
-// ❌ Overkill: single use, no confusion possible
-struct X(i32);  // Just use i32
-```
-
-## Recommended Derive Bundle for ID Types
-
-```rust
-// Standard derive bundle for public ID types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct UserId(u64);
-
-// Add Display for user-facing output
-impl std::fmt::Display for UserId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "USR-{:08}", self.0)
-    }
-}
-
-// Add serde for serialization (behind feature flag)
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ProductId(u64);
-
-// For FFI: #[repr(transparent)] ensures ABI compatibility
-// See [type-repr-transparent](./type-repr-transparent.md)
-```
-
-## nutype: Automating Newtype Boilerplate
-
-For newtypes with validation (not just wrappers), the `nutype` crate (v0.7.0, `greyblake/nutype`) generates sanitization, validation, error types, and trait impls from a single macro:
-
-```rust
-use nutype::nutype;
-
-#[nutype(
-    sanitize(trim, lowercase),
-    validate(not_empty, len_char_max = 50),
-    derive(Debug, Clone, Display, AsRef, Deref, FromStr, Into)
-)]
-pub struct Username(String);
-
-// Generates: Username::new(String) -> Result<Username, UsernameError>
-//           + Display, AsRef<str>, Deref<Target=str>, FromStr, Into<String>
-//           + automatic error enum with Empty, TooLong variants
-```
-
-See [api-nutype-validated](./api-nutype-validated.md) for the full reference.
+They are usually overkill when the wrapper has no useful semantic distinction and is only used once locally.
 
 ## See Also
 
-- [api-nutype-validated](./api-nutype-validated.md) - nutype validated newtypes
+- [api-nutype-validated](./api-nutype-validated.md) - Macro-generated validated newtypes
 - [type-newtype-ids](./type-newtype-ids.md) - Newtype pattern for IDs
-- [type-repr-transparent](./type-repr-transparent.md) - FFI newtypes
-- [api-parse-dont-validate](./api-parse-dont-validate.md) - Type-driven validation
-- [own-copy-small](./own-copy-small.md) - Making newtypes Copy
+- [type-repr-transparent](./type-repr-transparent.md) - Explicit layout/ABI contract
+- [api-parse-dont-validate](./api-parse-dont-validate.md) - Parse into validated types
