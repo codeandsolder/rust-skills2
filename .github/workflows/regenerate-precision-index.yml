@@ -22,7 +22,6 @@ jobs:
           python3 checks/gen_index.py
           python3 - <<'PY'
           from pathlib import Path
-
           readme = Path('README.md')
           s = readme.read_text()
           s = s.replace('Rust-1.96%20%2F%202024', 'Rust-1.98%20%2F%202024')
@@ -32,50 +31,16 @@ jobs:
           s = s.replace('leonardomso/rust-skills', 'codeandsolder/rust-skills2')
           s = s.replace('raw.githubusercontent.com/codeandsolder/rust-skills2/master/SKILL.md', 'raw.githubusercontent.com/codeandsolder/rust-skills2/main/SKILL.md')
           readme.write_text(s)
-
           skill = Path('SKILL.md')
           s = skill.read_text()
           s = s.replace('Modernized for Rust 1.96', 'Modernized for Rust 1.98')
           s = s.replace('Current for Rust 1.96', 'Current for Rust 1.98')
           s = s.replace('release posts 1.85-1.96', 'release posts 1.85-1.98')
-          old = '''## Recommended Cargo.toml Settings
-
-```toml
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "abort"
-strip = true
-
-[profile.bench]
-inherits = "release"
-debug = true
-strip = false
-
-[profile.dev]
-opt-level = 0
-debug = true
-
-[profile.dev.package."*"]
-opt-level = 3  # Optimize dependencies in dev
-```'''
-          new = '''## Recommended Cargo.toml Settings
-
-There is no universally optimal Cargo profile. Start from Cargo's defaults and change settings only for a measured goal. `panic = "abort"` changes panic/unwinding semantics, stripping can reduce diagnostic and profiling information, and fat LTO plus `codegen-units = 1` can substantially increase build time.
-
-A conservative starting point for performance-sensitive release builds is:
-
-```toml
-[profile.release]
-opt-level = 3
-```
-
-Then benchmark the relevant tradeoff before adding settings such as `lto = "thin"`/`"fat"` or `codegen-units = 1`. Choose `panic = "abort"` only when abort-on-panic semantics are acceptable, and choose `strip` based on deployment, crash-reporting, and profiling requirements. Keep benchmark symbols when your profiler needs them.'''
+          old = '## Recommended Cargo.toml Settings\n\n```toml\n[profile.release]\nopt-level = 3\nlto = "fat"\ncodegen-units = 1\npanic = "abort"\nstrip = true\n\n[profile.bench]\ninherits = "release"\ndebug = true\nstrip = false\n\n[profile.dev]\nopt-level = 0\ndebug = true\n\n[profile.dev.package."*"]\nopt-level = 3  # Optimize dependencies in dev\n```'
+          new = '## Recommended Cargo.toml Settings\n\nThere is no universally optimal Cargo profile. Start from Cargo\'s defaults and change settings only for a measured goal. `panic = "abort"` changes panic/unwinding semantics, stripping can reduce diagnostic and profiling information, and fat LTO plus `codegen-units = 1` can substantially increase build time.\n\nA conservative starting point for performance-sensitive release builds is:\n\n```toml\n[profile.release]\nopt-level = 3\n```\n\nThen benchmark the relevant tradeoff before adding settings such as `lto = "thin"`/`"fat"` or `codegen-units = 1`. Choose `panic = "abort"` only when abort-on-panic semantics are acceptable, and choose `strip` based on deployment, crash-reporting, and profiling requirements. Keep benchmark symbols when your profiler needs them.'
           if old not in s:
               raise SystemExit('expected Cargo profile block not found')
-          s = s.replace(old, new)
-          skill.write_text(s)
+          skill.write_text(s.replace(old, new))
           PY
       - name: Commit generated files
         shell: bash
