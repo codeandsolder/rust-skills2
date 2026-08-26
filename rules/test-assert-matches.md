@@ -4,52 +4,52 @@
 
 ## Why It Matters
 
-Pattern matching on test results is common — checking enum variants, error kinds, or partial data. `assert!(matches!(..))` gives poor diagnostics on failure: it only says "assertion failed". `assert_matches!` provides the actual value in the failure message, making debugging much faster. Stabilized in Rust 1.96.0.
+Pattern matching on test results is common—checking enum variants, error kinds, or partial data. `assert!(matches!(..))` gives little information about the actual value on failure. `assert_matches!`, stabilized in Rust 1.96, prints the debug representation of the value that failed to match.
 
-Must be imported explicitly with `use std::assert_matches;`.
+Import the macros explicitly when needed with `use std::{assert_matches, debug_assert_matches};`.
 
 ## Bad
 
 ```rust
-// Poor diagnostics — only says "assertion failed"
-assert!(matches!(result, Ok(_)));
-
-// No context on which variant was returned
-assert!(matches!(response.status, StatusCode { value: 200 }));
-
-// No information about the actual value
-assert!(matches!(parse("bad input"), Err(_)));
+let result: Result<u32, &str> = Err("invalid digit");
+assert!(matches!(result, Err(_)));
 ```
+
+The assertion tells you that the pattern failed, but does not show the mismatching value as clearly as `assert_matches!` does.
 
 ## Good
 
 ```rust
 use std::assert_matches;
 
-assert_matches!(result, Ok(user));
-// Failure: "assertion failed: expected Ok(_), got Err(InvalidInput("missing field"))"
+let result: Result<&str, &str> = Ok("Alice");
+assert_matches!(result, Ok("Alice"));
 
-assert_matches!(response.status, StatusCode { value: 200 });
-// Failure: "expected StatusCode { value: 200 }, got StatusCode { value: 403 }"
+#[derive(Debug)]
+struct StatusCode {
+    value: u16,
+}
+let status = StatusCode { value: 200 };
+assert_matches!(status, StatusCode { value: 200 });
 
-// With debug output for complex values
-assert_matches!(parse("bad input"), Err(e) => {
-    assert!(e.to_string().contains("invalid"));
-});
+let parsed: Result<u32, &str> = Err("invalid digit");
+assert_matches!(parsed, Err(e) if e.contains("invalid"));
 ```
 
-## debug_assert_matches!
+`assert_matches!` accepts patterns and an optional `if` guard, just like `matches!`. It does **not** have match-arm `=> { ... }` syntax. If you need to run arbitrary code with a bound value, use a normal `match`, `let ... else`, or another assertion after extracting the value.
+
+## `debug_assert_matches!`
 
 ```rust
-use std::assert_matches;
+use std::debug_assert_matches;
 
-// Only checked in debug builds — zero cost in release
-debug_assert_matches!(internal_invariant(), Ok(_));
-
-// Useful for hot paths where the check is redundant after validation
+let value = Some(42);
+debug_assert_matches!(value, Some(x) if x > 0);
 ```
 
-## With Custom Error Enums
+Like other debug assertions, `debug_assert_matches!` is disabled in optimized builds unless debug assertions are enabled, though its expression is still type-checked.
+
+## Custom Error Enum
 
 ```rust
 use std::assert_matches;
@@ -60,49 +60,35 @@ enum ParseError {
     UnexpectedEof,
 }
 
-fn parse(input: &str) -> Result<i32, ParseError> { /* ... */ }
+fn parse(input: &str) -> Result<i32, ParseError> {
+    if input == "bad" {
+        Err(ParseError::InvalidSyntax {
+            line: 1,
+            msg: "bad input".into(),
+        })
+    } else {
+        Ok(0)
+    }
+}
 
 #[test]
 fn test_parse_error() {
-    let result = parse("bad");
-
-    // Before (weak diagnostics)
-    // assert!(matches!(result, Err(ParseError::InvalidSyntax { .. })));
-
-    // After (full diagnostic on failure)
-    assert_matches!(result, Err(ParseError::InvalidSyntax { line: 1, .. }));
+    assert_matches!(
+        parse("bad"),
+        Err(ParseError::InvalidSyntax { line: 1, .. })
+    );
 }
 ```
 
-## With proptest
+## Custom Failure Message
 
-```rust
-use std::assert_matches;
-use proptest::prelude::*;
-
-proptest! {
-    #[test]
-    fn test_parse_always_returns_ok_or_syntax_error(input in ".*") {
-        let result = parse(&input);
-        // Clear diagnostic on failures during shrinking
-        assert_matches!(result, Ok(_) | Err(ParseError::InvalidSyntax { .. }));
-    }
-}
-```
-
-## Debug Assertions in Tests
+The macro also has an assertion-style custom-message form:
 
 ```rust
 use std::assert_matches;
 
-#[test]
-fn test_debug_only_invariant() {
-    let data = setup_large_dataset();
-    // Only checked in debug/test builds
-    debug_assert_matches!(validate_integrity(&data), Ok(()));
-    let result = process(&data);
-    assert!(result.is_ok());
-}
+let value = Some(3);
+assert_matches!(value, Some(x) if x > 0, "expected a positive value");
 ```
 
 ## See Also
@@ -110,10 +96,5 @@ fn test_debug_only_invariant() {
 - [test-doctest-examples](./test-doctest-examples.md) — Runnable doctest examples
 - [test-descriptive-names](./test-descriptive-names.md) — Descriptive test naming
 - [test-arrange-act-assert](./test-arrange-act-assert.md) — Test structure with AAA pattern
-
-## References
-
-- [Rust 1.96.0 Release Notes](https://releases.rs/docs/1.96.0/) — assert_matches! stabilization
-- [Stabilization PR #137487](https://github.com/rust-lang/rust/pull/137487)
-- [test-should-panic](./test-should-panic.md) — When to use should_panic vs assert_matches
-- [test-proptest-properties](./test-proptest-properties.md) — Property-based testing with assert_matches
+- [test-should-panic](./test-should-panic.md) — When to use `should_panic`
+- [test-proptest-properties](./test-proptest-properties.md) — Property-based testing
