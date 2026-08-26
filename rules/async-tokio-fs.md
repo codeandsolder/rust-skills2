@@ -1,211 +1,128 @@
 # async-tokio-fs
 
-> Use `tokio::fs` instead of `std::fs` in async code
+> Use `tokio::fs` for ordinary filesystem operations from async code; use dedicated async types for pipes/devices and other special files
 
 ## Why It Matters
 
-`std::fs` operations are blocking—they stop the current thread until the syscall completes. In async code, this blocks the executor thread, preventing it from running other tasks. `tokio::fs` wraps filesystem operations in `spawn_blocking`, keeping the executor responsive.
+Most operating systems do not expose ordinary filesystem operations through the same readiness APIs used for async sockets. Tokio therefore implements `tokio::fs` with ordinary blocking filesystem calls executed on its blocking thread pool (currently via `spawn_blocking`). This keeps those calls off async runtime workers while preserving an async API.
+
+Calling `std::fs` directly inside a future blocks the worker executing that future. On a current-thread runtime this is especially severe: there is no other async worker to make progress until the call returns.
 
 ## Bad
 
 ```rust
-async fn process_files(paths: &[PathBuf]) -> Result<Vec<String>> {
-    let mut contents = Vec::new();
-    
-    for path in paths {
-        // BLOCKS the entire executor thread!
-        let data = std::fs::read_to_string(path)?;
-        contents.push(data);
-    }
-    
-    Ok(contents)
-}
+use std::path::PathBuf;
 
-// While reading a file, NO other tasks can run on this thread
+async fn read_files(paths: &[PathBuf]) -> std::io::Result<Vec<String>> {
+    let mut out = Vec::with_capacity(paths.len());
+    for path in paths {
+        // Blocks the async worker running this future.
+        out.push(std::fs::read_to_string(path)?);
+    }
+    Ok(out)
+}
 ```
 
 ## Good
 
 ```rust
-use tokio::fs;
+use std::path::PathBuf;
 
-async fn process_files(paths: &[PathBuf]) -> Result<Vec<String>> {
-    let mut contents = Vec::new();
-    
+async fn read_files(paths: &[PathBuf]) -> std::io::Result<Vec<String>> {
+    let mut out = Vec::with_capacity(paths.len());
     for path in paths {
-        // Non-blocking: allows other tasks to run
-        let data = fs::read_to_string(path).await?;
-        contents.push(data);
+        out.push(tokio::fs::read_to_string(path).await?);
     }
-    
-    Ok(contents)
-}
-
-// Even better: concurrent reads
-async fn process_files_concurrent(paths: &[PathBuf]) -> Result<Vec<String>> {
-    let futures: Vec<_> = paths.iter()
-        .map(|path| fs::read_to_string(path))
-        .collect();
-    
-    futures::future::try_join_all(futures).await
+    Ok(out)
 }
 ```
 
-## tokio::fs API
+This example is intentionally sequential. Whether several filesystem operations should be issued concurrently depends on the storage device, cache state, filesystem, and workload; “more concurrent reads” is not automatically faster.
+
+## Ordinary File APIs
 
 ```rust
-use tokio::fs;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-// Reading
-let contents = fs::read_to_string("file.txt").await?;
-let bytes = fs::read("file.bin").await?;
+async fn copy_prefix() -> std::io::Result<()> {
+    let bytes = tokio::fs::read("input.bin").await?;
+    tokio::fs::write("copy.bin", &bytes).await?;
 
-// Writing
-fs::write("output.txt", "contents").await?;
+    let mut input = tokio::fs::File::open("input.bin").await?;
+    let mut prefix = [0u8; 64];
+    let n = input.read(&mut prefix).await?;
 
-// File operations
-let file = fs::File::open("file.txt").await?;
-let file = fs::File::create("new.txt").await?;
-
-// Directory operations
-fs::create_dir("new_dir").await?;
-fs::create_dir_all("nested/dir/path").await?;
-fs::remove_dir("empty_dir").await?;
-fs::remove_dir_all("dir_with_contents").await?;
-
-// Metadata
-let metadata = fs::metadata("file.txt").await?;
-let canonical = fs::canonicalize("./relative").await?;
-
-// Rename/remove
-fs::rename("old.txt", "new.txt").await?;
-fs::remove_file("file.txt").await?;
-
-// Read directory
-let mut entries = fs::read_dir("some_dir").await?;
-while let Some(entry) = entries.next_entry().await? {
-    println!("{}", entry.path().display());
-}
-```
-
-## Async File I/O
-
-```rust
-use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncBufReadExt, BufReader};
-
-// Read with buffer
-let mut file = File::open("large.bin").await?;
-let mut buffer = vec![0u8; 4096];
-let bytes_read = file.read(&mut buffer).await?;
-
-// Read all
-let mut contents = Vec::new();
-file.read_to_end(&mut contents).await?;
-
-// Write
-let mut file = File::create("output.bin").await?;
-file.write_all(b"data").await?;
-file.flush().await?;
-
-// Buffered line reading
-let file = File::open("lines.txt").await?;
-let reader = BufReader::new(file);
-let mut lines = reader.lines();
-
-while let Some(line) = lines.next_line().await? {
-    println!("{}", line);
-}
-```
-
-## When std::fs is Acceptable
-
-```rust
-// Startup/initialization (before async runtime)
-fn main() {
-    let config = std::fs::read_to_string("config.toml")
-        .expect("config file required");
-    
-    tokio::runtime::Runtime::new()
-        .unwrap()
-        .block_on(run_with_config(config));
-}
-
-// Single-threaded current_thread runtime (less impact)
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
-    // Still prefer tokio::fs, but impact is lower
-}
-
-// When file operations are rare and quick
-// (e.g., reading small config once per hour)
-```
-
-## Performance Considerations
-
-```rust
-// tokio::fs uses spawn_blocking internally
-// For many small files, the overhead adds up
-
-// Batch operations when possible
-let paths: Vec<_> = entries.iter()
-    .map(|e| e.path())
-    .collect();
-
-let contents = futures::future::try_join_all(
-    paths.iter().map(|p| fs::read_to_string(p))
-).await?;
-
-// For heavy I/O, consider memory-mapped files
-// (requires unsafe or mmap crate)
-```
-
-## When std::fs Can Be Faster
-
-For very small files (<1KB), `tokio::fs` adds `spawn_blocking` overhead that can exceed the actual I/O time. In these cases, `std::fs` wrapped in a single `spawn_blocking` call may be more efficient for batch reads:
-
-```rust
-// Tiny files: batch them into one spawn_blocking call
-async fn read_tiny_files(paths: &[PathBuf]) -> io::Result<Vec<String>> {
-    let paths = paths.to_vec();
-    tokio::task::spawn_blocking(move || {
-        paths.iter().map(|p| std::fs::read_to_string(p)).collect()
-    })
-    .await
-    .unwrap()
-}
-```
-
-## Do NOT Use tokio::fs for Special Files
-
-`tokio::fs` wraps operations in `spawn_blocking`, which works for regular files but can hang indefinitely on **special files**:
-
-```rust
-// BAD: tokio::fs on special files can block forever
-async fn bad_special() -> io::Result<()> {
-    tokio::fs::read("/dev/tty").await?;  // May never return!
+    let mut output = tokio::fs::File::create("prefix.bin").await?;
+    output.write_all(&prefix[..n]).await?;
+    output.flush().await?;
     Ok(())
 }
+```
 
-// GOOD: Handle special files explicitly
-async fn good_special() -> io::Result<Vec<u8>> {
-    let data = tokio::task::spawn_blocking(|| {
-        use std::os::unix::fs::FileTypeExt;
-        let file = std::fs::File::open("/dev/something")?;
-        let metadata = file.metadata()?;
-        if metadata.file_type().is_char_device() || metadata.file_type().is_block_device() {
-            // Use O_NONBLOCK or handle device-specific I/O
-        }
-        std::fs::read("/dev/something")
-    }).await.unwrap()?;
-    Ok(data)
+`tokio::fs` also provides directory, metadata, rename, remove, and canonicalization operations. The same principle applies: use its async wrapper when the operation occurs on an async execution path and may block.
+
+## Special Files Are Different
+
+Tokio explicitly recommends `tokio::fs` for **ordinary files**. A named pipe, device, or other special file can block in ways that interact badly with the blocking pool and runtime shutdown.
+
+Use a dedicated async abstraction when one exists—for example `tokio::net::unix::pipe` for Unix named pipes or `tokio::io::unix::AsyncFd` for a nonblocking file descriptor whose readiness can be driven by the OS.
+
+<!-- rust-check: fragment; reason=Unix-only AsyncFd example requires a nonblocking OS file descriptor and platform-specific setup -->
+```rust
+use tokio::io::unix::AsyncFd;
+
+let async_fd = AsyncFd::new(nonblocking_fd)?;
+let mut guard = async_fd.readable().await?;
+// Perform the nonblocking syscall, then clear readiness when appropriate.
+guard.clear_ready();
+```
+
+Do not blindly send a potentially indefinite special-file read to `spawn_blocking`: blocking-pool work cannot generally be aborted once it has started.
+
+## When `std::fs` Is Fine
+
+Synchronous filesystem APIs are fine on a genuinely synchronous path, such as configuration loading before a runtime is entered:
+
+```rust
+fn load_config_before_runtime() -> std::io::Result<String> {
+    std::fs::read_to_string("config.toml")
 }
 ```
 
-Avoid `tokio::fs` for: named pipes (FIFOs), device files (`/dev/*`), `/proc` and `/sys` filesystems, and any file that may block on read/write indefinitely.
+The relevant boundary is not file size. A tiny operation can still block unpredictably on cold storage, network filesystems, antivirus hooks, or filesystem contention; a large cached read may finish quickly. Avoid universal thresholds such as “under 1 KB is safe.”
+
+## Batching Can Reduce Offload Overhead
+
+If profiling shows that thousands of tiny synchronous operations spend significant time crossing into the blocking pool, batching them into one `spawn_blocking` job can be reasonable:
+
+```rust
+use std::path::PathBuf;
+
+async fn read_batch(paths: Vec<PathBuf>) -> std::io::Result<Vec<String>> {
+    tokio::task::spawn_blocking(move || {
+        paths
+            .iter()
+            .map(std::fs::read_to_string)
+            .collect::<std::io::Result<Vec<_>>>()
+    })
+    .await
+    .expect("blocking task panicked")
+}
+```
+
+Do this because measurement shows batching helps, not because of a fixed file-size cutoff.
+
+## Blocking-Pool Interaction
+
+`tokio::fs`, explicit `spawn_blocking`, some DNS resolution, and standard-stream operations can share runtime blocking-pool capacity. Setting `max_blocking_threads` too low can therefore delay unrelated operations. Apply workload-level backpressure to large batches instead of treating the runtime's global thread cap as the primary concurrency control.
 
 ## See Also
 
-- [async-spawn-blocking](./async-spawn-blocking.md) - How tokio::fs works internally
-- [async-tokio-runtime](./async-tokio-runtime.md) - Runtime configuration
-- [err-context-chain](./err-context-chain.md) - Adding path context to IO errors
+- [async-spawn-blocking](./async-spawn-blocking.md) — blocking-pool semantics
+- [async-blocking-detection](./async-blocking-detection.md) — finding worker stalls
+- [async-tokio-runtime](./async-tokio-runtime.md) — runtime configuration
+
+## References
+
+- [Tokio filesystem module](https://docs.rs/tokio/latest/tokio/fs/)
+- [Tokio `spawn_blocking`](https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html)
