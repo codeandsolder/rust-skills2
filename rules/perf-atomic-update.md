@@ -1,152 +1,111 @@
 # perf-atomic-update
 
-> Use `Atomic*::update` and `try_update` for cleaner CAS loops
+> Use `Atomic*::update` and `try_update` for cleaner compare-and-update loops
 
 **Rule**: `perf-atomic-update`
 
 ## Why It Matters
 
-Compare-and-swap (CAS) loops are the building block of lock-free atomic operations. The manual pattern of `load` + `compare_exchange` in a loop is error-prone: subtle bugs can introduce infinite loops, ABA problems, or missed updates. `Atomic*::update` (Rust 1.95+) and `Atomic*::try_update` wrap the CAS loop into a single function call, eliminating boilerplate and common mistakes.
+Compare-and-exchange loops are the building block of many lock-free atomic updates. The manual pattern is easy to get wrong or make unnecessarily verbose. Rust 1.95 added `update` and `try_update` across the atomic types so common compare-and-update loops can be expressed directly.
+
+These methods do **not** change the memory-model requirements: you still choose the success and failure orderings, and the closure may run more than once under contention. Keep the closure free of externally visible side effects.
 
 ## Bad
 
 ```rust
 use std::sync::atomic::{AtomicU32, Ordering};
 
-// Manual CAS loop — easy to get wrong
 fn increment_counter(counter: &AtomicU32) {
+    let mut current = counter.load(Ordering::Acquire);
     loop {
-        let current = counter.load(Ordering::Acquire);
         let new = current + 1;
-        if counter.compare_exchange_weak(
+        match counter.compare_exchange_weak(
             current,
             new,
-            Ordering::Release,
+            Ordering::AcqRel,
             Ordering::Acquire,
-        ).is_ok() {
-            break;
-        }
-        // Spurious failure: retry
-        // Forgot to reload? ABA? Wrong ordering?
-    }
-}
-
-// Manual CAS with non-trivial update — duplicated logic
-fn update_stats(stats: &AtomicU64, delta: u64) {
-    loop {
-        let current = stats.load(Ordering::Acquire);
-        let new = current.saturating_add(delta);
-        if stats.compare_exchange_weak(
-            current,
-            new,
-            Ordering::Release,
-            Ordering::Acquire,
-        ).is_ok() {
-            break;
+        ) {
+            Ok(_) => break,
+            Err(observed) => current = observed,
         }
     }
 }
 ```
+
+Manual CAS loops are sometimes necessary, but they should update the expected value from the failed comparison and use orderings appropriate to the synchronization invariant.
 
 ## Good
 
 ```rust
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-// update wraps the CAS loop internally
 fn increment_counter(counter: &AtomicU32) {
-    counter.update(|current| current + 1, Ordering::AcqRel, Ordering::Acquire);
-    // No loop, no manual load/compare_exchange
-}
-
-// update returns the value passed to and returned from the closure
-fn update_stats(stats: &AtomicU64, delta: u64) -> u64 {
-    stats.update(
-        |current| current.saturating_add(delta),
+    counter.update(
         Ordering::AcqRel,
         Ordering::Acquire,
+        |current| current + 1,
+    );
+}
+
+// `update` returns the value that was stored before the successful update.
+fn add_saturating(stats: &AtomicU64, delta: u64) -> u64 {
+    stats.update(
+        Ordering::AcqRel,
+        Ordering::Acquire,
+        |current| current.saturating_add(delta),
     )
 }
 ```
 
-## try_update (Fallible CAS)
+`update(set_order, fetch_order, f)` repeatedly applies `f` as needed and stores its returned value. Its return value is the **previous** atomic value, matching the `fetch_*` family.
 
-`try_update` allows the closure to return `Err` to abort the CAS loop:
+## `try_update`: Conditional Update
+
+`try_update` uses an `Option`, not an application-defined `Result`: return `Some(new_value)` to attempt the update or `None` to abort. The method returns `Ok(previous_value)` on a successful store and `Err(previous_value)` when the closure returns `None`.
 
 ```rust
 use std::sync::atomic::{AtomicU64, Ordering};
 
-// Try to decrement, but don't go below zero
-fn try_decrement(counter: &AtomicU64) -> Result<u64, ()> {
+fn try_decrement(counter: &AtomicU64) -> Result<u64, u64> {
     counter.try_update(
-        |current| {
-            if current == 0 {
-                Err(())  // Abort CAS loop
-            } else {
-                Ok(current - 1)
-            }
-        },
         Ordering::AcqRel,
         Ordering::Acquire,
+        |current| current.checked_sub(1),
     )
 }
 ```
 
-## Supported Atomic Types
+If callers need a domain-specific error, translate the returned previous value at the API boundary rather than returning `Err(custom_error)` from the atomic closure.
 
-| Type | Methods | Since |
-|------|---------|-------|
-| `AtomicBool` | `update`, `try_update` | 1.95 |
-| `AtomicI8` | `update`, `try_update` | 1.95 |
-| `AtomicU8` | `update`, `try_update` | 1.95 |
-| `AtomicI16` | `update`, `try_update` | 1.95 |
-| `AtomicU16` | `update`, `try_update` | 1.95 |
-| `AtomicI32` | `update`, `try_update` | 1.95 |
-| `AtomicU32` | `update`, `try_update` | 1.95 |
-| `AtomicI64` | `update`, `try_update` | 1.95 |
-| `AtomicU64` | `update`, `try_update` | 1.95 |
-| `AtomicI128` | `update`, `try_update` | 1.95 |
-| `AtomicU128` | `update`, `try_update` | 1.95 |
-| `AtomicPtr<T>` | — | — |
-| `AtomicUsize` | `fetch_update` | 1.45 (legacy) |
+## Supported Types
 
-## Legacy: fetch_update (Rust 1.45+)
+The `update` / `try_update` family is available on the corresponding stable atomic types when the target supports that atomic width, including integer atomics, `AtomicBool`, and `AtomicPtr<T>`. Do not assume every width exists on every target; use the `target_has_atomic` configuration when portability across constrained targets matters.
 
-Before `update`/`try_update`, the similar `AtomicUsize::fetch_update` existed but required `Result` return type:
+`fetch_update`, stabilized earlier, has similar conditional-update semantics. In Rust 1.95 the `try_update` name was added for consistency alongside the non-fallible `update` API.
+
+## Performance and Correctness
+
+`update` is an abstraction over the same kind of compare-and-exchange retry loop you would otherwise write manually. Its main benefit is clarity and reducing loop bookkeeping, not a promise of faster machine code.
+
+The closure may be evaluated multiple times if another thread changes the atomic between attempts. Therefore this is appropriate:
 
 ```rust
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-// Legacy fetch_update — predates update/try_update
-let result = atomic.fetch_update(
-    Ordering::Release,
-    Ordering::Acquire,
-    |current| {
-        Some(current + 1)  // None to abort
-    },
-);
+counter.update(Ordering::Relaxed, Ordering::Relaxed, |x| x + 1);
 ```
 
-With `update` (1.95+), the simpler non-fallible API is preferred. `fetch_update` remains for `AtomicUsize` specifically.
-
-## Performance
-
-| Pattern | Instructions | Spurious Retries | Clarity |
-|---------|-------------|------------------|---------|
-| Manual CAS loop | Same as update | Same | Low — easy to misorder |
-| `atomic.update(f)` | Same as manual | Same | High — single function call |
-| `atomic.try_update(f)` | Same as fn_returning_Result | Same | High — abort on error |
-
-Both `update` and manual CAS loops compile to the same machine code. The advantage is entirely in readability and correctness.
+but a closure that sends messages, mutates unrelated state, performs I/O, or otherwise assumes exactly-once execution is usually wrong.
 
 ## Ordering Guide
 
-| Success Ordering | Failure Ordering | Use Case |
-|-----------------|------------------|----------|
-| `Relaxed` | `Relaxed` | No synchronization needed (metrics) |
-| `Release` | `Relaxed` | Writer, no immediate reader |
-| `AcqRel` | `Acquire` | Reader-writer synchronization |
-| `SeqCst` | `SeqCst` | Strongest guarantees (rarely needed) |
+| Success ordering | Failure ordering | Typical intent |
+|------------------|------------------|----------------|
+| `Relaxed` | `Relaxed` | Atomicity only, such as independent metrics |
+| `Release` | `Relaxed` | Publish prior writes |
+| `Acquire` | `Acquire` | Acquire data published by another thread |
+| `AcqRel` | `Acquire` | Read-modify-write synchronization |
+| `SeqCst` | `SeqCst` | Participate in a global sequentially consistent order |
+
+Choose orderings from the synchronization invariant; do not mechanically upgrade every operation to `AcqRel` or `SeqCst`.
 
 ## See Also
 
