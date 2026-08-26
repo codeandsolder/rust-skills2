@@ -19,7 +19,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: checks
-      - name: Generate migration ledgers
+      - name: Generate and verify migration ledgers
         shell: bash
         run: |
           cd checks
@@ -33,14 +33,15 @@ jobs:
             echo
             python3 analyze.py check.json --emit-good-exceptions
           } > good-exceptions.txt
-      - name: Commit migration ledgers
+          python3 analyze.py check.json --check-baseline baseline.txt --good-exceptions good-exceptions.txt
+      - name: Commit migration outputs
         shell: bash
         run: |
-          if git diff --quiet -- checks/baseline.txt checks/good-exceptions.txt; then
+          if git diff --quiet -- checks/baseline.txt checks/good-exceptions.txt checks/Cargo.lock; then
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add checks/baseline.txt checks/good-exceptions.txt
-          git commit -m 'Make recommended-example debt block-specific'
+          git add checks/baseline.txt checks/good-exceptions.txt checks/Cargo.lock
+          git commit -m 'Refresh verifier migration outputs'
           git push
