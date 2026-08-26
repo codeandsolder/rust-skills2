@@ -60,10 +60,11 @@ impl Server {
     }
 }
 
-let server = Server::builder()
+let server: Result<Server, ConfigError> = Server::builder()
     .host("localhost")
     .port(8080)
-    .build()?;
+    .build();
+assert!(server.is_ok());
 ```
 
 Do not derive a struct builder and then add an unrelated inherent method named `build`; that does not turn the generated builder into a fallible builder.
