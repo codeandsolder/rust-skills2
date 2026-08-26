@@ -53,15 +53,15 @@ impl From<std::num::ParseIntError> for ConfigError {
 fn load_port(
     path: &str,
     values: &HashMap<String, String>,
-) -> Result<(u16, &str), ConfigError> {
+) -> Result<(u16, String), ConfigError> {
     let config = fs::read_to_string(path)?;
     let port = config.trim().parse()?;
-    let mode = values.get("mode").ok_or(ConfigError::MissingMode)?;
-    Ok((port, mode.as_str()))
+    let mode = values.get("mode").ok_or(ConfigError::MissingMode)?.clone();
+    Ok((port, mode))
 }
 ```
 
-The caller can now decide whether to retry, report configuration errors, fall back, or terminate.
+The caller can now decide whether to retry, report configuration errors, fall back, or terminate. Returning an owned mode string here keeps the example focused on error policy rather than introducing lifetime relationships between two borrowed inputs.
 
 ## Expected Alternatives
 
