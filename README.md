@@ -2,10 +2,10 @@
 
 ![rules](https://img.shields.io/badge/rules-324-blue)
 ![categories](https://img.shields.io/badge/categories-26-blue)
-![Rust](https://img.shields.io/badge/Rust-1.96%20%2F%202024%20edition-orange)
+![Rust](https://img.shields.io/badge/Rust-1.98%20%2F%202024%20edition-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-324 Rust rules your AI coding agent can use to write better code. Current for Rust 1.96 (2024 edition).
+324 Rust rules your AI coding agent can use to write better code. Current for Rust 1.98 (2024 edition).
 
 Works with Claude Code, Cursor, Windsurf, Copilot, Codex, Aider, Zed, Amp, Cline, and pretty much any other agent that supports skills.
 
@@ -94,7 +94,7 @@ fn first_word(s: &str) -> Option<&str> {
 | **Observability** | 7 | tracing over log, spans, structured fields, redacting secrets |
 | **Performance** | 18 | Iterators, entry API, faster hashers, I/O buffering, `<[T]>::array_windows`, `extract_if` (1.87), `Atomic*::update` (1.95), branch hint APIs |
 | **Project Structure** | 17 | Workspaces, module layout, features, MSRV, `[lints]` table, `[workspace.package]`, `cargo publish --workspace` (1.90+) |
-| **Linting** | 18 | Clippy config, CI setup, `unexpected_cfgs`, `[lints]` table, Edition 2024 lints, Dylint, uplifted lints (1.86-1.96) |
+| **Linting** | 18 | Clippy config, CI setup, `unexpected_cfgs`, `[lints]` table, Edition 2024 lints, Dylint, uplifted lints (1.86-1.98) |
 | **Anti-patterns** | 20 | Common mistakes, `Arc<Mutex<T>>` overuse, async `Drop` blocking, `block_on` in async, `Deref` overuse, `unsafe impl Send/Sync` shortcuts |
 
 Each rule has:
@@ -268,8 +268,8 @@ PRs welcome. To add or change a rule:
 
 1. Create `rules/<prefix>-<name>.md` using a `kebab-case` id with an existing category prefix (`own-`, `err-`, `mem-`, …).
 2. Follow the format of existing rules: a `>` one-line summary, then `## Why It Matters`, `## Bad`, `## Good`, and `## See Also` (with links that resolve).
-3. Make sure code examples compile on current stable Rust.
-4. Add the rule to the index in `SKILL.md` (Quick Reference list + the category count) so it stays in sync.
+3. Make sure code examples compile on current stable Rust, or explicitly mark/document examples that are intentionally fragments, compile-fail cases, or require nightly.
+4. Run `python3 checks/gen_index.py` after changing rule summaries so `SKILL.md` stays in sync.
 
 ````markdown
 # prefix-rule-name
