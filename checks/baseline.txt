@@ -1,67 +1,99 @@
+anti-arc-mutex-everything.md :: Alternative 4: Actor Model with `tokio::spawn` :: E0599
+anti-blocking-async-drop.md :: Pattern: Track Whether Cleanup Is Needed :: E0107,E0599
+anti-clone-excessive.md :: Counter-Pattern: Premature Clone Avoidance :: E0428
+anti-clone-excessive.md :: Pattern: clone_from() to Reuse Allocation :: E0424
+anti-collect-intermediate.md :: Pattern: collect_into() (Rust 1.85+) :: E0061,E0428
+anti-format-hot-path.md :: Pattern: Display Implementation :: E0599
+anti-format-hot-path.md :: Pattern: Formatter Buffer Pool :: E0599
 anti-format-hot-path.md :: When format! Is Fine :: E0308
 anti-lock-across-await.md :: Pattern: Clone Before Await :: E0107
 anti-over-abstraction.md :: Prefer Concrete Types in Private Code :: E0428
 anti-over-abstraction.md :: Rule of Three :: E0107
+anti-over-abstraction.md :: Special Case: Deref Overuse :: E0308
 anti-premature-optimize.md :: When to Optimize :: E0308
-anti-stringly-typed.md :: Good :: E0308
+anti-type-erasure.md :: Pattern: enum_dispatch Crate :: E0599
 anti-type-erasure.md :: impl Trait Positions :: E0107
-anti-unwrap-abuse.md :: Good :: E0267
+anti-unsafe-send-sync.md :: Pattern: Use Existing Safe Types :: E0428
 anti-vec-for-slice.md :: Mutable Slices :: E0428
-api-builder-must-use.md :: Good :: E0599
 api-builder-pattern.md :: Builder Variations :: E0428
 api-common-traits.md :: Manual Implementations :: E0404
 api-default-impl.md :: Builder with Default :: E0599
+api-do-not-recommend.md :: Common Use Cases :: E0210,E0220
 api-extension-trait.md :: Ecosystem Examples :: E0599
 api-extension-trait.md :: Scoped Extensions :: P:expected item, found keyword `let`
 api-from-not-into.md :: Blanket Implementation :: E0210,P:non-item in item list
 api-impl-asref.md :: AsRef vs Into vs Borrow :: E0106,E0404
 api-impl-asref.md :: Common AsRef Implementations :: E0117,P:non-item in item list
 api-impl-asref.md :: Pattern: Optional AsRef Bound :: E0428
+api-impl-into.md :: Builder Pattern: Into Opt-In :: E0599
 api-impl-into.md :: Implement From, Not Into :: E0119
 api-impl-into.md :: When NOT to Use impl Into :: E0562
+api-must-use.md :: Exceptions: Uninhabited Types (Rust 1.92) :: E0658
 api-must-use.md :: When to Apply :: P:expected one of `->`, `<`,,P:missing parameters for function definition
 api-newtype-safety.md :: Constructor Patterns :: E0204
-api-newtype-safety.md :: Good :: E0063,E0308
 api-newtype-safety.md :: Zero-Cost Abstraction :: E0308
+api-nutype-validated.md :: Advanced Examples :: E0277,E0599
+api-parse-dont-validate.md :: Anti-pattern: Validating at Every Boundary :: E0428
+api-parse-dont-validate.md :: nutype: 2026 Gold Standard :: E0599
 api-sealed-trait.md :: Full Pattern :: P:missing `fn` or `struct` for,P:non-item in item list
 api-serde-optional.md :: Multiple Optional Dependencies :: P:expected `;`, found `#`,P:expected `;`, found `borsh`,P:expected `;`, found `default`,P:expected `;`, found `rkyv`,P:expected `;`, found `serde`,P:expected one of `.`, `;`,
 api-serde-optional.md :: When to Make Serde Required :: P:expected `;`, found `serde`
+api-serde-optional.md :: nutype Integration :: E0277
+api-typestate.md :: Anti-pattern: Hand-rolling Typestate for Simple Builders :: E0392,E0658
 api-typestate.md :: Builder Typestate :: E0599
-async-bounded-channel.md :: Worker Pool Pattern :: E0107
+api-typestate.md :: bon: Practical Production Typestate :: E0599
+async-blocking-detection.md :: Metrics-Based Detection :: E0599
+async-blocking-detection.md :: Using UnhandledPanic for Detection :: E0599
 async-cancellation-token.md :: CancellationToken API :: E0069
 async-cancellation-token.md :: Graceful Shutdown Pattern :: E0107,E0752
 async-cancellation-token.md :: Hierarchical Cancellation :: E0277
 async-fn-in-trait.md :: Caveats :: P:expected one of `!` or
-async-join-parallel.md :: Good :: E0107
 async-join-parallel.md :: Limiting Concurrency :: E0107
 async-join-parallel.md :: When NOT to Use join! :: E0107
 async-join-parallel.md :: futures::join_all for Dynamic Collections :: E0107,E0428
 async-joinset-structured.md :: Abort on Drop :: E0069
+async-mpsc-queue.md :: PollSender for Stream Integration :: E0599
+async-runtime-metrics.md :: Metrics Loop Pattern :: E0599
+async-runtime-metrics.md :: Task Health :: E0599
 async-select-racing.md :: Racing Multiple of Same Type :: E0107
 async-spawn-blocking.md :: What Counts as Blocking :: P:expected one of `!`, `.`,
-async-tokio-fs.md :: Good :: E0107
 async-tokio-fs.md :: When std::fs is Acceptable :: E0428
-async-tokio-runtime.md :: Good :: E0428
+async-tokio-runtime.md :: Advanced Builder Options :: E0599
+async-tokio-runtime.md :: RuntimeMetrics (requires `tokio_unstable`) :: E0599
 async-try-join.md :: Cancellation Behavior :: E0107
 async-try-join.md :: Error Handling Patterns :: E0107
-async-try-join.md :: Good :: E0107
 async-try-join.md :: With Timeout :: E0107
 async-watch-latest.md :: Configuration Reload Pattern :: E0308,E0369
+closure-async-closures.md :: Mutable borrow (only `FnOnce`) :: E0596
+doc-cfg-patterns.md :: Anti-Pattern: Over-Tagging :: E0658
+doc-cfg-patterns.md :: Using `#[doc(cfg(...))]` Directly :: E0658
+doc-examples-section.md :: Shared Examples with include_str :: P:couldn't read `examples/../examples/basic_usage.md`: no such
+doc-hidden-public.md :: What NOT to Hide :: E0428
+doc-hidden-setup.md :: Shared Setup with include_str :: P:expected statement after outer attribute
+doc-include-str.md :: Long Documentation Files :: P:couldn't read `examples/../docs/migrations.md`: no such
+doc-include-str.md :: Shared Examples Across Items :: P:couldn't read `examples/../examples/client_basic.md`: no such
+doc-intra-links.md :: Linking to Trait Items :: E0046
 doc-link-types.md :: Linking to Trait Items :: E0046
+doc-module-inner.md :: Feature Flags Section :: E0658
 doc-question-mark.md :: Doctest Wrapper Pattern :: P:expected item after doc comment
+doc-safety-section.md :: Edition 2024: unsafe extern Syntax :: E0308
 err-anyhow-app.md :: Main Function Pattern :: E0428
 err-context-chain.md :: Building Context Chains :: E0107
+err-custom-type.md :: #[diagnostic::do_not_recommend] (Rust 1.85+) :: E0210
 err-expect-bugs-only.md :: expect() Message Guidelines :: P:expected expression, found `.`
+err-expect-not-allow.md :: Lint Categories Supported :: P:expected statement after outer attribute
+err-expect-not-allow.md :: Migration from #[allow] :: E0428
+err-expect-not-allow.md :: What Happens When an Expect is Stale :: E0428
 err-from-impl.md :: Blanket From Implementations :: P:non-item in item list
 err-from-impl.md :: From with Context :: E0428
 err-lowercase-msg.md :: Rust Standard Library Convention :: P:expected `;`, found `"connection refused"`,P:expected `;`, found `"invalid digit,P:expected `;`, found `"invalid utf-8,P:expected `;`, found `"permission denied"`
 err-lowercase-msg.md :: When to Use Capitals :: P:expected statement after outer attribute
-err-question-mark.md :: Good :: E0428
+err-question-mark.md :: #[diagnostic::do_not_recommend] (Rust 1.85+) :: E0210
 err-question-mark.md :: In main() :: E0428
 err-result-over-panic.md :: When Panic IS Appropriate :: E0428
-lint-deny-correctness.md :: Important Correctness Lints :: P:this file contains an unclosed
-lint-deny-correctness.md :: Setup :: P:expected item, found `[`
-lint-unsafe-doc.md :: Good :: E0106
+err-thiserror-lib.md :: #[diagnostic::do_not_recommend] (Rust 1.85+) :: E0210
+lint-edition-2024.md :: `strict_module_headers` :: P:couldn't read `examples/other.rs`: no such
+lint-edition-2024.md :: `unsafe_op_in_unsafe_fn` Detail :: E0428
 lint-unsafe-doc.md :: Unchecked Operations :: E0424
 lint-warn-complexity.md :: Examples :: E0428
 lint-warn-complexity.md :: Overly Verbose Code :: P:expected `;`, found keyword `let`
@@ -69,22 +101,24 @@ lint-warn-complexity.md :: Unnecessary Complexity :: E0308
 lint-warn-perf.md :: Collection Inefficiencies :: P:expected `;`, found keyword `let`
 lint-warn-perf.md :: Examples :: E0428
 lint-warn-perf.md :: Inefficient Operations :: P:expected `;`, found `iter`,P:expected `;`, found `s`,P:expected `;`, found keyword `if`
+lint-warn-perf.md :: Stdlib Hints for Performance :: E0061,E0069,P:expected `;`, found keyword `use`
 lint-warn-style.md :: Examples :: E0428
 lint-warn-style.md :: Redundant Code :: P:expected `;`, found keyword `match`
+mem-arrayvec.md :: ArrayString for Stack Strings :: E0599
 mem-arrayvec.md :: When NOT to Use ArrayVec :: P:expected identifier, found `>`
-mem-assert-type-size.md :: Good :: E0512
 mem-assert-type-size.md :: When to Assert :: E0080
 mem-avoid-format.md :: Pre-allocate for Multiple Appends :: E0428
 mem-box-large-variant.md :: Recursive Types Require Boxing :: E0072,E0428
+mem-box-new-uninit.md :: MaybeUninit Dance (Complete Example) :: E0609
+mem-boxed-slice.md :: Anti-Pattern: Vec Round-Trip :: E0428
 mem-clone-from.md :: How clone_from Works :: E0117
 mem-compact-string.md :: Memory Comparison :: E0107
 mem-compact-string.md :: When to Use :: E0428
 mem-drop-order.md :: Controlling Drop Order for Locals :: P:expected one of `!` or
-mem-reuse-collections.md :: Good :: E0107
+mem-write-over-format.md :: Benchmark Difference :: E0599
 name-acronym-word.md :: Standard Library Examples :: P:expected `;`, found `std`
-name-funcs-snake.md :: Good :: P:expected item, found keyword `let`
 name-into-ownership.md :: Standard Library Examples :: E0308
-name-is-has-bool.md :: Standard Library Examples :: P:expected `;`, found `char`,P:expected `;`, found `iterator`,P:expected `;`, found `option`,P:expected `;`, found `path`,P:expected `;`, found `result`,P:expected `;`, found `str`
+name-is-has-bool.md :: Standard Library Examples :: P:expected `;`, found `char`,P:expected `;`, found `option`,P:expected `;`, found `path`,P:expected `;`, found `result`,P:expected `;`, found `str`,P:expected `;`, found keyword `let`
 name-iter-convention.md :: Standard Library Examples :: P:expected `;`, found `map`,P:expected `;`, found `vec`
 name-iter-type-match.md :: Custom Iterator Methods :: E0308,E0392
 name-iter-type-match.md :: Standard Library Pattern :: E0116,E0117
@@ -92,33 +126,69 @@ name-lifetime-short.md :: Serde Convention :: P:cannot deserialize when there is
 name-no-get-prefix.md :: Standard Library Examples :: P:expected `;`, found `btreemap`,P:expected `;`, found `hashmap`,P:expected `;`, found `option`,P:expected `;`, found `path`,P:expected `;`, found `result`,P:expected `;`, found `vec`
 name-no-get-prefix.md :: When get_ IS Appropriate :: E0116
 name-type-param-single.md :: Trait Bounds :: E0404,E0428,P:free function without a body
-name-types-camel.md :: Good :: P:non-item in item list
 opt-cache-friendly.md :: Avoid Pointer Chasing :: E0308
 opt-inline-never-cold.md :: Pattern: Extract Cold Code :: E0428
+opt-target-cpu.md :: Feature Detection at Runtime :: E0308
+own-arc-shared.md :: `Arc::new_zeroed` / `Arc::new_zeroed_slice` (1.92) :: E0107
+own-borrow-over-clone.md :: Edition 2024 RPIT Lifetime Capture :: E0428
+own-borrow-over-clone.md :: Vec::pop_if (1.86) — Conditional pop :: E0369
+own-borrow-over-clone.md :: slice::get_disjoint_mut (1.86) — Borrow multiple indices simultaneously :: E0529
 own-clone-explicit.md :: When to Avoid Clone :: E0428
+own-cow-conditional.md :: Edition 2024 RPIT Makes `Cow<'_, str>` Returns More Ergonomic :: E0428
+own-cow-rpit-edition2024.md :: Eliminates Clone-for-Lifetime Workarounds :: E0428
+own-lazy-init.md :: `LazyCell` / `LazyLock` implement `From<T>` (1.96) :: E0015,E0428
+own-lifetime-elision.md :: After (Edition 2024): Automatic lifetime capture :: E0107
+own-lifetime-elision.md :: Before (Edition 2021): Explicit lifetime annotations required :: E0107
 own-lifetime-elision.md :: Common Patterns :: P:expected one of `!`, `(`,
+own-lifetime-elision.md :: Common Patterns Transformed by RPIT Capture :: E0428
+own-lifetime-elision.md :: Impact: Eliminates Clone-for-Lifetime Workarounds :: E0592
+own-lifetime-elision.md :: Lifetime Normalization for Closures (1.94) :: P:lifetime may not live long
 own-lifetime-elision.md :: The Three Elision Rules :: P:expected one of `!`, `(`,
 own-lifetime-elision.md :: The Three Elision Rules :: P:expected one of `->`, `where`,
-own-move-large.md :: Good :: E0599
-own-refcell-interior.md :: Good :: E0599
+own-lifetime-elision.md :: `'_` in `impl Trait` Positions (Edition 2024) :: E0404,E0428
+own-move-large.md :: `Box::new_zeroed` / `Box::new_zeroed_slice` (1.92) :: E0107
+own-move-large.md :: `MaybeUninit` Slice Methods (1.93) :: E0308,E0599
+own-rc-single-thread.md :: `Rc::new_zeroed` / `Rc::new_zeroed_slice` (1.92) :: E0107
 own-slice-over-vec.md :: Path Types Too :: E0428
+own-slice-over-vec.md :: Standard Library Range Types (Rust 1.96) :: E0119,E0428
+perf-atomic-update.md :: try_update (Fallible CAS) :: E0277,E0308
 perf-chain-avoid.md :: When Chain Is Fine :: E0106
-perf-extend-batch.md :: Good :: E0107
+perf-collect-once.md :: Anti-Pattern: HashMap::values().collect() Then Iterate :: E0428
+perf-drain-reuse.md :: extract_if :: E0061
 perf-extend-batch.md :: Pattern: Building Strings :: E0428
-proj-feature-additive.md :: Good :: P:`#[panic_handler]` function required, but not,P:unwinding panics are not supported
+perf-extract-if.md :: Vec Patterns :: E0061,E0599
+perf-hint-apis.md :: select_unpredictable (Rust 1.88+) :: E0061
+perf-iter-lazy.md :: Peekable::next_if and next_if_map (Rust 1.94+) :: E0308,E0614
+perf-iter-over-index.md :: Fixed-Size Windows with array_windows (Rust 1.94+) :: E0428
 proj-mod-rs-dir.md :: Consistency Rule :: P:expected `;`, found `mod_module_files`,P:expected one of `.`, `;`,
-proj-pub-super-parent.md :: Good :: E0308
-test-mock-traits.md :: Good :: E0046
+proj-mod-rs-dir.md :: Edition 2024: `gen` Keyword Reservation :: P:expected identifier, found reserved keyword
+test-assert-matches.md :: With Custom Error Enums :: E0308
+test-should-panic.md :: assert_matches! as Alternative (Rust 1.96+) :: E0308
+trait-upcasting.md :: Working with standard library trait hierarchies :: E0038,E0393
+type-derive-more-boilerplate.md :: Complete Example :: E0277,E0308,E0599
+type-derive-more-boilerplate.md :: Numeric Newtypes :: E0369
 type-enum-states.md :: Avoid Boolean Flags :: E0428
+type-enum-states.md :: `cfg_select!` for Compile-Time State Selection (Rust 1.95+) :: P:expected expression, found `,`
+type-enum-states.md :: `let_chains` for Peeling Nested States (Edition 2024, Rust 1.85+) :: E0428
 type-generic-bounds.md :: Bound Placement :: P:non-item in item list
 type-generic-bounds.md :: Conditional Trait Implementation :: E0404
-type-generic-bounds.md :: Good :: E0404
+type-generic-bounds.md :: Const Generic `_` Inference (Rust 1.89+) :: E0428
 type-generic-bounds.md :: Implied Bounds :: E0404,E0428
+type-generic-bounds.md :: Inline Associated Type Bounds (Edition 2024, Rust 1.85+) :: E0404,E0428,P:associated type bounds are not
+type-generic-bounds.md :: Precise Capturing with `use<...>` (Rust 1.87+) :: E0404,E0428
 type-generic-bounds.md :: Where Clause Benefits :: E0404,E0428
+type-generic-bounds.md :: `cfg_select!` for Bound-Aware Conditional Compilation (Rust 1.95+) :: P:expected one of `(`, `+`,
 type-never-diverge.md :: Standard Library Examples :: P:expected one of `where` or
-type-newtype-validated.md :: With Serde :: E0599
-type-no-stringly.md :: Good :: E0599
-type-phantom-marker.md :: Good :: E0308
-type-repr-transparent.md :: FFI Pattern :: P:extern blocks must be unsafe
-type-repr-transparent.md :: Good :: P:extern blocks must be unsafe
-type-result-fallible.md :: The ? Operator :: E0428
+type-never-diverge.md :: `Result::flatten` with `!`/`Infallible` (Rust 1.89+) :: E0428
+type-newtype-ids.md :: Reduce Boilerplate with `derive_more` :: E0277,E0308,E0599,E0614
+type-newtype-repr-transparent.md :: Anti-Pattern: Omitting `#[repr(transparent)]` :: E0428
+type-newtype-repr-transparent.md :: Guarantees :: E0133
+type-newtype-validated.md :: Using `nutype` for Ergonomic Validated Newtypes :: E0599
+type-newtype-validated.md :: With Serde (Manual) :: E0599
+type-no-stringly.md :: Reduce Boilerplate with `derive_more::FromStr` :: E0277
+type-nonzero-intrinsics.md :: Complete Arithmetic API (Rust 1.92+) :: E0308,E0599
+type-nonzero-intrinsics.md :: `NonZero<char>` (Rust 1.89+) :: E0599
+type-option-nullable.md :: `Option::as_slice()` (Rust 1.81+) :: E0277
+type-option-nullable.md :: `let_chains` for Multiple Option Checks (Edition 2024, Rust 1.85+) :: E0428
+type-repr-transparent.md :: FFI Pattern with Edition 2024 `unsafe extern` :: E0507
+type-result-fallible.md :: `#[diagnostic::do_not_recommend]` (Rust 1.85+) :: E0210
