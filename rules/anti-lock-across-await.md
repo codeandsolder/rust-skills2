@@ -27,6 +27,14 @@ Prefer doing async work outside the blocking critical section.
 ```rust
 use tokio::sync::Mutex;
 
+struct State {
+    value: u64,
+}
+
+async fn fetch() -> u64 {
+    42
+}
+
 async fn update(state: &Mutex<State>) {
     let value = fetch().await;
     state.lock().await.value = value;
