@@ -21,7 +21,7 @@ anti-unsafe-send-sync.md :: Good :: block 3 :: E0425 || standalone fragment: unr
 anti-unsafe-send-sync.md :: Good :: block 4 :: E0425,E0433 || standalone fragment: unresolved context
 anti-unwrap-abuse.md :: Good :: block 2 :: E0267,E0425,E0433 || legacy compile failure: repair example or add explicit rust-check metadata
 anti-vec-for-slice.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-api-bon-builder.md :: Good :: block 2 :: E0061,E0425,E0432,E0433,E0599,P:cannot find attribute `builder` in || legacy compile failure: repair example or add explicit rust-check metadata
+api-bon-builder.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 api-builder-must-use.md :: Good :: block 2 :: E0425,E0433,E0599 || legacy compile failure: repair example or add explicit rust-check metadata
 api-builder-pattern.md :: Good :: block 2 :: E0422,E0425,E0433 || standalone fragment: unresolved context
 api-common-traits.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
@@ -32,7 +32,7 @@ api-impl-into.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unres
 api-must-use.md :: Good :: block 2 :: E0425,E0586,P:unexpected token: `...` || extraction artifact: wrapper/context
 api-newtype-safety.md :: Good :: block 2 :: E0308,E0586,P:expected identifier, found `...`,P:unexpected token: `...` || legacy compile failure: repair example or add explicit rust-check metadata
 api-non-exhaustive.md :: Good :: block 2 :: E0425,E0586,P:unexpected token: `...` || extraction artifact: wrapper/context
-api-nutype-validated.md :: Good :: block 2 :: E0432,E0599 || legacy compile failure: repair example or add explicit rust-check metadata
+api-nutype-validated.md :: Good :: block 2 :: E0433,P:to validate string types with || legacy compile failure: repair example or add explicit rust-check metadata
 api-parse-dont-validate.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 api-sealed-trait.md :: Good :: block 2 :: E0425,E0586,P:unexpected token: `...` || extraction artifact: wrapper/context
 api-serde-optional.md :: Good :: block 2 :: P:expected `;`, found `#`,P:expected `;`, found `default`,P:expected `;`, found `serde`,P:expected one of `.`, `;`, || legacy compile failure: repair example or add explicit rust-check metadata
@@ -94,10 +94,9 @@ mem-avoid-format.md :: Good :: block 2 :: E0425 || standalone fragment: unresolv
 mem-box-new-uninit.md :: Good :: block 2 :: E0425,E0609 || legacy compile failure: repair example or add explicit rust-check metadata
 mem-boxed-slice.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 mem-clone-from.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-mem-compact-string.md :: Good :: block 2 :: E0432 || standalone fragment: unresolved context
-mem-ecow-clone-heavy.md :: Good :: block 2 :: E0425,E0432,E0433 || standalone fragment: unresolved context
+mem-ecow-clone-heavy.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 mem-reuse-collections.md :: Good :: block 2 :: E0107,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
-mem-slotmap-arena.md :: Good :: block 2 :: E0425,E0432,E0433 || standalone fragment: unresolved context
+mem-slotmap-arena.md :: Good :: block 2 :: E0425,E0433,E0782 || legacy compile failure: repair example or add explicit rust-check metadata
 mem-smallvec.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 mem-thinvec.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 mem-with-capacity.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
@@ -155,14 +154,13 @@ test-integration-dir.md :: Good :: block 2 :: E0432 || standalone fragment: unre
 test-mock-traits.md :: Good :: block 2 :: E0046,E0425,E0433 || legacy compile failure: repair example or add explicit rust-check metadata
 test-snapshot-testing.md :: Good :: block 2 :: E0432 || standalone fragment: unresolved context
 test-use-super.md :: Good :: block 2 :: E0586,P:expected identifier, found `...`,P:unexpected token: `...` || extraction artifact: wrapper/context
-type-derive-more-boilerplate.md :: Good :: block 2 :: E0432 || standalone fragment: unresolved context
 type-enum-states.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 type-generic-bounds.md :: Good :: block 2 :: E0404,E0405,E0586,P:unexpected token: `...` || legacy compile failure: repair example or add explicit rust-check metadata
 type-never-diverge.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 type-newtype-ids.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 type-newtype-validated.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 type-no-stringly.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-type-nutype-validated.md :: Good :: block 2 :: E0432 || standalone fragment: unresolved context
+type-nutype-validated.md :: Good :: block 2 :: P:unknown attribute `serde` || legacy compile failure: repair example or add explicit rust-check metadata
 type-option-nullable.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 type-phantom-marker.md :: Good :: block 2 :: E0586,P:unexpected token: `...` || extraction artifact: wrapper/context
 type-repr-transparent.md :: Good :: block 2 :: E0425,P:extern blocks must be unsafe || legacy compile failure: repair example or add explicit rust-check metadata

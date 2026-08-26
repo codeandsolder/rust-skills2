@@ -11,7 +11,6 @@ anti-over-abstraction.md :: Prefer Concrete Types in Private Code :: E0428
 anti-over-abstraction.md :: Rule of Three :: E0107
 anti-over-abstraction.md :: Special Case: Deref Overuse :: E0308
 anti-premature-optimize.md :: When to Optimize :: E0308
-anti-type-erasure.md :: Pattern: enum_dispatch Crate :: E0599
 anti-type-erasure.md :: impl Trait Positions :: E0107
 anti-unsafe-send-sync.md :: Pattern: Use Existing Safe Types :: E0428
 anti-vec-for-slice.md :: Mutable Slices :: E0428
@@ -25,7 +24,6 @@ api-from-not-into.md :: Blanket Implementation :: E0210,P:non-item in item list
 api-impl-asref.md :: AsRef vs Into vs Borrow :: E0106,E0404
 api-impl-asref.md :: Common AsRef Implementations :: E0117,P:non-item in item list
 api-impl-asref.md :: Pattern: Optional AsRef Bound :: E0428
-api-impl-into.md :: Builder Pattern: Into Opt-In :: E0599
 api-impl-into.md :: Implement From, Not Into :: E0119
 api-impl-into.md :: When NOT to Use impl Into :: E0562
 api-must-use.md :: Exceptions: Uninhabited Types (Rust 1.92) :: E0658
@@ -34,14 +32,12 @@ api-newtype-safety.md :: Constructor Patterns :: E0204
 api-newtype-safety.md :: Zero-Cost Abstraction :: E0308
 api-nutype-validated.md :: Advanced Examples :: E0277,E0599
 api-parse-dont-validate.md :: Anti-pattern: Validating at Every Boundary :: E0428
-api-parse-dont-validate.md :: nutype: 2026 Gold Standard :: E0599
+api-parse-dont-validate.md :: nutype: 2026 Gold Standard :: P:to validate string types with
 api-sealed-trait.md :: Full Pattern :: P:missing `fn` or `struct` for,P:non-item in item list
 api-serde-optional.md :: Multiple Optional Dependencies :: P:expected `;`, found `#`,P:expected `;`, found `borsh`,P:expected `;`, found `default`,P:expected `;`, found `rkyv`,P:expected `;`, found `serde`,P:expected one of `.`, `;`,
 api-serde-optional.md :: When to Make Serde Required :: P:expected `;`, found `serde`
-api-serde-optional.md :: nutype Integration :: E0277
 api-typestate.md :: Anti-pattern: Hand-rolling Typestate for Simple Builders :: E0392,E0658
 api-typestate.md :: Builder Typestate :: E0599
-api-typestate.md :: bon: Practical Production Typestate :: E0599
 async-blocking-detection.md :: Metrics-Based Detection :: E0599
 async-blocking-detection.md :: Using UnhandledPanic for Detection :: E0599
 async-cancellation-token.md :: CancellationToken API :: E0069
@@ -104,6 +100,7 @@ lint-warn-perf.md :: Inefficient Operations :: P:expected `;`, found `iter`,P:ex
 lint-warn-perf.md :: Stdlib Hints for Performance :: E0061,E0069,P:expected `;`, found keyword `use`
 lint-warn-style.md :: Examples :: E0428
 lint-warn-style.md :: Redundant Code :: P:expected `;`, found keyword `match`
+mem-arena-allocator.md :: Alternative: slotmap for Stable Handles :: E0782
 mem-arrayvec.md :: ArrayString for Stack Strings :: E0599
 mem-arrayvec.md :: When NOT to Use ArrayVec :: P:expected identifier, found `>`
 mem-assert-type-size.md :: When to Assert :: E0080
@@ -115,6 +112,8 @@ mem-clone-from.md :: How clone_from Works :: E0117
 mem-compact-string.md :: Memory Comparison :: E0107
 mem-compact-string.md :: When to Use :: E0428
 mem-drop-order.md :: Controlling Drop Order for Locals :: P:expected one of `!` or
+mem-slotmap-arena.md :: Graph Nodes Example :: E0782
+mem-slotmap-arena.md :: Self-Referencing Structs :: E0782
 mem-write-over-format.md :: Benchmark Difference :: E0599
 name-acronym-word.md :: Standard Library Examples :: P:expected `;`, found `std`
 name-into-ownership.md :: Standard Library Examples :: E0308
@@ -165,8 +164,7 @@ proj-mod-rs-dir.md :: Edition 2024: `gen` Keyword Reservation :: P:expected iden
 test-assert-matches.md :: With Custom Error Enums :: E0308
 test-should-panic.md :: assert_matches! as Alternative (Rust 1.96+) :: E0308
 trait-upcasting.md :: Working with standard library trait hierarchies :: E0038,E0393
-type-derive-more-boilerplate.md :: Complete Example :: E0277,E0308,E0599
-type-derive-more-boilerplate.md :: Numeric Newtypes :: E0369
+type-derive-more-boilerplate.md :: Complete Example :: E0382
 type-enum-states.md :: Avoid Boolean Flags :: E0428
 type-enum-states.md :: `cfg_select!` for Compile-Time State Selection (Rust 1.95+) :: P:expected expression, found `,`
 type-enum-states.md :: `let_chains` for Peeling Nested States (Edition 2024, Rust 1.85+) :: E0428
@@ -180,14 +178,15 @@ type-generic-bounds.md :: Where Clause Benefits :: E0404,E0428
 type-generic-bounds.md :: `cfg_select!` for Bound-Aware Conditional Compilation (Rust 1.95+) :: P:expected one of `(`, `+`,
 type-never-diverge.md :: Standard Library Examples :: P:expected one of `where` or
 type-never-diverge.md :: `Result::flatten` with `!`/`Infallible` (Rust 1.89+) :: E0428
-type-newtype-ids.md :: Reduce Boilerplate with `derive_more` :: E0277,E0308,E0599,E0614
+type-newtype-ids.md :: Validate with `nutype` :: P:unknown attribute `serde`
 type-newtype-repr-transparent.md :: Anti-Pattern: Omitting `#[repr(transparent)]` :: E0428
 type-newtype-repr-transparent.md :: Guarantees :: E0133
-type-newtype-validated.md :: Using `nutype` for Ergonomic Validated Newtypes :: E0599
+type-newtype-validated.md :: Using `nutype` for Ergonomic Validated Newtypes :: P:unknown attribute `serde`
 type-newtype-validated.md :: With Serde (Manual) :: E0599
-type-no-stringly.md :: Reduce Boilerplate with `derive_more::FromStr` :: E0277
+type-no-stringly.md :: Reduce Boilerplate with `derive_more::FromStr` :: E0277,P:expected `error` argument here
 type-nonzero-intrinsics.md :: Complete Arithmetic API (Rust 1.92+) :: E0308,E0599
 type-nonzero-intrinsics.md :: `NonZero<char>` (Rust 1.89+) :: E0599
+type-nutype-validated.md :: Common Patterns :: P:to validate string types with
 type-option-nullable.md :: `Option::as_slice()` (Rust 1.81+) :: E0277
 type-option-nullable.md :: `let_chains` for Multiple Option Checks (Edition 2024, Rust 1.85+) :: E0428
 type-repr-transparent.md :: FFI Pattern with Edition 2024 `unsafe extern` :: E0507
