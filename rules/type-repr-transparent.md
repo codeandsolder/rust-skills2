@@ -1,162 +1,134 @@
 # type-repr-transparent
 
-> Always add `#[repr(transparent)]` to single-field newtypes
+> Use `#[repr(transparent)]` when a wrapper intentionally needs the wrapped field's layout and ABI
 
 **Rule**: `type-repr-transparent`
 
 ## Why It Matters
 
-`#[repr(transparent)]` guarantees a newtype has the same memory layout as its inner type. This is essential for FFI where you need type safety in Rust but must match C ABI layouts. Beyond FFI, you should always add `#[repr(transparent)]` to every single-field newtype — it is a zero-cost annotation that provides a guaranteed layout, enables niche optimization (e.g., with `NonZero`), and allows safe transmutation. Without it, the compiler may add padding or change layout at any time across versions, optimization levels, or targets.
+`#[repr(transparent)]` is an interoperability and layout contract, not a default annotation for every newtype. It is useful when a wrapper must deliberately have the same layout and ABI as its non-zero-sized field, especially at FFI boundaries or in carefully documented unsafe abstractions.
+
+For ordinary pure-Rust newtypes, the compiler is free to choose layout and callers should not depend on it. That is normally a feature: it leaves implementation freedom and avoids promising ABI properties that the API does not need.
+
+`#[repr(transparent)]` also does **not** make `transmute` safe. `std::mem::transmute` remains an unsafe operation, and both the source and destination values must satisfy their types' validity requirements.
 
 ## Bad
 
 ```rust
-// No layout guarantee — might not match inner type
-struct Handle(u64);
-
-// Passing to C code — unspecified behavior
-extern "C" {
-    fn process_handle(h: Handle);  // Layout may not match u64
-}
-
-// Wrapping C type without layout guarantee
-struct SafePointer(*mut c_void);
-
-// Pure Rust newtype — works by accident, unspecified
-struct Meters(f64);
-
-// "It works anyway" — relying on unspecified behavior
-// that can change with compiler version or optimization level.
-```
-
-## Good
-
-```rust
-// Guaranteed same layout as inner type
+// No external layout contract exists, so promising one adds no value.
 #[repr(transparent)]
-struct Handle(u64);
+struct UserId(u64);
 
-// Safe for FFI
-extern "C" {
-    fn process_handle(h: Handle);  // Same layout as u64
-}
-
-// FFI pointer wrapper
-#[repr(transparent)]
-struct SafePointer(*mut c_void);
-
-// Pure Rust — always add it for guaranteed layout
-#[repr(transparent)]
-struct Meters(f64);
-```
-
-## What `#[repr(transparent)]` Guarantees
-
-```rust
-use std::mem::{size_of, align_of};
-
+// Wrong reason: repr(transparent) does not turn transmute into a safe operation.
 #[repr(transparent)]
 struct Meters(f64);
 
-// Same size
-assert_eq!(size_of::<Meters>(), size_of::<f64>());
-
-// Same alignment
-assert_eq!(align_of::<Meters>(), align_of::<f64>());
-
-// Same ABI — can pass where f64 expected
-extern "C" fn measure(distance: Meters) { ... }
-```
-
-## With `PhantomData`
-
-```rust
-use std::marker::PhantomData;
-
-// PhantomData is zero-sized, doesn't affect layout
-#[repr(transparent)]
-struct TypedHandle<T> {
-    raw: u64,
-    _marker: PhantomData<T>,
+fn meters_from_raw(raw: f64) -> Meters {
+    unsafe { std::mem::transmute(raw) }
 }
-
-// Still same layout as u64
-assert_eq!(size_of::<TypedHandle<String>>(), size_of::<u64>());
 ```
 
-## NonZero Niche Optimization
+Prefer the ordinary constructor when you own the type:
 
 ```rust
-use std::num::NonZeroU64;
+struct Meters(f64);
+
+fn meters_from_raw(raw: f64) -> Meters {
+    Meters(raw)
+}
+```
+
+## Good: FFI Newtype
+
+```rust
+use std::ffi::{c_char, c_int, CString};
 
 #[repr(transparent)]
-struct NonZeroHandle(NonZeroU64);
+struct FileDescriptor(c_int);
 
-// Inherits null-pointer optimization — Option is same size as u64
-assert_eq!(size_of::<NonZeroHandle>(), size_of::<u64>());
-assert_eq!(size_of::<Option<NonZeroHandle>>(), size_of::<u64>());
-
-// Without repr(transparent), this optimization may not apply
-// consistently across compiler versions.
-```
-
-## FFI Pattern with Edition 2024 `unsafe extern`
-
-```rust
-// Edition 2024: extern blocks require `unsafe` keyword; individual
-// fn declarations inside must be annotated `safe` or `unsafe`.
-mod ffi {
-    use std::os::raw::c_int;
-
-    #[repr(transparent)]
-    pub struct FileDescriptor(c_int);
-
-    unsafe extern "C" {
-        // safe fn: callable from safe code without an unsafe block
-        pub safe fn open(path: *const i8, flags: c_int) -> FileDescriptor;
-        // unsafe fn: requires an unsafe block at the call site
-        pub unsafe fn close(fd: FileDescriptor) -> c_int;
-        pub unsafe fn read(fd: FileDescriptor, buf: *mut u8, len: usize) -> isize;
-    }
+unsafe extern "C" {
+    // Raw-pointer validity is a caller precondition, so this remains unsafe.
+    fn open(path: *const c_char, flags: c_int) -> c_int;
+    fn close(fd: c_int) -> c_int;
 }
 
-// Safe wrapper
-pub struct File {
-    fd: ffi::FileDescriptor,
+struct File {
+    fd: FileDescriptor,
 }
 
 impl File {
-    pub fn open(path: &str) -> std::io::Result<Self> {
-        let c_path = std::ffi::CString::new(path)?;
-        let fd = unsafe { ffi::open(c_path.as_ptr(), 0) };
-        Ok(File { fd })
+    fn open(path: &str) -> std::io::Result<Self> {
+        let path = CString::new(path)
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "NUL in path"))?;
+
+        // SAFETY: CString guarantees a valid NUL-terminated pointer for this call.
+        let fd = unsafe { open(path.as_ptr(), 0) };
+        if fd < 0 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(Self { fd: FileDescriptor(fd) })
+        }
     }
 }
 
 impl Drop for File {
     fn drop(&mut self) {
-        unsafe { ffi::close(self.fd); }
+        // SAFETY: this File owns the descriptor returned by open and closes it once.
+        unsafe { close(self.fd.0) };
     }
+}
+```
+
+Here `repr(transparent)` is meaningful because `FileDescriptor` is intentionally an ABI-compatible wrapper around `c_int`.
+
+## What It Guarantees
+
+For a transparent struct or single-variant enum, Rust permits at most one field that is not zero-sized with alignment 1. The transparent type then has the same layout and ABI as that field.
+
+```rust
+use std::mem::{align_of, size_of};
+
+#[repr(transparent)]
+struct Handle(u64);
+
+assert_eq!(size_of::<Handle>(), size_of::<u64>());
+assert_eq!(align_of::<Handle>(), align_of::<u64>());
+```
+
+Zero-sized marker fields can be included when they satisfy the transparent-representation restrictions:
+
+```rust
+use std::marker::PhantomData;
+
+#[repr(transparent)]
+struct TypedHandle<T> {
+    raw: u64,
+    marker: PhantomData<T>,
 }
 ```
 
 ## When to Apply
 
-| Scenario | Apply `#[repr(transparent)]`? |
-|----------|-------------------------------|
-| Single-field tuple struct | Always |
-| Single-field named struct | Always |
-| FFI newtype wrappers | Always (required) |
-| Type-safe handles | Always |
-| NonZero niche optimization | Always |
-| Pure Rust newtypes | Always (zero cost, guaranteed layout) |
-| Multi-field structs | N/A (only for single-field) |
+| Scenario | Recommendation |
+|----------|----------------|
+| FFI wrapper that must match the wrapped ABI | Use `#[repr(transparent)]` |
+| Unsafe abstraction whose documented contract depends on layout | Usually use it and document the invariant |
+| Pure-Rust semantic newtype | Usually omit it unless layout is intentionally part of the contract |
+| "I might want to transmute this later" | Not a sufficient reason |
+| Multi-field data structure | Use the representation appropriate to the actual ABI/layout requirement |
+
+## Key Points
+
+- Treat `repr(transparent)` as a public layout/ABI promise.
+- Do not add it automatically to every one-field newtype.
+- `transmute` remains unsafe; layout compatibility is only one of its requirements.
+- Prefer constructors and conversion traits over transmutation when you control the wrapper type.
 
 ## See Also
 
 - [Rust Reference: repr(transparent)](https://doc.rust-lang.org/reference/type-layout.html#the-transparent-representation)
 - [type-newtype-ids](./type-newtype-ids.md) — Newtype pattern
-- [type-newtype-repr-transparent](./type-newtype-repr-transparent.md) — All-newtype `#[repr(transparent)]` guide
+- [type-newtype-repr-transparent](./type-newtype-repr-transparent.md) — Compatibility entry for this guidance
 - [type-phantom-marker](./type-phantom-marker.md) — `PhantomData` usage
-- [type-nonzero-intrinsics](./type-nonzero-intrinsics.md) — NonZero niche optimization
 - [api-newtype-safety](./api-newtype-safety.md) — Type-safe newtypes
+- [unsafe-extern-block](./unsafe-extern-block.md) — Edition 2024 FFI declarations

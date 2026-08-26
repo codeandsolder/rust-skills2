@@ -1,211 +1,82 @@
 # async-spawn-blocking
 
-> Use `spawn_blocking` for CPU-intensive work
+> Use `spawn_blocking` for blocking synchronous work; bound CPU-heavy work or use a dedicated CPU pool such as Rayon
 
 ## Why It Matters
 
-Async runtimes like Tokio use a small number of threads to handle many tasks. CPU-intensive or blocking operations on these threads starve other tasks. `spawn_blocking` moves such work to a dedicated thread pool.
+Tokio executor workers must keep polling many async tasks. A blocking syscall or long synchronous computation on a worker can delay unrelated futures.
 
-## Bad
+`tokio::task::spawn_blocking` moves synchronous blocking work to Tokio's blocking pool. That is a good fit for blocking APIs and short-to-moderate synchronous operations. It is not automatically the right scheduler for an unbounded stream of CPU-heavy jobs.
+
+## Blocking API
 
 ```rust
-// BAD: Blocks the async runtime thread
-async fn process_image(data: &[u8]) -> ProcessedImage {
-    // CPU-intensive work on async thread!
-    let resized = resize_image(data);      // Blocks!
-    let compressed = compress(resized);     // Blocks!
-    compressed
-}
+use std::path::PathBuf;
 
-// BAD: Synchronous file I/O in async context
-async fn read_large_file(path: &Path) -> Vec<u8> {
-    std::fs::read(path).unwrap()  // Blocks the runtime!
+async fn read_with_sync_library(path: PathBuf) -> std::io::Result<Vec<u8>> {
+    tokio::task::spawn_blocking(move || sync_library::read_file(path))
+        .await
+        .expect("blocking task panicked")
 }
 ```
 
-## Good
+When an async-native API exists, prefer it when appropriate:
 
 ```rust
-use tokio::task;
-
-// GOOD: Offload CPU work to blocking pool
-async fn process_image(data: Vec<u8>) -> ProcessedImage {
-    task::spawn_blocking(move || {
-        let resized = resize_image(&data);
-        compress(resized)
-    })
-    .await
-    .expect("spawn_blocking failed")
-}
-
-// GOOD: Use async file I/O
-async fn read_large_file(path: &Path) -> tokio::io::Result<Vec<u8>> {
+async fn read_file(path: &std::path::Path) -> std::io::Result<Vec<u8>> {
     tokio::fs::read(path).await
 }
+```
 
-// GOOD: Or spawn_blocking for unavoidable sync I/O
-async fn read_with_sync_lib(path: PathBuf) -> Vec<u8> {
-    task::spawn_blocking(move || {
-        sync_library::read_file(&path)
+## CPU-Heavy Work: Add Backpressure or a CPU Pool
+
+Tokio permits a large number of blocking threads because the blocking pool also serves blocking I/O. Submitting many CPU-bound jobs without a bound can oversubscribe the machine.
+
+```rust
+use std::sync::Arc;
+use tokio::sync::Semaphore;
+
+async fn run_cpu_job(limit: Arc<Semaphore>, input: Input) -> Output {
+    let permit = limit.acquire_owned().await.unwrap();
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        heavy_computation(input)
     })
     .await
-    .unwrap()
+    .expect("CPU job panicked")
 }
 ```
 
-## What Counts as Blocking
+For sustained parallel CPU workloads, a dedicated CPU executor such as Rayon is often a better model.
 
-```rust
-// CPU-intensive operations
-- Cryptographic operations (hashing, encryption)
-- Image/video processing
-- Compression/decompression
-- Complex parsing
-- Mathematical computations
+## No Universal Microsecond Threshold
 
-// Blocking I/O
-- std::fs operations
-- Synchronous database drivers
-- Synchronous HTTP clients
-- Thread::sleep
+There is no generally valid rule such as "under 10 µs stays async, over 1 ms must use `spawn_blocking`". The right boundary depends on runtime latency goals, concurrency, hardware, batching, and the cost of scheduling/offloading.
 
-// Example thresholds (rough guidelines):
-// < 10µs: OK on async thread
-// 10µs - 1ms: Consider spawn_blocking
-// > 1ms: Definitely spawn_blocking
-```
+Measure under realistic load.
 
-## Practical Examples
+## Cancellation and Long-Lived Work
 
-```rust
-// Password hashing (CPU-intensive)
-async fn hash_password(password: String) -> String {
-    task::spawn_blocking(move || {
-        bcrypt::hash(password, bcrypt::DEFAULT_COST).unwrap()
-    })
-    .await
-    .unwrap()
-}
+Once a `spawn_blocking` task has started, aborting its `JoinHandle` does not stop the underlying closure. Design explicit cancellation inside long computations if required.
 
-// JSON parsing of large documents
-async fn parse_large_json(data: String) -> serde_json::Value {
-    task::spawn_blocking(move || {
-        serde_json::from_str(&data).unwrap()
-    })
-    .await
-    .unwrap()
-}
+For persistent blocking loops or long-lived dedicated services, a dedicated thread can be clearer than occupying a blocking-pool thread indefinitely.
 
-// Compression
-async fn compress_data(data: Vec<u8>) -> Vec<u8> {
-    task::spawn_blocking(move || {
-        let mut encoder = flate2::write::GzEncoder::new(
-            Vec::new(),
-            flate2::Compression::default(),
-        );
-        encoder.write_all(&data).unwrap();
-        encoder.finish().unwrap()
-    })
-    .await
-    .unwrap()
-}
-```
+## Runtime Tuning
 
-## spawn_blocking vs spawn
+`worker_threads` configures Tokio's async worker pool; `max_blocking_threads` configures the separate blocking pool. Do not tune one expecting it to control the other.
 
-```rust
-// spawn: Runs async code on runtime threads
-tokio::spawn(async {
-    // Async code here
-    some_async_operation().await;
-});
+Avoid magic defaults such as "start at 64". Tune only when metrics and workload characteristics justify it.
 
-// spawn_blocking: Runs sync code on blocking thread pool
-tokio::task::spawn_blocking(|| {
-    // Synchronous, possibly CPU-intensive code
-    heavy_computation();
-});
+## Key Points
 
-// spawn_blocking returns JoinHandle that can be awaited
-let result = tokio::task::spawn_blocking(|| {
-    expensive_sync_operation()
-}).await?;
-```
-
-## Rayon for Parallel CPU Work
-
-```rust
-// For parallel CPU work, consider Rayon inside spawn_blocking
-async fn parallel_process(items: Vec<Item>) -> Vec<Output> {
-    task::spawn_blocking(move || {
-        use rayon::prelude::*;
-        items.par_iter()
-            .map(|item| cpu_intensive_transform(item))
-            .collect()
-    })
-    .await
-    .unwrap()
-}
-```
-
-## Tuning the Blocking Pool
-
-```rust
-use tokio::runtime::Builder;
-
-let runtime = Builder::new_multi_thread()
-    .worker_threads(4)
-    .max_blocking_threads(100)  // Default: 512
-    .build()?;
-
-// Monitor with RuntimeMetrics:
-// let depth = runtime.metrics().blocking_queue_depth();
-// let active = runtime.metrics().num_blocking_threads();
-
-// Guidelines:
-// - Too low: blocking tasks queue, starving producers
-// - Too high: thread overhead, memory pressure
-// - Start at 64, monitor queue depth, adjust up
-```
-
-## Two-Runtime Pattern
-
-For mixed IO/CPU workloads, separate runtimes prevent IO tasks from being starved by CPU work:
-
-```rust
-use tokio::runtime::{Builder, Runtime};
-
-fn main() {
-    // IO runtime: many threads, oversubscribed
-    let io_rt = Builder::new_multi_thread()
-        .worker_threads(8)
-        .thread_name("io-worker")
-        .enable_all()
-        .build()
-        .unwrap();
-    
-    // CPU runtime: one thread per core
-    let cpu_rt = Builder::new_multi_thread()
-        .worker_threads(num_cpus::get())
-        .thread_name("cpu-worker")
-        .build()
-        .unwrap();
-    
-    io_rt.block_on(async {
-        // IO work on io runtime
-        let data = fetch_data().await;
-        
-        // CPU work on cpu runtime
-        let result = cpu_rt.spawn_blocking(move || {
-            heavy_computation(data)
-        }).await.unwrap();
-        
-        println!("Result: {}", result);
-    });
-}
-```
+- Blocking synchronous API → `spawn_blocking` is usually appropriate.
+- Many CPU-heavy tasks → bound concurrency or use a dedicated CPU pool.
+- `worker_threads` and blocking threads are different pools.
+- Started blocking tasks are not cancellable merely by aborting the async handle.
+- Measure latency and throughput rather than using universal duration thresholds.
 
 ## See Also
 
-- [async-tokio-fs](async-tokio-fs.md) - Use tokio::fs for async file I/O
-- [async-no-lock-await](async-no-lock-await.md) - Don't hold locks across await
+- [async-tokio-fs](async-tokio-fs.md) — async filesystem APIs
+- [async-no-lock-await](async-no-lock-await.md) — blocking versus async synchronization
+- [`tokio::task::spawn_blocking`](https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html)

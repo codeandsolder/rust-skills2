@@ -6,7 +6,7 @@ description: >
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
   matching, macros, closures, observability, testing, and common anti-patterns.
-  Modernized for Rust 1.96 (2024 edition). Invoke with /rust-skills.
+  Modernized for Rust 1.98 (2024 edition). Invoke with /rust-skills.
 license: MIT
 metadata:
   author: leonardomso
@@ -18,12 +18,12 @@ metadata:
     - The Rustonomicon
     - ripgrep, tokio, serde, polars, axum, cargo codebases
     - This Week in Rust 2024-2026
-    - blog.rust-lang.org release posts 1.85-1.96
+    - blog.rust-lang.org release posts 1.85-1.98
 ---
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 324 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.96 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 324 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.98 (2024 edition).
 
 ## When to Apply
 
@@ -86,9 +86,9 @@ Reference these guidelines when:
 - [`own-clone-explicit`](rules/own-clone-explicit.md) - Use explicit `Clone` for types where copying has meaningful cost
 - [`own-move-large`](rules/own-move-large.md) - Move large types instead of copying; use `Box` if moves are expensive
 - [`own-lifetime-elision`](rules/own-lifetime-elision.md) - Rely on lifetime elision rules; add explicit lifetimes only when required
-- [`own-cell-update`](rules/own-cell-update.md) - Use `Cell::update` (Rust 1.88+) for atomic read-modify-write on `Copy`-type interior-mutable data
+- [`own-cell-update`](rules/own-cell-update.md) - Use `Cell::update` (Rust 1.88+) for concise single-threaded read-transform-write updates on `Copy` values
 - [`own-cow-rpit-edition2024`](rules/own-cow-rpit-edition2024.md) - Edition 2024 RPIT lifetime capture makes `Cow<'_, T>` returns from methods borrowing `&self` dramatically more ergonomic
-- [`own-range-copy`](rules/own-range-copy.md) - Prefer `core::range::Range` (Rust 1.96+, `Copy`) over `core::ops::Range` in new code when the range needs to be `Copy`
+- [`own-range-copy`](rules/own-range-copy.md) - Use `core::range::Range` (Rust 1.96+) when `Copy` range values are useful; keep `core::ops::Range` for legacy iterator and API interoperability
 - [`own-lazy-init`](rules/own-lazy-init.md) - Use `std::sync::LazyLock` / `std::cell::LazyCell` for lazily initialized shared data
 
 ### 2. Error Handling (CRITICAL)
@@ -142,8 +142,8 @@ Reference these guidelines when:
 - [`unsafe-minimize-scope`](rules/unsafe-minimize-scope.md) - Keep `unsafe` blocks as small as possible — mark only the operation that requires unsafety, not the surrounding safe code.
 - [`unsafe-miri-ci`](rules/unsafe-miri-ci.md) - Run `cargo miri test` in CI for every crate that contains `unsafe` code.
 - [`unsafe-maybeuninit`](rules/unsafe-maybeuninit.md) - Use `MaybeUninit<T>` for uninitialized memory; never use `mem::uninitialized()` or `mem::zeroed()` for types with validity invariants.
-- [`unsafe-extern-block`](rules/unsafe-extern-block.md) - In Rust 2024, wrap `extern` blocks in `unsafe extern { }` and annotate each item as `safe` or `unsafe`.
-- [`unsafe-send-sync-manual`](rules/unsafe-send-sync-manual.md) - Document the invariants when manually implementing `Send` or `Sync`; prefer letting the compiler derive them automatically.
+- [`unsafe-extern-block`](rules/unsafe-extern-block.md) - In Rust 2024, use `unsafe extern { }` blocks and mark an item `safe` only when every safe Rust caller can satisfy its contract.
+- [`unsafe-send-sync-manual`](rules/unsafe-send-sync-manual.md) - Justify manual `Send`/`Sync` from invariants enforced by the type and its dependencies, not from hoped-for caller behavior
 - [`unsafe-no-mangle-unsafe`](rules/unsafe-no-mangle-unsafe.md) - In Rust 2024, write `#[unsafe(no_mangle)]`, `#[unsafe(export_name = "...")]`, and `#[unsafe(link_section = "...")]` — not the bare attribute forms.
 - [`unsafe-strict-provenance`](rules/unsafe-strict-provenance.md) - Prefer strict provenance APIs (`ptr.addr()`, `ptr.map_addr()`, `ptr.with_addr()`) over integer-pointer round-tripping (`as usize` / `as *const T`); prefer raw borrow syntax (`&raw const x` / `&raw mut x`) over `addr_of!` / `addr_of_mut!`.
 
@@ -166,15 +166,15 @@ Reference these guidelines when:
 - [`api-serde-optional`](rules/api-serde-optional.md) - Make serde a feature flag, not a hard dependency for library crates
 - [`api-impl-fromiterator`](rules/api-impl-fromiterator.md) - Implement `FromIterator` and `Extend` for collection types, and `IntoIterator` for all three reference forms
 - [`api-operator-overload`](rules/api-operator-overload.md) - Overload operators only when the semantics are natural and unsurprising
-- [`api-bon-builder`](rules/api-bon-builder.md) - Use the `bon` crate (v3.9.x, `elastio/bon`) for ergonomic, compile-time safe builders
+- [`api-bon-builder`](rules/api-bon-builder.md) - Use `bon` when typestate builders for structs or functions improve the API; account for proc-macro and typestate compile cost
 - [`api-do-not-recommend`](rules/api-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` (Rust 1.85.0) to hide blanket impls from compiler diagnostics
 - [`api-nutype-validated`](rules/api-nutype-validated.md) - Use `nutype` (v0.7.0, `greyblake/nutype`) for sanitized and validated newtypes with zero overhead
 
 ### 6. Async/Await (HIGH)
 
 - [`async-tokio-runtime`](rules/async-tokio-runtime.md) - Configure Tokio runtime appropriately for your workload
-- [`async-no-lock-await`](rules/async-no-lock-await.md) - Never hold `Mutex`/`RwLock` across `.await`
-- [`async-spawn-blocking`](rules/async-spawn-blocking.md) - Use `spawn_blocking` for CPU-intensive work
+- [`async-no-lock-await`](rules/async-no-lock-await.md) - Avoid holding blocking mutex guards across `.await`; keep async-lock critical sections small, but hold an async mutex across `.await` when the protected resource invariant genuinely requires it.
+- [`async-spawn-blocking`](rules/async-spawn-blocking.md) - Use `spawn_blocking` for blocking synchronous work; bound CPU-heavy work or use a dedicated CPU pool such as Rayon
 - [`async-tokio-fs`](rules/async-tokio-fs.md) - Use `tokio::fs` instead of `std::fs` in async code
 - [`async-cancellation-token`](rules/async-cancellation-token.md) - Use `CancellationToken` for graceful shutdown and task cancellation
 - [`async-join-parallel`](rules/async-join-parallel.md) - Use `join!` or `try_join!` for concurrent independent futures
@@ -213,7 +213,7 @@ Reference these guidelines when:
 - [`opt-pgo-profile`](rules/opt-pgo-profile.md) - Use Profile-Guided Optimization (PGO) for maximum performance
 - [`opt-target-cpu`](rules/opt-target-cpu.md) - Use `target-cpu=native` (or `x86-64-v3`) for maximum performance on known deployment targets
 - [`opt-bounds-check`](rules/opt-bounds-check.md) - Use iterators and patterns that eliminate bounds checks in hot paths
-- [`opt-simd-portable`](rules/opt-simd-portable.md) - Use portable SIMD for vectorized operations across architectures
+- [`opt-simd-portable`](rules/opt-simd-portable.md) - Start with autovectorization; use stable SIMD crates or carefully dispatched `#[target_feature]` code when measurement justifies it.
 - [`opt-cache-friendly`](rules/opt-cache-friendly.md) - Organize data for cache-efficient access patterns
 - [`opt-cold-path`](rules/opt-cold-path.md) - Use `core::hint::cold_path()` to mark unlikely inline paths (Rust 1.95+)
 - [`opt-select-unpredictable`](rules/opt-select-unpredictable.md) - Use `core::hint::select_unpredictable()` for branchless conditional moves (Rust 1.88+)
@@ -222,7 +222,7 @@ Reference these guidelines when:
 
 - [`num-overflow-explicit`](rules/num-overflow-explicit.md) - Handle integer overflow explicitly: `checked_`/`saturating_`/`wrapping_`/`overflowing_`
 - [`num-cast-try-from`](rules/num-cast-try-from.md) - Avoid `as` for narrowing casts; use `From` for widening and `TryFrom` for narrowing
-- [`num-float-compare`](rules/num-float-compare.md) - Don't compare floats with `==`; use a tolerance, and `total_cmp` for ordering
+- [`num-float-compare`](rules/num-float-compare.md) - Use approximate comparison when you mean numerical closeness; use exact equality for exact semantics and `total_cmp` for total ordering
 - [`num-saturating-clamp`](rules/num-saturating-clamp.md) - Bound values with `clamp` and saturating arithmetic
 - [`num-nonzero`](rules/num-nonzero.md) - Use `NonZero*` types to forbid zero and unlock the niche optimization
 
@@ -237,12 +237,12 @@ Reference these guidelines when:
 - [`type-never-diverge`](rules/type-never-diverge.md) - Use the never type `!` for functions that never return
 - [`type-generic-bounds`](rules/type-generic-bounds.md) - Add trait bounds only where needed
 - [`type-no-stringly`](rules/type-no-stringly.md) - Avoid stringly-typed APIs
-- [`type-repr-transparent`](rules/type-repr-transparent.md) - Always add `#[repr(transparent)]` to single-field newtypes
+- [`type-repr-transparent`](rules/type-repr-transparent.md) - Use `#[repr(transparent)]` when a wrapper intentionally needs the wrapped field's layout and ABI
 - [`type-deref-coercion`](rules/type-deref-coercion.md) - Implement `Deref`/`DerefMut` only for smart-pointer and transparent wrapper types
 - [`type-display-vs-debug`](rules/type-display-vs-debug.md) - Use `Display` for user-facing output and `Debug` for diagnostics; never swap them
 - [`type-numeric-fmt`](rules/type-numeric-fmt.md) - Implement `LowerHex`, `UpperHex`, `Octal`, and `Binary` for numeric newtypes
 - [`type-derive-more-boilerplate`](rules/type-derive-more-boilerplate.md) - Use `derive_more` for newtype boilerplate reduction
-- [`type-newtype-repr-transparent`](rules/type-newtype-repr-transparent.md) - Always add `#[repr(transparent)]` to single-field newtypes
+- [`type-newtype-repr-transparent`](rules/type-newtype-repr-transparent.md) - Use `#[repr(transparent)]` only when a newtype intentionally promises the wrapped field's layout or ABI
 - [`type-nonzero-intrinsics`](rules/type-nonzero-intrinsics.md) - Use `NonZero<uN>` for non-zero integer invariants
 - [`type-nutype-validated`](rules/type-nutype-validated.md) - Use `nutype` for validated newtypes
 
@@ -406,7 +406,7 @@ Reference these guidelines when:
 - [`perf-io-buffering`](rules/perf-io-buffering.md) - Wrap `Read`/`Write` in `BufReader`/`BufWriter` for many small operations
 - [`perf-array-windows`](rules/perf-array-windows.md) - Use `<[T]>::array_windows` and `<[T]>::as_chunks` for compile-time-size windows
 - [`perf-atomic-update`](rules/perf-atomic-update.md) - Use `Atomic*::update` and `try_update` for cleaner CAS loops
-- [`perf-copy-range`](rules/perf-copy-range.md) - Use `core::range::Range` for Copy-compatible range storage
+- [`perf-copy-range`](rules/perf-copy-range.md) - Treat `Copy` ranges as an ownership and ergonomics choice, not an automatic performance optimization
 - [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` for conditional extraction (Vec: Rust 1.87+, HashMap/HashSet: Rust 1.88+)
 - [`perf-hint-apis`](rules/perf-hint-apis.md) - Use branch hint APIs for hot-path optimization
 
@@ -456,7 +456,7 @@ Reference these guidelines when:
 - [`anti-unwrap-abuse`](rules/anti-unwrap-abuse.md) - Don't use `.unwrap()` in production code
 - [`anti-expect-lazy`](rules/anti-expect-lazy.md) - Don't use expect for recoverable errors
 - [`anti-clone-excessive`](rules/anti-clone-excessive.md) - Don't clone when borrowing works
-- [`anti-lock-across-await`](rules/anti-lock-across-await.md) - Don't hold locks across await points
+- [`anti-lock-across-await`](rules/anti-lock-across-await.md) - Avoid holding blocking lock guards across `.await`; async mutex guards may cross `.await` when resource serialization requires it
 - [`anti-string-for-str`](rules/anti-string-for-str.md) - Don't accept &String when &str works
 - [`anti-vec-for-slice`](rules/anti-vec-for-slice.md) - Don't accept &Vec<T> when &[T] works
 - [`anti-index-over-iter`](rules/anti-index-over-iter.md) - Don't use indexing when iterators work
@@ -478,26 +478,16 @@ Reference these guidelines when:
 
 ## Recommended Cargo.toml Settings
 
+There is no universally optimal Cargo profile. Start from Cargo's defaults and change settings only for a measured goal. `panic = "abort"` changes panic/unwinding semantics, stripping can reduce diagnostic and profiling information, and fat LTO plus `codegen-units = 1` can substantially increase build time.
+
+A conservative starting point for performance-sensitive release builds is:
+
 ```toml
 [profile.release]
 opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "abort"
-strip = true
-
-[profile.bench]
-inherits = "release"
-debug = true
-strip = false
-
-[profile.dev]
-opt-level = 0
-debug = true
-
-[profile.dev.package."*"]
-opt-level = 3  # Optimize dependencies in dev
 ```
+
+Then benchmark the relevant tradeoff before adding settings such as `lto = "thin"`/`"fat"` or `codegen-units = 1`. Choose `panic = "abort"` only when abort-on-panic semantics are acceptable, and choose `strip` based on deployment, crash-reporting, and profiling requirements. Keep benchmark symbols when your profiler needs them.
 
 ---
 

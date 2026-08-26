@@ -2,86 +2,46 @@
 
 **Rule**: `own-range-copy`
 
-> Prefer `core::range::Range` (Rust 1.96+, `Copy`) over `core::ops::Range` in new code when the range needs to be `Copy`
+> Use `core::range::Range` (Rust 1.96+) when `Copy` range values are useful; keep `core::ops::Range` for legacy iterator and API interoperability
 
 ## Why It Matters
 
-`core::ops::Range<T>` does not implement `Copy` (it implements `Iterator`, which requires `&mut self` and thus precludes `Copy`). Rust 1.96 introduced `core::range::Range<T>` as a `Copy`-compatible replacement, enabling `#[derive(Copy)]` on types that contain ranges.
+The legacy `core::ops::Range<T>` is an iterator whose value itself carries iteration state and deliberately does not implement `Copy`. That is a design choice, not a language rule saying every `Iterator` must be non-`Copy`.
 
-## Bad
+Rust 1.96 stabilized `core::range::Range<T>`, which separates the range value from legacy iterator semantics and can implement `Copy` when `T: Copy`. This is useful when a range is stored as ordinary data inside another `Copy` type.
 
-```rust
-use core::ops::Range;
-
-// Cannot derive Copy — Range<usize> is not Copy
-#[derive(Clone, Copy)]
-struct Span(Range<usize>);
-// ERROR: the trait `Copy` cannot be implemented for this type
-```
-
-## Good
+## When `Copy` Storage Helps
 
 ```rust
 use core::range::Range;
 
-// Range<usize> is Copy — enables Copy on containing types
 #[derive(Clone, Copy)]
-struct Span(Range<usize>);
-
-// Works for any T: Copy (u32, i64, usize, etc.)
-#[derive(Clone, Copy)]
-struct Chunk {
-    offset: Range<u64>,
-    length: Range<u32>,
+struct Span {
+    bytes: Range<usize>,
 }
 ```
 
-## Usage with Slices
+## Keep Legacy Ranges When Interoperating
+
+Many existing APIs use `core::ops::Range` or `RangeBounds`. Do not churn types solely because the newer range exists.
 
 ```rust
-// core::range::Range implements SliceIndex just like ops::Range
-fn extract(data: &[u8], range: Range<usize>) -> &[u8] {
-    &data[range]
+fn legacy_api(range: core::ops::Range<usize>) {
+    for i in range {
+        use_index(i);
+    }
 }
-
-let span = Span(Range { start: 2, end: 6 });
-let items = extract(&[1, 2, 3, 4, 5, 6, 7], span.0);
-// items == [3, 4, 5, 6]
 ```
 
-## When to Use Which
+## Key Points
 
-| Use Case | Type |
-|----------|------|
-| New code with `Copy`-containing types | `core::range::Range` |
-| Code that needs `RangeBounds` trait (all range types) | `core::ops::Range` or keep existing |
-| Interop with existing APIs expecting `ops::Range` | `core::ops::Range` (or convert) |
-| Hot paths in `Copy`-heavy code | `core::range::Range` |
-
-## Converting Between Range Types
-
-```rust
-use core::ops::Range as OpsRange;
-use core::range::Range as CopyRange;
-
-let ops: OpsRange<usize> = 0..10;
-// Both types can be constructed the same way
-let copy: CopyRange<usize> = CopyRange { start: 0, end: 10 };
-```
-
-## Cross-Reference
-
-See [own-copy-small](own-copy-small.md) for more on when to implement `Copy` and other types that recently became `Copy`.
+- `core::ops::Range` being non-`Copy` is deliberate legacy iterator design, not a trait-system impossibility.
+- Prefer `core::range::Range` when range values are data and `Copy` semantics are actually useful.
+- Prefer compatibility over migration churn when surrounding APIs still use `core::ops` ranges.
+- Do not claim a performance win without measurement; the primary benefit is ownership/ergonomics.
 
 ## See Also
 
-- [perf-copy-range](./perf-copy-range.md) — Copy-compatible range storage
-- [perf-array-windows](./perf-array-windows.md) — Compile-time-size window iteration
-- [own-copy-small](./own-copy-small.md) — When to implement Copy on types
-
-## References
-
-- [Rust 1.96.0 release notes](https://blog.rust-lang.org/2026/05/28/Rust-1.96.0.html)
+- [perf-copy-range](./perf-copy-range.md) — performance-specific caveat
+- [own-copy-small](./own-copy-small.md) — when `Copy` is appropriate
 - [`core::range::Range`](https://doc.rust-lang.org/stable/core/range/struct.Range.html)
-- [own-copy-small](own-copy-small.md) — Copy type guidelines
-- [own-slice-over-vec](own-slice-over-vec.md) — Slice-based APIs
