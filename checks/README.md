@@ -21,12 +21,12 @@ Other existing sections keep the legacy classifier during migration.
 
 Override an example by placing a hidden marker immediately above the fence:
 
-```markdown
+````markdown
 <!-- rust-check: fragment; reason=uses domain types defined elsewhere -->
 ```rust
 use crate::domain::Request;
 ```
-```
+````
 
 Supported expectations:
 
@@ -51,9 +51,10 @@ Examples:
 to bless a failing recommended (`compile`) example.
 
 `good-exceptions.txt` is a temporary migration ledger for exact known failures of
-recommended examples. Every entry has a reason. Error signatures are exact, so a
-new or changed failure is rejected, and stale entries fail CI so fixed examples
-must be removed from the ledger.
+recommended examples. Each entry identifies the file, section, **code-block
+ordinal**, exact compiler-error signature, and a reason. A different block in the
+same section cannot reuse the exception. New or changed failures are rejected,
+and stale entries fail CI so fixed examples must be removed from the ledger.
 
 To inspect current state:
 

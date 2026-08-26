@@ -28,7 +28,7 @@ jobs:
           python3 analyze.py check.json --emit-baseline > baseline.txt
           {
             echo '# Exact known failures of examples whose expectation is `compile`.'
-            echo '# Format: file :: section :: sorted(error-tokens) || reason'
+            echo '# Format: file :: section :: block N :: sorted(error-tokens) || reason'
             echo '# Migration debt only; new signatures fail and stale entries must be removed.'
             echo
             python3 analyze.py check.json --emit-good-exceptions
@@ -42,5 +42,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add checks/baseline.txt checks/good-exceptions.txt
-          git commit -m 'Split recommended-example debt from legacy baseline'
+          git commit -m 'Make recommended-example debt block-specific'
           git push
