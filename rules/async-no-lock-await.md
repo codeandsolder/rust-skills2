@@ -1,156 +1,108 @@
 # async-no-lock-await
 
-> Never hold `Mutex`/`RwLock` across `.await`
+> Avoid holding blocking mutex guards across `.await`; keep async-lock critical sections small, but hold an async mutex across `.await` when the protected resource invariant genuinely requires it.
 
 ## Why It Matters
 
-Holding a lock across an `.await` point can cause deadlocks and severely hurt performance. The task may be suspended while holding the lock, blocking all other tasks waiting for it - potentially indefinitely.
+A blanket "never hold a lock across `.await`" rule is wrong. The important distinction is between **blocking locks** such as `std::sync::Mutex` and **async-aware locks** such as `tokio::sync::Mutex`.
 
-## Bad
+A blocking mutex guard held across `.await` can block an executor worker thread and may deadlock or starve unrelated tasks. Tokio's async mutex is specifically designed so its guard may be held across `.await`, but doing so keeps other tasks from accessing the protected resource for the entire asynchronous operation. That can be exactly the right behavior for a stateful I/O resource, or needless contention for ordinary in-memory data.
+
+## Bad: Blocking Mutex Across Await
 
 ```rust
-use tokio::sync::Mutex;
+use std::sync::Mutex;
 
 async fn bad_update(state: &Mutex<State>) {
-    let mut guard = state.lock().await;
-    
-    // BAD: Lock held across await!
-    let data = fetch_from_network().await;
-    
-    guard.value = data;
-}  // Lock finally released
+    let mut guard = state.lock().unwrap();
 
-// This can deadlock or starve other tasks
+    // BAD: a blocking mutex remains locked while this task is suspended.
+    let data = fetch_from_network().await;
+    guard.value = data;
+}
 ```
 
-## Good
+For ordinary shared data, prefer doing asynchronous work before acquiring the lock:
 
 ```rust
 use tokio::sync::Mutex;
 
-async fn good_update(state: &Mutex<State>) {
-    // Fetch data BEFORE taking the lock
+async fn update(state: &Mutex<State>) {
     let data = fetch_from_network().await;
-    
-    // Lock only for the quick update
+
     let mut guard = state.lock().await;
     guard.value = data;
-}  // Lock released immediately
+}
+```
 
-// Alternative: Clone data out, process, then update
-async fn good_update_v2(state: &Mutex<State>) {
-    // Extract what we need
+## Good: Extract, Await, Then Update
+
+```rust
+use tokio::sync::Mutex;
+
+async fn update_by_id(state: &Mutex<State>) {
     let id = {
         let guard = state.lock().await;
         guard.id.clone()
-    };  // Lock released!
-    
-    // Do async work without lock
+    };
+
     let data = fetch_by_id(id).await;
-    
-    // Quick update
+
     state.lock().await.value = data;
 }
 ```
 
-## The Problem Visualized
+This minimizes lock hold time when the asynchronous operation does not depend on exclusive ownership of the protected resource.
 
-```rust
-// Task A:
-let guard = mutex.lock().await;    // Acquires lock
-expensive_io().await;              // Suspended, still holding lock!
-// ... many milliseconds pass ...
-drop(guard);                       // Finally releases
+## Also Good: Async Mutex Across Await When Required
 
-// Task B, C, D:
-let guard = mutex.lock().await;    // All blocked waiting for A!
-```
-
-## Patterns for Extraction
+Some resources are inherently stateful. A connection, protocol session, transaction-like object, or device handle may require one task to retain exclusive access across several awaited operations.
 
 ```rust
 use tokio::sync::Mutex;
 
-// Pattern 1: Clone out, process, update
-async fn pattern_clone(state: &Mutex<State>) {
-    let config = state.lock().await.config.clone();
-    let result = process_with_io(&config).await;
-    state.lock().await.result = result;
-}
+async fn send_request(conn: &Mutex<Connection>, request: Request) -> Response {
+    let mut conn = conn.lock().await;
 
-// Pattern 2: Compute closure, apply
-async fn pattern_closure(state: &Mutex<State>) {
-    let update = compute_update().await;
-    
-    state.lock().await.apply(update);
+    // Holding the Tokio mutex here is intentional: another task must not
+    // interleave operations on this connection between write and read.
+    conn.write_request(request).await;
+    conn.read_response().await
 }
+```
 
-// Pattern 3: Message passing
-async fn pattern_message(
-    state: &Mutex<State>,
-    tx: mpsc::Sender<Update>,
-) {
-    let update = compute_update().await;
-    tx.send(update).await.unwrap();
-}
+Tokio's mutex guard is designed to be held across `.await`. The tradeoff is contention and the higher cost of an async mutex, not memory unsafety or an automatic deadlock.
 
-// Separate task handles updates
-async fn state_manager(
-    state: Arc<Mutex<State>>,
-    mut rx: mpsc::Receiver<Update>,
-) {
-    while let Some(update) = rx.recv().await {
-        state.lock().await.apply(update);
+## `std::sync::Mutex` vs `tokio::sync::Mutex`
+
+- Use `std::sync::Mutex` (or another blocking mutex) for short, non-async critical sections when contention is low and the guard is never held across `.await`.
+- Use `tokio::sync::Mutex` when the protected operation itself must cross `.await` points.
+- For plain data, prefer restructuring code so asynchronous work happens outside the lock.
+- For shared I/O resources, an async mutex or a dedicated owner task/message-passing design is often appropriate.
+
+## Message-Passing Alternative
+
+A dedicated task can own a stateful resource and serialize operations without exposing a mutex to callers:
+
+```rust
+async fn resource_task(mut resource: Resource, mut rx: mpsc::Receiver<Command>) {
+    while let Some(command) = rx.recv().await {
+        resource.handle(command).await;
     }
 }
 ```
 
-## Using RwLock
+This is especially useful when operations have richer sequencing requirements than simple mutual exclusion.
 
-```rust
-use tokio::sync::RwLock;
+## Key Points
 
-async fn read_heavy(state: &RwLock<State>) {
-    // Multiple readers OK, but still don't hold across await
-    let value = {
-        let guard = state.read().await;
-        guard.value.clone()
-    };
-    
-    // Process without lock
-    let result = process(value).await;
-    
-    // Write lock for update
-    state.write().await.result = result;
-}
-```
-
-## std::sync::Mutex vs tokio::sync::Mutex
-
-```rust
-// std::sync::Mutex: Blocks the entire thread
-// - Use for quick, CPU-only operations
-// - NEVER use in async code with await inside
-
-// tokio::sync::Mutex: Async-aware, yields to runtime
-// - Use in async code
-// - Still don't hold across await points!
-
-// std::sync::Mutex in async (quick operation, OK):
-async fn quick_update(state: &std::sync::Mutex<State>) {
-    state.lock().unwrap().counter += 1;  // No await, OK
-}
-
-// tokio::sync::Mutex (must use if lock scope has await):
-async fn must_await_inside(state: &tokio::sync::Mutex<State>) {
-    let mut guard = state.lock().await;
-    // Only if you REALLY need the lock during async op
-    // (usually you don't - redesign instead)
-}
-```
+- **Do not hold blocking mutex/RwLock guards across `.await`.**
+- Tokio's async mutex is explicitly designed to permit holding its guard across `.await`.
+- Even with an async mutex, minimize the critical section unless the resource invariant requires exclusivity across the awaited operation.
+- Choose between locking and message passing based on resource ownership and sequencing, not an absolute slogan.
 
 ## See Also
 
-- [async-spawn-blocking](async-spawn-blocking.md) - Use spawn_blocking for CPU work
-- [async-clone-before-await](async-clone-before-await.md) - Clone data before await
+- [async-spawn-blocking](async-spawn-blocking.md) - Move blocking operations off executor workers
+- [async-clone-before-await](async-clone-before-await.md) - Clone or extract data before awaiting when appropriate
 - [anti-lock-across-await](anti-lock-across-await.md) - Anti-pattern reference
