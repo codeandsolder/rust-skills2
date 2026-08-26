@@ -1,134 +1,78 @@
 # anti-block-on-async
 
-> Don't use `handle.block_on()` inside async code
+> Don't call `block_on` from code that is already running asynchronously
 
 ## Why It Matters
 
-Calling `Handle::current().block_on(future)` inside an async context blocks the current task *and* the worker thread. It defeats the purpose of async — cooperative scheduling, backpressure, and cancellation — and can panic with "Cannot start a runtime from within a runtime" if the runtime doesn't support nested entry points (e.g., `current_thread` runtime).
+`Runtime::block_on` and `Handle::block_on` are bridges from synchronous code into async execution. Calling them from code that is already executing inside an async runtime does not make the nested work “more synchronous”; it can block an executor worker and Tokio runtime-entry combinations can panic when a runtime is started from a thread that is already driving one.
+
+Inside async code, await the future. Keep `block_on` at a deliberately synchronous boundary such as a process entry point or a synchronous API adapter whose caller is not already inside that runtime.
 
 ## Bad
 
 ```rust
 use tokio::runtime::Handle;
 
-async fn fetch_data(url: &str) -> Result<Data, Error> {
-    // BAD: block_on inside async — blocks worker thread
+async fn nested_blocking() {
     let handle = Handle::current();
+    // BAD: trying to synchronously drive async work from inside async work.
     handle.block_on(async {
-        client.get(url).await?.json().await
-    })
-}
-
-async fn process_batch(items: &[Item]) {
-    for item in items {
-        // BAD: block_on in a loop — defeats async entirely
-        let result = Handle::current().block_on(process_item(item));
-    }
-}
-```
-
-```rust
-// BAD: Nested runtime panic
-#[tokio::main]
-async fn main() {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    // Panics: "Cannot start a runtime from within a runtime"
-    let result = rt.block_on(async { fetch_data().await });
+        tokio::task::yield_now().await;
+    });
 }
 ```
 
 ## Good
 
 ```rust
-// GOOD: just .await — let the caller's runtime handle scheduling
-async fn fetch_data(url: &str) -> Result<Data, Error> {
-    client.get(url).await?.json().await
+async fn fetch_value(value: u32) -> u32 {
+    tokio::task::yield_now().await;
+    value
 }
 
-// GOOD: async loop — proper cooperative multitasking
-async fn process_batch(items: &[Item]) {
-    for item in items {
-        process_item(item).await?;  // Yields to runtime between iterations
+async fn process_batch(items: &[u32]) -> Vec<u32> {
+    let mut out = Vec::with_capacity(items.len());
+    for &item in items {
+        out.push(fetch_value(item).await);
     }
+    out
 }
 ```
 
-## When `block_on` Is Appropriate
+Awaiting keeps scheduling under the enclosing runtime and preserves normal cancellation/cooperative-scheduling behavior.
+
+## `block_on` at a Synchronous Boundary
 
 ```rust
-// OK: At the TOP LEVEL, outside async context
-// This is the single entry point into the async runtime.
 fn main() {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-        // Your async main
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    runtime.block_on(async {
+        tokio::task::yield_now().await;
     });
 }
-
-// OK: In tests where there is no enclosing runtime
-#[test]
-fn test_async_fn() {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let result = rt.block_on(async { fetch_data("url").await });
-    assert!(result.is_ok());
-}
-
-// OK: In Drop (only option, but still problematic — see anti-blocking-async-drop)
-impl Drop for MyType {
-    fn drop(&mut self) {
-        if let Ok(handle) = Handle::try_current() {
-            let _ = handle.block_on(async { self.cleanup().await });
-        }
-    }
-}
 ```
 
-## When NOT to Use `block_on`
+A library that offers both synchronous and asynchronous APIs should generally make the boundary explicit rather than secretly nesting runtimes inside async code. If a synchronous wrapper creates/drives a runtime, document that it must not be called from an incompatible async runtime context.
 
-| Context | Result |
-|---------|--------|
-| Inside `async fn` | Blocks worker — defeats async |
-| Inside `#[tokio::main]` | Panics on nested runtime |
-| Inside another `block_on` | Panics on nested runtime |
-| Inside a Tokio task | Blocks the worker — starves other tasks |
-| Inside a `tokio::test` | Panics on nested runtime |
+## Async Cleanup Is Not a `block_on` Exception
 
-## Pattern: Provide Both Sync and Async
-
-If a library needs both sync and async consumers, provide separate methods:
-
-```rust
-impl Client {
-    /// Async API — for use inside async contexts.
-    pub async fn fetch(&self, url: &str) -> Result<Data, Error> {
-        self.client.get(url).await?.json().await
-    }
-
-    /// Sync wrapper — for use from sync contexts.
-    /// Creates a one-shot runtime internally (no nesting risk).
-    pub fn fetch_blocking(&self, url: &str) -> Result<Data, Error> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(self.fetch(url))
-    }
-}
-```
+Do not solve the inability to `.await` in `Drop` by calling `Handle::block_on` there. `Drop` runs synchronously on whichever thread drops the value, which may itself be a runtime worker. Design explicit async cleanup such as `close().await`; use `Drop` only for synchronous cleanup that is safe to perform immediately.
 
 ## Detection
 
-```toml
-[lints.clippy]
-blocking_in_async = "warn"  # Catches spawn_blocking and block_on inside async
-```
+Search/review for `block_on` calls whose call graph can originate in `async fn`, Tokio tasks, `#[tokio::main]`, or `#[tokio::test]`. The important question is whether the call is a true sync→async boundary or a nested runtime entry.
 
 ## See Also
 
 - [async-tokio-runtime](./async-tokio-runtime.md) — Configure Tokio runtime appropriately
-- [async-blocking-detection](./async-blocking-detection.md) — Detect and prevent blocking in async code
+- [async-blocking-detection](./async-blocking-detection.md) — Detect blocking work in async systems
+- [anti-blocking-async-drop](./anti-blocking-async-drop.md) — Make async cleanup explicit
 
 ## References
 
-- [Tokio: Runtime nesting](https://docs.rs/tokio/latest/tokio/runtime/struct.Runtime.html#method.block_on)
-- [Tokio: Handle::block_on](https://docs.rs/tokio/latest/tokio/runtime/struct.Handle.html#method.block_on)
+- [Tokio Runtime::block_on](https://docs.rs/tokio/latest/tokio/runtime/struct.Runtime.html#method.block_on)
+- [Tokio Handle::block_on](https://docs.rs/tokio/latest/tokio/runtime/struct.Handle.html#method.block_on)
