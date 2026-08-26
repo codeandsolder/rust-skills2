@@ -142,7 +142,7 @@ Reference these guidelines when:
 - [`unsafe-minimize-scope`](rules/unsafe-minimize-scope.md) - Keep `unsafe` blocks as small as possible — mark only the operation that requires unsafety, not the surrounding safe code.
 - [`unsafe-miri-ci`](rules/unsafe-miri-ci.md) - Run `cargo miri test` in CI for every crate that contains `unsafe` code.
 - [`unsafe-maybeuninit`](rules/unsafe-maybeuninit.md) - Use `MaybeUninit<T>` for uninitialized memory; never use `mem::uninitialized()` or `mem::zeroed()` for types with validity invariants.
-- [`unsafe-extern-block`](rules/unsafe-extern-block.md) - In Rust 2024, wrap `extern` blocks in `unsafe extern { }` and annotate each item as `safe` or `unsafe`.
+- [`unsafe-extern-block`](rules/unsafe-extern-block.md) - In Rust 2024, use `unsafe extern { }` blocks and mark an item `safe` only when every safe Rust caller can satisfy its contract.
 - [`unsafe-send-sync-manual`](rules/unsafe-send-sync-manual.md) - Document the invariants when manually implementing `Send` or `Sync`; prefer letting the compiler derive them automatically.
 - [`unsafe-no-mangle-unsafe`](rules/unsafe-no-mangle-unsafe.md) - In Rust 2024, write `#[unsafe(no_mangle)]`, `#[unsafe(export_name = "...")]`, and `#[unsafe(link_section = "...")]` — not the bare attribute forms.
 - [`unsafe-strict-provenance`](rules/unsafe-strict-provenance.md) - Prefer strict provenance APIs (`ptr.addr()`, `ptr.map_addr()`, `ptr.with_addr()`) over integer-pointer round-tripping (`as usize` / `as *const T`); prefer raw borrow syntax (`&raw const x` / `&raw mut x`) over `addr_of!` / `addr_of_mut!`.
@@ -173,7 +173,7 @@ Reference these guidelines when:
 ### 6. Async/Await (HIGH)
 
 - [`async-tokio-runtime`](rules/async-tokio-runtime.md) - Configure Tokio runtime appropriately for your workload
-- [`async-no-lock-await`](rules/async-no-lock-await.md) - Never hold `Mutex`/`RwLock` across `.await`
+- [`async-no-lock-await`](rules/async-no-lock-await.md) - Avoid holding blocking mutex guards across `.await`; keep async-lock critical sections small, but hold an async mutex across `.await` when the protected resource invariant genuinely requires it.
 - [`async-spawn-blocking`](rules/async-spawn-blocking.md) - Use `spawn_blocking` for CPU-intensive work
 - [`async-tokio-fs`](rules/async-tokio-fs.md) - Use `tokio::fs` instead of `std::fs` in async code
 - [`async-cancellation-token`](rules/async-cancellation-token.md) - Use `CancellationToken` for graceful shutdown and task cancellation
@@ -213,7 +213,7 @@ Reference these guidelines when:
 - [`opt-pgo-profile`](rules/opt-pgo-profile.md) - Use Profile-Guided Optimization (PGO) for maximum performance
 - [`opt-target-cpu`](rules/opt-target-cpu.md) - Use `target-cpu=native` (or `x86-64-v3`) for maximum performance on known deployment targets
 - [`opt-bounds-check`](rules/opt-bounds-check.md) - Use iterators and patterns that eliminate bounds checks in hot paths
-- [`opt-simd-portable`](rules/opt-simd-portable.md) - Use portable SIMD for vectorized operations across architectures
+- [`opt-simd-portable`](rules/opt-simd-portable.md) - Start with autovectorization; use stable SIMD crates or carefully dispatched `#[target_feature]` code when measurement justifies it.
 - [`opt-cache-friendly`](rules/opt-cache-friendly.md) - Organize data for cache-efficient access patterns
 - [`opt-cold-path`](rules/opt-cold-path.md) - Use `core::hint::cold_path()` to mark unlikely inline paths (Rust 1.95+)
 - [`opt-select-unpredictable`](rules/opt-select-unpredictable.md) - Use `core::hint::select_unpredictable()` for branchless conditional moves (Rust 1.88+)
