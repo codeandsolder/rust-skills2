@@ -8,7 +8,8 @@ Buckets per example:
               as a free fn, pseudocode `...`/`???` tokens, dangling doc comments).
   LOW       - only "type annotations needed" (E0282/E0283).
   SUSPECT   - anything else (type mismatch, no-method, bad syntax, wrong arity,
-              missing trait impl, ...). These are real or likely-real bugs.
+              missing trait impl, unstable features, ...). These are real or
+              likely-real bugs.
 
 Modes:
   analyze.py check.json                      print summary + suspect details
@@ -22,8 +23,11 @@ import json, sys, pathlib, collections
 HERE = pathlib.Path(__file__).resolve().parent
 manifest = json.loads((HERE / "manifest.json").read_text())
 
+# Only genuine name/module/crate resolution errors belong here. In particular,
+# E0658 (unstable feature) is a real compatibility failure and must remain a
+# SUSPECT, not be hidden as an illustrative fragment.
 RES_CODES = {"E0432","E0433","E0412","E0425","E0405","E0531","E0422",
-             "E0423","E0573","E0463","E0583","E0561","E0658"}
+             "E0423","E0573","E0463","E0583"}
 RES_PREFIXES = ("cannot find","unresolved import","failed to resolve",
                 "use of undeclared","cannot determine","can't find crate",
                 "maybe a missing crate","unresolved module")
@@ -54,7 +58,6 @@ def token(d):
     c = code_of(d)
     if c:
         return c
-    # parse errors have no code: use a short normalized message stem
     words = d.get("message","").lower().split()
     return "P:" + " ".join(words[:5])
 
