@@ -49,6 +49,7 @@ impl<T> std::ops::Deref for Wrapper<T> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 struct Email(String);
 

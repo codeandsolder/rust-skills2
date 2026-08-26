@@ -27,6 +27,7 @@ fn rarely_called() {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // 1. Profile first
 // cargo flamegraph --bin myapp

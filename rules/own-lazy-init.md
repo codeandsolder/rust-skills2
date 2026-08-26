@@ -34,6 +34,7 @@ thread_local! {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use std::sync::LazyLock;
 

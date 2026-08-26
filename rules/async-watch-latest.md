@@ -22,6 +22,7 @@ let (tx, mut rx) = mpsc::channel::<Status>(100);
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use tokio::sync::watch;
 

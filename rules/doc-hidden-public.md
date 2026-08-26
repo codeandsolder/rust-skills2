@@ -28,6 +28,7 @@ pub use internal_parser::Utf8Processor;
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 /// Public-facing API client.
 pub struct ApiClient { ... }

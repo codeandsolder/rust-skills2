@@ -46,6 +46,7 @@ macro_rules! greet {
 pub use greet;
 ```
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // consumer/src/main.rs — modern
 use mylib::greet;

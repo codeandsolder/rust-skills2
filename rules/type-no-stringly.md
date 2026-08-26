@@ -33,6 +33,7 @@ fn configure(key: &str, value: &str) { }
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Status as enum — compile-time safety
 enum Status { Pending, Active, Completed }

@@ -26,6 +26,7 @@ struct SparseData {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use thin_vec::ThinVec;
 

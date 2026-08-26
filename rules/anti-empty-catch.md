@@ -34,6 +34,7 @@ for item in items {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Log the error
 if let Err(e) = write_to_file(data) {

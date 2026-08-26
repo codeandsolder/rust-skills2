@@ -32,6 +32,7 @@ fn load_config() -> Config {
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 // Invariant: after insert, key exists
 fn cache_and_get(&mut self, key: String, value: Value) -> &Value {

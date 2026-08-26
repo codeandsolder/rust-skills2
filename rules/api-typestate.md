@@ -47,6 +47,7 @@ conn.send(b"data")?;  // Runtime error: NotAuthenticated
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Different types for each state
 struct Disconnected;

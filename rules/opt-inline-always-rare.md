@@ -30,6 +30,7 @@ fn helper(x: i32) -> i32 {
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 // Let compiler decide for most functions
 pub fn get_name(&self) -> &str {

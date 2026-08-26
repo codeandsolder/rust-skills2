@@ -33,6 +33,7 @@ for (k, v) in pairs {  // Many reallocations
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Pre-allocate exact size
 let mut results = Vec::with_capacity(1000);

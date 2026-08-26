@@ -37,6 +37,7 @@ async fn update(state: &Mutex<State>) {
 
 ## Good: Extract, Await, Then Update
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use tokio::sync::Mutex;
 

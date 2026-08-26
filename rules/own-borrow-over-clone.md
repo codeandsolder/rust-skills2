@@ -30,6 +30,7 @@ fn process_all(items: &[String]) {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 fn process(data: &str) {  // Accept &str, more flexible
     println!("{}", data);  // No allocation needed

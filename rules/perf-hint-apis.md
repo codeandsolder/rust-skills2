@@ -41,6 +41,7 @@ fn lookup(cache: &HashMap<u64, Item>, key: u64) -> Item {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use std::hint::{cold_path, select_unpredictable, assert_unchecked};
 

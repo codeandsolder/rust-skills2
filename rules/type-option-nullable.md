@@ -29,6 +29,7 @@ println!("{}", user.name);  // Might be empty user — silent bug
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Option makes absence explicit
 fn find_user(id: u64) -> Option<User> {

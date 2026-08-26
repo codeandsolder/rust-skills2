@@ -34,6 +34,7 @@ fn benchmark_also_bad(c: &mut Criterion) {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 

@@ -45,6 +45,7 @@ impl core::error::Error for FlashError {}
 thiserror = { version = "2", default-features = false }
 ```
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 //! #![no_std] crate
 #![no_std]

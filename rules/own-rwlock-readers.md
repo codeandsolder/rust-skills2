@@ -30,6 +30,7 @@ fn get_setting(config: &Mutex<Config>, key: &str) -> String {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use std::sync::{Arc, RwLock};
 

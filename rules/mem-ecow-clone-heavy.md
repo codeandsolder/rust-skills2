@@ -53,6 +53,7 @@ for _ in 0..1000 {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use ecow::EcoString;
 use std::collections::HashMap;

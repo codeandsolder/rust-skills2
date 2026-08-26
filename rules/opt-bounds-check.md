@@ -27,6 +27,7 @@ fn apply_filter(data: &mut [u8], kernel: &[u8; 3]) {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 fn sum_products(a: &[f64], b: &[f64]) -> f64 {
     // Iterator zips - no bounds checks, vectorizes well

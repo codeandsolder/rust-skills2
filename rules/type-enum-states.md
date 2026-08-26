@@ -27,6 +27,7 @@ struct Connection {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 enum ConnectionState {
     Disconnected,

@@ -41,6 +41,7 @@ impl NameFormatter {
 
 ## Good (Edition 2024)
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 impl NameFormatter {
     // Lifetime is automatically captured from &self

@@ -4,160 +4,47 @@
 
 anti-block-on-async.md :: Good :: block 3 :: E0277,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
 anti-blocking-async-drop.md :: Good :: block 2 :: E0107,E0277,E0599 || legacy compile failure: repair example or add explicit rust-check metadata
-anti-clone-excessive.md :: Good :: block 2 :: E0425,P:`self` parameter is only allowed || extraction artifact: wrapper/context
-anti-collect-intermediate.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-anti-deref-overuse.md :: Good :: block 3 :: E0425,E0433 || standalone fragment: unresolved context
-anti-empty-catch.md :: Good :: block 2 :: E0425,P:cannot find macro `error` in,P:cannot find macro `info` in,P:cannot find macro `warn` in || standalone fragment: unresolved context
-anti-expect-lazy.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-anti-format-hot-path.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-anti-over-abstraction.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-anti-panic-expected.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 anti-premature-optimize.md :: Good :: block 2 :: E0308,E0425,E0433 || legacy compile failure: repair example or add explicit rust-check metadata
-anti-string-for-str.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 anti-stringly-typed.md :: Good :: block 2 :: E0308,E0425,E0433,E0586,P:unexpected token: `...` || legacy compile failure: repair example or add explicit rust-check metadata
-anti-type-erasure.md :: Good :: block 2 :: E0405,E0425 || standalone fragment: unresolved context
-anti-unsafe-send-sync.md :: Good :: block 3 :: E0425 || standalone fragment: unresolved context
-anti-unsafe-send-sync.md :: Good :: block 4 :: E0425,E0433 || standalone fragment: unresolved context
 anti-unwrap-abuse.md :: Good :: block 2 :: E0267,E0425,E0433 || legacy compile failure: repair example or add explicit rust-check metadata
-anti-vec-for-slice.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 api-builder-must-use.md :: Good :: block 2 :: E0425,E0433,E0599 || legacy compile failure: repair example or add explicit rust-check metadata
-api-builder-pattern.md :: Good :: block 2 :: E0422,E0425,E0433 || standalone fragment: unresolved context
-api-common-traits.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-api-default-impl.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-api-extension-trait.md :: Good :: block 2 :: E0432 || standalone fragment: unresolved context
-api-impl-asref.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-api-impl-into.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-api-must-use.md :: Good :: block 2 :: E0425,E0586,P:unexpected token: `...` || extraction artifact: wrapper/context
 api-newtype-safety.md :: Good :: block 2 :: E0308,E0586,P:expected identifier, found `...`,P:unexpected token: `...` || legacy compile failure: repair example or add explicit rust-check metadata
-api-non-exhaustive.md :: Good :: block 2 :: E0425,E0586,P:unexpected token: `...` || extraction artifact: wrapper/context
 api-nutype-validated.md :: Good :: block 2 :: E0433,P:to validate string types with || legacy compile failure: repair example or add explicit rust-check metadata
-api-parse-dont-validate.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-api-sealed-trait.md :: Good :: block 2 :: E0425,E0586,P:unexpected token: `...` || extraction artifact: wrapper/context
 api-serde-optional.md :: Good :: block 2 :: P:expected `;`, found `#`,P:expected `;`, found `default`,P:expected `;`, found `serde`,P:expected one of `.`, `;`, || legacy compile failure: repair example or add explicit rust-check metadata
-api-typestate.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 async-blocking-detection.md :: Good :: block 2 :: E0433,E0599,P:cannot find macro `error` in,P:cannot find macro `warn` in || legacy compile failure: repair example or add explicit rust-check metadata
-async-bounded-channel.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-async-broadcast-pubsub.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-async-cancellation-token.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-async-clone-before-await.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 async-join-parallel.md :: Good :: block 2 :: E0107,E0425,E0433 || legacy compile failure: repair example or add explicit rust-check metadata
-async-joinset-structured.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-async-no-lock-await.md :: Good: Extract, Await, Then Update :: block 3 :: E0425 || standalone fragment: unresolved context
-async-oneshot-response.md :: Good :: block 2 :: E0422,E0425 || standalone fragment: unresolved context
-async-runtime-metrics.md :: Good :: block 6 :: E0433,P:cannot find macro `warn` in || standalone fragment: unresolved context
-async-select-racing.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 async-tokio-fs.md :: Good :: block 2 :: E0107,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
 async-tokio-runtime.md :: Good :: block 2 :: E0425,E0428,E0433 || legacy compile failure: repair example or add explicit rust-check metadata
 async-try-join.md :: Good :: block 2 :: E0107,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
-async-watch-latest.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 closure-async-closures.md :: Good :: block 2 :: E0728 || legacy compile failure: repair example or add explicit rust-check metadata
-doc-all-public.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 doc-cfg-patterns.md :: Good :: block 2 :: E0583,E0658 || legacy compile failure: repair example or add explicit rust-check metadata
-doc-errors-section.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-doc-examples-section.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-doc-hidden-public.md :: Good :: block 2 :: E0425,E0432,P:expected identifier, found `...` || extraction artifact: wrapper/context
-doc-hidden-setup.md :: Good :: block 2 :: E0425,P:`self` parameter is only allowed || extraction artifact: wrapper/context
-doc-hidden-setup.md :: Good :: block 3 :: E0425 || standalone fragment: unresolved context
-doc-intra-links.md :: Good :: block 2 :: E0405,E0425,P:`self` parameter is only allowed || extraction artifact: wrapper/context
-doc-link-types.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-doc-panics-section.md :: Good :: block 2 :: E0425,P:`self` parameter is only allowed || extraction artifact: wrapper/context
 doc-question-mark.md :: Good :: block 2 :: E0425,E0601,P:`self` parameter is only allowed || legacy compile failure: repair example or add explicit rust-check metadata
-err-anyhow-app.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-err-clippy-unwrap-types.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-err-context-chain.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-err-custom-type.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 err-diagnostic-do-not-recommend.md :: Good :: block 2 :: E0210 || legacy compile failure: repair example or add explicit rust-check metadata
 err-doc-errors.md :: Good :: block 2 :: E0425,E0601 || legacy compile failure: repair example or add explicit rust-check metadata
-err-expect-bugs-only.md :: Good :: block 2 :: E0405,E0425,E0433,P:`self` parameter is only allowed || extraction artifact: wrapper/context
-err-from-impl.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-err-no-std-error.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-err-no-unwrap-prod.md :: Good :: block 2 :: E0425,E0433,P:`self` parameter is only allowed || extraction artifact: wrapper/context
 err-question-mark.md :: Good :: block 2 :: E0425,E0428,E0433 || legacy compile failure: repair example or add explicit rust-check metadata
-err-result-over-panic.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-err-source-chain.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-err-thiserror-lib.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 err-try-block-experimental.md :: Good (experimental, nightly only) :: block 2 :: E0308,E0554 || legacy compile failure: repair example or add explicit rust-check metadata
-lint-clippy-nursery-selected.md :: Good :: block 1 :: E0422,E0425 || standalone fragment: unresolved context
 lint-unsafe-doc.md :: Good :: block 3 :: E0106,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
-macro-export-crate-path.md :: Good :: block 4 :: E0432 || standalone fragment: unresolved context
 macro-proc-error-spans.md :: Good :: block 2 :: E0432,P:the `#[proc_macro_derive]` attribute is only || legacy compile failure: repair example or add explicit rust-check metadata
 macro-proc-syn-quote.md :: Good :: block 2 :: E0432,P:the `#[proc_macro_derive]` attribute is only || legacy compile failure: repair example or add explicit rust-check metadata
-macro-proc-two-crate.md :: Good :: block 2 :: E0432,E0433 || standalone fragment: unresolved context
-macro-rules-hygiene.md :: Good :: block 4 :: E0432 || standalone fragment: unresolved context
-mem-arena-allocator.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 mem-arrayvec.md :: Good :: block 2 :: E0107,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
 mem-assert-type-size.md :: Good :: block 2 :: E0425,E0512 || legacy compile failure: repair example or add explicit rust-check metadata
-mem-avoid-format.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 mem-box-new-uninit.md :: Good :: block 2 :: E0425,E0609 || legacy compile failure: repair example or add explicit rust-check metadata
-mem-boxed-slice.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-mem-clone-from.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-mem-ecow-clone-heavy.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 mem-reuse-collections.md :: Good :: block 2 :: E0107,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
 mem-slotmap-arena.md :: Good :: block 2 :: E0425,E0433,E0782 || legacy compile failure: repair example or add explicit rust-check metadata
-mem-smallvec.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-mem-thinvec.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-mem-with-capacity.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-mem-write-over-format.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-name-acronym-word.md :: Good :: block 2 :: E0586,P:expected identifier, found `...`,P:unexpected token: `...` || extraction artifact: wrapper/context
-name-as-free.md :: Good :: block 4 :: E0425 || standalone fragment: unresolved context
-name-consts-screaming.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 name-funcs-snake.md :: Good :: block 2 :: E0586,P:expected item, found keyword `let`,P:unexpected token: `...` || legacy compile failure: repair example or add explicit rust-check metadata
-name-into-ownership.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-name-is-has-bool.md :: Good :: block 2 :: E0425,E0433,E0586,P:unexpected token: `...` || extraction artifact: wrapper/context
-name-lifetime-short.md :: Good :: block 2 :: E0425,E0586,P:unexpected token: `...` || extraction artifact: wrapper/context
-name-no-get-prefix.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-name-to-expensive.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-name-type-param-single.md :: Good :: block 2 :: E0586,P:expected identifier, found `...`,P:unexpected token: `...` || extraction artifact: wrapper/context
 name-types-camel.md :: Good :: block 2 :: P:expected identifier, found `...`,P:non-item in item list || legacy compile failure: repair example or add explicit rust-check metadata
 name-word-order.md :: Good :: block 2 :: E0255 || legacy compile failure: repair example or add explicit rust-check metadata
-obs-library-facade.md :: Good :: block 4 :: E0433 || standalone fragment: unresolved context
-opt-bounds-check.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-opt-cold-unlikely.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-opt-inline-always-rare.md :: Good :: block 2 :: E0405,E0425,P:`self` parameter is only allowed || extraction artifact: wrapper/context
-opt-inline-never-cold.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-opt-inline-small.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-own-borrow-over-clone.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-own-clone-explicit.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-own-cow-rpit-edition2024.md :: Good (Edition 2024) :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-own-lazy-init.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-own-lifetime-elision.md :: Good :: block 2 :: E0405,E0425,E0433 || standalone fragment: unresolved context
 own-move-large.md :: Good :: block 2 :: E0425,E0599 || legacy compile failure: repair example or add explicit rust-check metadata
-own-rc-single-thread.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 own-refcell-interior.md :: Good :: block 2 :: E0425,E0599 || legacy compile failure: repair example or add explicit rust-check metadata
-own-rwlock-readers.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-pat-matches-macro.md :: Good for `is_*` Helper Methods :: block 4 :: E0425 || standalone fragment: unresolved context
-perf-array-windows.md :: Good :: block 2 :: E0283 || standalone fragment: type inference needs surrounding context
 perf-atomic-update.md :: Good :: block 2 :: E0277,E0308 || legacy compile failure: repair example or add explicit rust-check metadata
-perf-black-box-bench.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 perf-collect-into.md :: Good :: block 2 :: E0425,E0658,P:an inner attribute is not || legacy compile failure: repair example or add explicit rust-check metadata
-perf-collect-once.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-perf-drain-reuse.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-perf-entry-api.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 perf-extend-batch.md :: Good :: block 2 :: E0107,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
 perf-extract-if.md :: Good :: block 2 :: E0061,E0282,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
-perf-hint-apis.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-perf-profile-first.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-proj-build-rs-minimal.md :: Good :: block 2 :: E0433 || standalone fragment: unresolved context
 proj-feature-additive.md :: Good :: block 2 :: E0433,P:`#[panic_handler]` function required, but not,P:unwinding panics are not supported || legacy compile failure: repair example or add explicit rust-check metadata
-proj-lib-main-split.md :: Good :: block 2 :: E0432,E0583 || standalone fragment: unresolved context
-proj-prelude-module.md :: Good :: block 2 :: E0432,E0433 || standalone fragment: unresolved context
 proj-pub-super-parent.md :: Good :: block 2 :: E0308,E0425,E0433,E0583 || legacy compile failure: repair example or add explicit rust-check metadata
-proj-pub-use-reexport.md :: Good :: block 2 :: E0432,E0583 || standalone fragment: unresolved context
 test-assert-matches.md :: Good :: block 2 :: P:no rules expected `=>` || legacy compile failure: repair example or add explicit rust-check metadata
-test-descriptive-names.md :: Good :: block 2 :: E0586,P:unexpected token: `...` || extraction artifact: wrapper/context
 test-fixture-raii.md :: Good :: block 4 :: E0133 || legacy compile failure: repair example or add explicit rust-check metadata
-test-integration-dir.md :: Good :: block 2 :: E0432 || standalone fragment: unresolved context
 test-mock-traits.md :: Good :: block 2 :: E0046,E0425,E0433 || legacy compile failure: repair example or add explicit rust-check metadata
-test-snapshot-testing.md :: Good :: block 2 :: E0432 || standalone fragment: unresolved context
-test-use-super.md :: Good :: block 2 :: E0586,P:expected identifier, found `...`,P:unexpected token: `...` || extraction artifact: wrapper/context
-type-enum-states.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 type-generic-bounds.md :: Good :: block 2 :: E0404,E0405,E0586,P:unexpected token: `...` || legacy compile failure: repair example or add explicit rust-check metadata
-type-never-diverge.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-type-newtype-ids.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-type-newtype-validated.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
-type-no-stringly.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
 type-nutype-validated.md :: Good :: block 2 :: P:unknown attribute `serde` || legacy compile failure: repair example or add explicit rust-check metadata
-type-option-nullable.md :: Good :: block 2 :: E0425 || standalone fragment: unresolved context
-type-phantom-marker.md :: Good :: block 2 :: E0586,P:unexpected token: `...` || extraction artifact: wrapper/context
-type-result-fallible.md :: Good :: block 2 :: E0425,E0433 || standalone fragment: unresolved context
 unsafe-strict-provenance.md :: Good :: block 2 :: E0252,E0425 || legacy compile failure: repair example or add explicit rust-check metadata

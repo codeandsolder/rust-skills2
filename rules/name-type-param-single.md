@@ -22,6 +22,7 @@ struct Wrapper<t> { ... }  // Confusing
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 // Single uppercase letters
 struct Container<T> {

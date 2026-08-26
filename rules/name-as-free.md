@@ -79,6 +79,7 @@ impl MyType {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 impl MyType {
     // GOOD: Free reference

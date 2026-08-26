@@ -24,6 +24,7 @@ set_name("Alice".to_string());  // Verbose
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Accept anything that converts to the target type
 fn process_path(path: impl Into<PathBuf>) {

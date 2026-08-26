@@ -26,6 +26,7 @@ mod tests {
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 // src/my_module.rs
 pub struct PublicStruct { ... }

@@ -35,6 +35,7 @@ fn test_config_serialization() {
 insta = { version = "1", features = ["json", "yaml"] }
 ```
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use insta::assert_debug_snapshot;
 use insta::assert_json_snapshot;

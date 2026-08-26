@@ -29,6 +29,7 @@ fn process() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use anyhow::{Context, Result};
 

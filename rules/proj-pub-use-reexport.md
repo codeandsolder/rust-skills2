@@ -24,6 +24,7 @@ use my_crate::types::request::Request;
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // lib.rs - Flat public API
 mod error;

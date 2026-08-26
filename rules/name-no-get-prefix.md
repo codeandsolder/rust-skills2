@@ -36,6 +36,7 @@ let age = user.get_age();
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 struct User {
     name: String,

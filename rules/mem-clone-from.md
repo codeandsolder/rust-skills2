@@ -26,6 +26,7 @@ for source in sources {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 let mut buffer = String::with_capacity(1024);
 

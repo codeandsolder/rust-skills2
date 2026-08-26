@@ -27,6 +27,7 @@ fn test_function() { ... }
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 #[test]
 fn parse_returns_error_for_empty_input() { ... }

@@ -52,6 +52,7 @@ macro_rules! log {
 }
 ```
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // consumer/src/main.rs
 use mylib::log;

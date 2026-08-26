@@ -25,6 +25,7 @@ fn unreachable_code() -> Option<()> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // ! indicates function never returns
 fn infinite_loop() -> ! {

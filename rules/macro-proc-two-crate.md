@@ -27,6 +27,7 @@ pub struct Config;                              // can only export proc-macros
 
 Split into a `proc-macro = true` crate plus a facade that re-exports it (full manifests and code below):
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // users depend only on `mycrate`:
 use mycrate::Greet;        // the trait

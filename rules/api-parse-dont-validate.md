@@ -35,6 +35,7 @@ fn process_user_email(email: &str) {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 /// A validated email address.
 /// Can only be constructed via `Email::parse()`.

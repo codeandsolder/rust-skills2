@@ -32,6 +32,7 @@ impl Config {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Accept &str - works with String, &str, literals
 fn greet(name: &str) {

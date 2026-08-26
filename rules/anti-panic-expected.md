@@ -40,6 +40,7 @@ fn process_age(age: i32) {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Return errors for expected failures
 fn fetch_data(url: &str) -> Result<Data, FetchError> {

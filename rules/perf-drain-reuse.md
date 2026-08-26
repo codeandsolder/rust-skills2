@@ -43,6 +43,7 @@ fn extract_high_priority(work: &mut Vec<Task>) {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Reuses allocation with drain
 fn process_batches(mut data: Vec<Item>) {

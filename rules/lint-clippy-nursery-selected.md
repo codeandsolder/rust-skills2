@@ -31,6 +31,7 @@ redundant_else = "warn"
 or_fun_call = "warn"
 ```
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // significant_drop_tightening example — lint fires here:
 fn process(state: &Mutex<Vec<u32>>) -> usize {

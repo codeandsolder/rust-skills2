@@ -22,6 +22,7 @@ use my_crate::types::Method;
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // src/lib.rs
 pub mod prelude {

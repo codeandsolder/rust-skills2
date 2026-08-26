@@ -29,6 +29,7 @@ pub fn parse<T: FromStr>(input: &str) -> Result<T, Error> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 /// Returns the length of the buffer.
 /// 

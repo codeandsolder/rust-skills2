@@ -30,6 +30,7 @@ fn get_validators() -> Vec<Box<dyn Validator>> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // impl Trait - zero overhead, inlined
 fn get_iterator() -> impl Iterator<Item = i32> {

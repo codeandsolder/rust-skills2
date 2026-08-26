@@ -24,6 +24,7 @@ impl Wrapper {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 impl Wrapper {
     // into_ clearly shows ownership transfer

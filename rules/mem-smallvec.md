@@ -24,6 +24,7 @@ fn validate(input: &Input) -> Vec<ValidationError> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use smallvec::{smallvec, SmallVec};
 

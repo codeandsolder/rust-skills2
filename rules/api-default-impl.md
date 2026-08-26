@@ -33,6 +33,7 @@ let timeout = settings.get("timeout").unwrap_or_default();  // Won't work
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Manual implementation for types with custom defaults
 struct Config {

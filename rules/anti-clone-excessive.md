@@ -35,6 +35,7 @@ fn get_name(&self) -> String {
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 // Accept reference if only reading
 fn print_name(name: &str) {

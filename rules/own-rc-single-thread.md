@@ -28,6 +28,7 @@ Atomic operations have measurable overhead even without contention.
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use std::rc::Rc;
 

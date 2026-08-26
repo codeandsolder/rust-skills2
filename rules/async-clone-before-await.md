@@ -27,6 +27,7 @@ tokio::spawn(process(data));
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use std::sync::Arc;
 

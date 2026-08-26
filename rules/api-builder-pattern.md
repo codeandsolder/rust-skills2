@@ -30,6 +30,7 @@ struct Client {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 #[derive(Default)]
 #[must_use = "builders do nothing unless you call build()"]

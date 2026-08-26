@@ -30,6 +30,7 @@ fn handle_request(req: Request) -> Response {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use bumpalo::Bump;
 

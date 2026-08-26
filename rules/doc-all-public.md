@@ -30,6 +30,7 @@ pub enum Status {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 /// Configuration for establishing a connection to the service.
 ///

@@ -26,6 +26,7 @@ if user.active() { ... }  // Is this checking or activating?
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 impl User {
     // Clear: answers "is the user active?"

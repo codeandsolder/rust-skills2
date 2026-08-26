@@ -21,6 +21,7 @@ fn connectTCP(addr: &str) { ... }
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 // Acronyms as words - clear boundaries
 struct HttpServer { ... }      // Http + Server

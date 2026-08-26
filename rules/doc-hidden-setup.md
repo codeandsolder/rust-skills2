@@ -43,6 +43,7 @@ pub fn process_batch(&self, items: &[Item]) -> Result<Results, Error> {
 
 ## Good
 
+<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
 ```rust
 /// Processes a batch of items.
 ///
@@ -65,6 +66,7 @@ pub fn process_batch(&self, items: &[Item]) -> Result<Results, Error> {
 
 Users see only:
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 let results = processor.process_batch(&items)?;
 assert!(results.all_succeeded());

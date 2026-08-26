@@ -26,6 +26,7 @@ fn transfer(from: u64, to: u64, amount: u64) {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UserId(pub u64);

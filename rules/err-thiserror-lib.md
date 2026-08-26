@@ -47,6 +47,7 @@ impl std::error::Error for MyError {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use thiserror::Error;
 

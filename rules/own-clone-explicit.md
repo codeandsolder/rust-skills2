@@ -22,6 +22,7 @@ let result = process_data(my_data);
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 fn process_data(data: Vec<u32>) -> Vec<u32> {
     let backup = data; 

@@ -34,6 +34,7 @@ fn build_response(items: &[Item]) -> String {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use std::fmt::Write;
 

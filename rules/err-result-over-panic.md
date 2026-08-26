@@ -29,6 +29,7 @@ Caller has no chance to recover or provide a fallback.
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use thiserror::Error;
 

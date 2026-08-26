@@ -30,6 +30,7 @@ fn main() {
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // build.rs — narrow directives, capability probe via autocfg, no network
 fn main() {

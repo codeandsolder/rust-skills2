@@ -26,6 +26,7 @@ let user = db.find_user(id).await.expect("user not found");
 
 ## Good
 
+<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 // Handle recoverable errors properly
 let response = client.get(url).await
