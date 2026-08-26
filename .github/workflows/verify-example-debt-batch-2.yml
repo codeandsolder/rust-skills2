@@ -1,0 +1,63 @@
+name: Verify recommended example debt batch 2
+
+on:
+  push:
+    branches: [fix/recommended-example-debt-2]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - name: Remove repaired debt, regenerate index, and verify
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # Fix a cross-reference typo introduced while rewriting the serde rule.
+          serde_rule = Path('rules/api-serde-optional.md')
+          text = serde_rule.read_text().replace(
+              '(./proj-features-additive.md)',
+              '(./proj-feature-additive.md)',
+          )
+          serde_rule.write_text(text)
+
+          ledger = Path('checks/good-exceptions.txt')
+          repaired = {
+              'anti-block-on-async.md',
+              'anti-blocking-async-drop.md',
+              'anti-premature-optimize.md',
+              'anti-stringly-typed.md',
+              'anti-unwrap-abuse.md',
+              'api-builder-must-use.md',
+              'api-newtype-safety.md',
+              'api-serde-optional.md',
+          }
+          lines = ledger.read_text().splitlines()
+          kept = [line for line in lines if not any(line.startswith(name + ' :: ') for name in repaired)]
+          ledger.write_text('\n'.join(kept) + '\n')
+          PY
+          python3 checks/gen_index.py
+          bash checks/check.sh
+      - name: Commit generated verifier state
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rules/api-serde-optional.md checks/good-exceptions.txt SKILL.md README.md
+          git commit -m 'Remove second repaired recommended-example batch'
+          git push
