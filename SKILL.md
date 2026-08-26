@@ -172,13 +172,13 @@ Reference these guidelines when:
 
 ### 6. Async/Await (HIGH)
 
-- [`async-tokio-runtime`](rules/async-tokio-runtime.md) - Configure Tokio runtime appropriately for your workload
+- [`async-tokio-runtime`](rules/async-tokio-runtime.md) - Start with Tokio's default runtime configuration; choose runtime flavor and tuning from execution requirements and measurements
 - [`async-no-lock-await`](rules/async-no-lock-await.md) - Avoid holding blocking mutex guards across `.await`; keep async-lock critical sections small, but hold an async mutex across `.await` when the protected resource invariant genuinely requires it.
 - [`async-spawn-blocking`](rules/async-spawn-blocking.md) - Use `spawn_blocking` for blocking synchronous work; bound CPU-heavy work or use a dedicated CPU pool such as Rayon
-- [`async-tokio-fs`](rules/async-tokio-fs.md) - Use `tokio::fs` instead of `std::fs` in async code
+- [`async-tokio-fs`](rules/async-tokio-fs.md) - Use `tokio::fs` for ordinary filesystem operations from async code; use dedicated async types for pipes/devices and other special files
 - [`async-cancellation-token`](rules/async-cancellation-token.md) - Use `CancellationToken` for graceful shutdown and task cancellation
-- [`async-join-parallel`](rules/async-join-parallel.md) - Use `join!` or `try_join!` for concurrent independent futures
-- [`async-try-join`](rules/async-try-join.md) - Use `try_join!` for concurrent fallible operations with early return on error
+- [`async-join-parallel`](rules/async-join-parallel.md) - Use `join!` / `try_join!` for a fixed set of independent futures; they run concurrently on one task, not in parallel by themselves
+- [`async-try-join`](rules/async-try-join.md) - Use `try_join!` for a fixed set of fallible futures that should run concurrently and stop when one returns an error
 - [`async-select-racing`](rules/async-select-racing.md) - Use `select!` to race futures and handle the first to complete
 - [`async-bounded-channel`](rules/async-bounded-channel.md) - Use bounded channels to apply backpressure and prevent unbounded memory growth
 - [`async-mpsc-queue`](rules/async-mpsc-queue.md) - Use `mpsc` channels for async message queues between tasks
@@ -190,7 +190,7 @@ Reference these guidelines when:
 - [`async-fn-in-trait`](rules/async-fn-in-trait.md) - Use native `async fn` in traits (stable 1.75) instead of the `async_trait` macro
 - [`async-async-fn-bounds`](rules/async-async-fn-bounds.md) - Use `AsyncFn`/`AsyncFnMut`/`AsyncFnOnce` bounds instead of `F: Fn() -> Fut, Fut: Future`
 - [`async-cancel-safety`](rules/async-cancel-safety.md) - Ensure futures used in `tokio::select!` branches are cancellation-safe
-- [`async-blocking-detection`](rules/async-blocking-detection.md) - Detect and prevent blocking in async code using `RuntimeMetrics` and runtime configuration
+- [`async-blocking-detection`](rules/async-blocking-detection.md) - Detect async worker stalls with latency/console instrumentation; treat blocking-pool metrics as pool pressure, not proof that async workers are blocked
 - [`async-runtime-metrics`](rules/async-runtime-metrics.md) - Use `RuntimeMetrics` for task health, blocking thread pressure, and starvation detection
 - [`async-structured-concurrency`](rules/async-structured-concurrency.md) - Combine `JoinSet` + `CancellationToken` + `select!` for structured async task management
 
@@ -306,7 +306,7 @@ Reference these guidelines when:
 - [`closure-move-capture`](rules/closure-move-capture.md) - Use `move` for closures that outlive the current scope; clone before `move` to keep the original
 - [`closure-static-vs-dyn`](rules/closure-static-vs-dyn.md) - Accept `impl Fn` (generic) for hot callbacks; use `&dyn Fn`/`Box<dyn Fn>` to cut code size or to store them
 - [`closure-disjoint-capture`](rules/closure-disjoint-capture.md) - Capture only what you use; lean on edition-2021 disjoint closure captures
-- [`closure-async-closures`](rules/closure-async-closures.md) - Use `async || {}` closures for futures that need to borrow from their environment; prefer them over `|| async {}` when captures span `.await` points
+- [`closure-async-closures`](rules/closure-async-closures.md) - Use async closures when a callback future needs to borrow from closure captures; use `AsyncFn*` bounds for higher-order async callbacks
 
 ### 18. Collections (MEDIUM)
 
