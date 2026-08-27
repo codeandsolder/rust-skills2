@@ -1,164 +1,159 @@
 # perf-extend-batch
 
-> Use extend for batch insertions
+> Use `extend`, `extend_from_slice`, or `append` when adding a batch expresses the ownership you want; reserve explicitly when the final size is cheaply known
 
 ## Why It Matters
 
-`extend()` can pre-allocate capacity for the incoming elements and insert them in a single operation. Individual `push()` calls may trigger multiple reallocations as the collection grows. For adding multiple elements, `extend()` is both faster and clearer.
+Batch-oriented APIs are often clearer than hand-written element loops, and `Vec` implementations can use iterator information and specialization to grow efficiently. But `extend()` is not a contractual promise of “one allocation,” nor is it universally faster than a `push` loop.
 
-## Bad
+Choose the operation from ownership and source shape first. If the final length is known cheaply and allocations matter, reserving capacity explicitly gives the intent a much firmer footing than relying on an iterator's size hint.
 
-```rust
-// Multiple potential reallocations
-fn collect_results(sources: Vec<Source>) -> Vec<Result> {
-    let mut results = Vec::new();
-    
-    for source in sources {
-        for result in source.get_results() {
-            results.push(result);  // May reallocate
-        }
-    }
-    results
-}
-
-// Loop with push for known data
-fn build_list() -> Vec<i32> {
-    let mut list = Vec::new();
-    for i in 0..1000 {
-        list.push(i);  // Many reallocations
-    }
-    list
-}
-
-// Appending another collection
-fn combine(mut a: Vec<i32>, b: Vec<i32>) -> Vec<i32> {
-    for item in b {
-        a.push(item);
-    }
-    a
-}
-```
-
-## Good
+## Good: Extend From an Iterator
 
 ```rust
-// Single extend with size hint
-fn collect_results(sources: Vec<Source>) -> Vec<Result> {
-    let mut results = Vec::new();
-    
-    for source in sources {
-        results.extend(source.get_results());
-    }
-    results
-}
+fn positives(chunks: &[Vec<i32>]) -> Vec<i32> {
+    let mut output = Vec::new();
 
-// Direct collection from iterator
-fn build_list() -> Vec<i32> {
-    (0..1000).collect()
-}
-
-// Extend for combining
-fn combine(mut a: Vec<i32>, b: Vec<i32>) -> Vec<i32> {
-    a.extend(b);
-    a
-}
-```
-
-## Extend with Capacity
-
-For best performance, combine with `reserve()`:
-
-```rust
-fn merge_all(chunks: Vec<Vec<Item>>) -> Vec<Item> {
-    // Calculate total size
-    let total: usize = chunks.iter().map(|c| c.len()).sum();
-    
-    let mut result = Vec::with_capacity(total);
     for chunk in chunks {
-        result.extend(chunk);
+        output.extend(chunk.iter().copied().filter(|x| *x > 0));
     }
-    result
+
+    output
+}
+
+fn main() {
+    let chunks = vec![vec![-1, 2, 3], vec![4, -5]];
+    assert_eq!(positives(&chunks), [2, 3, 4]);
 }
 ```
 
-## Extend Methods
+This says directly that each iterator contributes a batch of values. A nested loop with `push` is also correct; prefer whichever is clearer unless measurement shows a performance difference.
 
-| Method | Description |
-|--------|-------------|
-| `.extend(iter)` | Add all elements from iterator |
-| `.extend_from_slice(&[T])` | Add from slice (for `Copy` types) |
-| `.extend_from_within(range)` | Clone elements from within the Vec |
-| `.append(&mut Vec)` | Move all from another Vec |
-
-## extend_from_within
-
-`Vec::extend_from_within` copies elements from within the same Vec without an external source iterator:
+## Reserve When the Total Size Is Known
 
 ```rust
-let mut vec = vec![1, 2, 3];
-vec.extend_from_within(..);   // vec == [1, 2, 3, 1, 2, 3]
-vec.extend_from_within(..2);  // vec == [1, 2, 3, 1, 2, 3, 1, 2]
+fn flatten(chunks: Vec<Vec<u32>>) -> Vec<u32> {
+    let total: usize = chunks.iter().map(Vec::len).sum();
+    let mut output = Vec::with_capacity(total);
+
+    for chunk in chunks {
+        output.extend(chunk);
+    }
+
+    output
+}
+
+fn main() {
+    assert_eq!(flatten(vec![vec![1, 2], vec![3, 4, 5]]), [1, 2, 3, 4, 5]);
+}
 ```
 
-This is more efficient than `vec.extend(vec[..].to_vec())` because it avoids an intermediate allocation. The source range can overlap with the new elements — the Vec handles it correctly.
+The initial capacity request is at least `total`; `Vec` may receive more capacity from the allocator. The point is to avoid growth caused by knowingly starting below the final element count, not to promise an exact allocator behavior.
 
-## Pattern: Building Strings
+## Pick the API That Matches the Source
 
 ```rust
-// Bad: multiple allocations
-fn build_message(parts: &[&str]) -> String {
-    let mut result = String::new();
+fn main() {
+    // Generic iterator source.
+    let mut a = vec![1, 2];
+    a.extend((3..=5).map(|x| x * 10));
+    assert_eq!(a, [1, 2, 30, 40, 50]);
+
+    // Borrowed slice: clones elements into the destination.
+    let source = [6, 7, 8];
+    let mut b = vec![1, 2];
+    b.extend_from_slice(&source);
+    assert_eq!(b, [1, 2, 6, 7, 8]);
+
+    // Another Vec whose values should be moved out and whose length becomes 0.
+    let mut tail = vec![9, 10];
+    let mut c = vec![1, 2];
+    c.append(&mut tail);
+    assert_eq!(c, [1, 2, 9, 10]);
+    assert!(tail.is_empty());
+}
+```
+
+Important distinctions:
+
+- `extend(iter)` consumes any suitable iterator;
+- `extend_from_slice(&[T])` clones the slice elements and therefore requires `T: Clone`, not specifically `Copy`;
+- `append(&mut other)` moves all elements out of another `Vec<T>`;
+- `extend_from_within(range)` clones a range already inside the same `Vec`.
+
+## `extend_from_within` Avoids an Intermediate Source Collection
+
+```rust
+fn main() {
+    let mut values = vec![1, 2, 3];
+    values.extend_from_within(0..2);
+    assert_eq!(values, [1, 2, 3, 1, 2]);
+}
+```
+
+This is preferable to cloning the selected range into a temporary `Vec` solely so it can then be appended back.
+
+## Strings: Capacity Planning and Direct Appends
+
+```rust
+fn concatenate(parts: &[&str]) -> String {
+    let total_len: usize = parts.iter().map(|part| part.len()).sum();
+    let mut output = String::with_capacity(total_len);
+
     for part in parts {
-        result.push_str(part);  // May reallocate
+        output.push_str(part);
     }
-    result
+
+    output
 }
 
-// Good: extend with known parts
-fn build_message(parts: &[&str]) -> String {
-    let total_len: usize = parts.iter().map(|s| s.len()).sum();
-    let mut result = String::with_capacity(total_len);
-    for part in parts {
-        result.push_str(part);
-    }
-    result
-}
-
-// Better: collect/join
-fn build_message(parts: &[&str]) -> String {
-    parts.concat()  // or parts.join("")
+fn main() {
+    assert_eq!(concatenate(&["ab", "cd", "ef"]), "abcdef");
 }
 ```
 
-## HashMap/HashSet Extend
+`parts.concat()` is also clear and is often a good standard-library choice. Do not rank one version as universally “better” without a workload reason.
+
+## Size Hints Are Useful, Not Allocation Contracts
+
+An iterator may provide lower/upper bounds through `size_hint()`, and collection implementations can use those hints. The hint can be inexact, and even an exact element count does not force a particular allocator growth strategy.
+
+Avoid tables claiming:
+
+- `N` pushes imply a particular number of reallocations;
+- `extend(iter)` always allocates once;
+- a precise size hint guarantees exact capacity.
+
+`Vec::push` has amortized constant-time growth; if allocation count matters, reserve the amount you know and measure the real workload.
+
+## Hash Collections
+
+`HashMap` and `HashSet` also implement `Extend`, but duplicate keys/elements and hashing change the semantics:
 
 ```rust
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-// Extend from iterator of tuples
-fn merge_maps(mut base: HashMap<String, i32>, other: HashMap<String, i32>) -> HashMap<String, i32> {
-    base.extend(other);  // Moves entries from other
-    base
+fn main() {
+    let mut map = HashMap::from([("a", 1)]);
+    map.extend([("b", 2), ("a", 3)]);
+    assert_eq!(map["a"], 3);
+
+    let mut set = HashSet::from([1]);
+    set.extend([1, 2, 3]);
+    assert_eq!(set.len(), 3);
 }
-
-// Extend from iterator
-let mut set = HashSet::new();
-set.extend(items.iter().map(|i| i.id));
 ```
 
-## Performance
-
-| Operation | Allocations | Complexity |
-|-----------|-------------|------------|
-| N × `push()` | O(log N) | O(N) amortized |
-| `extend(iter)` | O(1)* | O(N) |
-| `with_capacity` + `extend` | 1 | O(N) |
-
-*When iterator provides accurate `size_hint()`
+Batch syntax does not remove hashing or duplicate-handling costs; it simply expresses the insertion source naturally.
 
 ## See Also
 
-- [mem-with-capacity](./mem-with-capacity.md) - Pre-allocation
-- [perf-drain-reuse](./perf-drain-reuse.md) - Reusing allocations
-- [perf-collect-into](./perf-collect-into.md) - collect_into for reuse
-- [mem-reuse-collections](./mem-reuse-collections.md) - Collection reuse
+- [mem-with-capacity](./mem-with-capacity.md) — explicit capacity planning
+- [perf-collect-into](./perf-collect-into.md) — reusing an existing destination
+- [mem-reuse-collections](./mem-reuse-collections.md) — retained-capacity tradeoffs
+
+## References
+
+- [Vec::extend_from_slice](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.extend_from_slice)
+- [Vec::append](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.append)
+- [Extend](https://doc.rust-lang.org/std/iter/trait.Extend.html)
