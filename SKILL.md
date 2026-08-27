@@ -83,7 +83,7 @@ Reference these guidelines when:
 - [`own-mutex-interior`](rules/own-mutex-interior.md) - Use the right `Mutex<T>` for the execution model: `std`/`parking_lot` for synchronous code, `tokio::sync::Mutex` for async code
 - [`own-rwlock-readers`](rules/own-rwlock-readers.md) - Use the right `RwLock<T>` when reads significantly outnumber writes
 - [`own-copy-small`](rules/own-copy-small.md) - Implement `Copy` for small, simple types
-- [`own-clone-explicit`](rules/own-clone-explicit.md) - Use explicit `Clone` for types where copying has meaningful cost
+- [`own-clone-explicit`](rules/own-clone-explicit.md) - Use `Clone` to make non-`Copy` duplication explicit, but do not infer a universal allocation or cost model from `.clone()`
 - [`own-move-large`](rules/own-move-large.md) - Borrow large values when ownership transfer is unnecessary; use indirection when it solves a real layout, location, or ownership problem—not from a fixed byte threshold
 - [`own-lifetime-elision`](rules/own-lifetime-elision.md) - Rely on ordinary lifetime elision where it applies; treat Edition-2024 RPIT capture as a separate rule
 - [`own-cell-update`](rules/own-cell-update.md) - Use `Cell::update` (Rust 1.88+) for concise single-threaded read-transform-write updates on `Copy` values
@@ -205,16 +205,16 @@ Reference these guidelines when:
 
 - [`opt-inline-small`](rules/opt-inline-small.md) - Use `#[inline]` for small hot functions
 - [`opt-inline-always-rare`](rules/opt-inline-always-rare.md) - Use `#[inline(always)]` sparingly—only for critical hot paths proven by profiling
-- [`opt-inline-never-cold`](rules/opt-inline-never-cold.md) - Use `#[inline(never)]` and `#[cold]` for error paths and rarely-executed code
+- [`opt-inline-never-cold`](rules/opt-inline-never-cold.md) - Use cold-path and inlining annotations as measured optimization hints, not source-level guarantees
 - [`opt-cold-unlikely`](rules/opt-cold-unlikely.md) - Mark unlikely code paths with `#[cold]` to help compiler optimization
 - [`opt-likely-hint`](rules/opt-likely-hint.md) - Use `cold_path()` and `select_unpredictable` for branch hints on stable Rust
 - [`opt-lto-release`](rules/opt-lto-release.md) - Enable LTO in release builds
 - [`opt-codegen-units`](rules/opt-codegen-units.md) - Set `codegen-units = 1` for maximum optimization in release builds
 - [`opt-pgo-profile`](rules/opt-pgo-profile.md) - Use Profile-Guided Optimization (PGO) for maximum performance
-- [`opt-target-cpu`](rules/opt-target-cpu.md) - Use `target-cpu=native` (or `x86-64-v3`) for maximum performance on known deployment targets
+- [`opt-target-cpu`](rules/opt-target-cpu.md) - Tune `target-cpu` only for deployment CPUs you actually control, and use explicit runtime dispatch for portable binaries
 - [`opt-bounds-check`](rules/opt-bounds-check.md) - Structure hot loops so bounds are easy to prove; verify optimized code before using unchecked indexing
 - [`opt-simd-portable`](rules/opt-simd-portable.md) - Start with autovectorization; use stable SIMD crates or carefully dispatched `#[target_feature]` code when measurement justifies it.
-- [`opt-cache-friendly`](rules/opt-cache-friendly.md) - Organize data for cache-efficient access patterns
+- [`opt-cache-friendly`](rules/opt-cache-friendly.md) - Shape data around measured access patterns and working sets; do not assume one layout is universally cache-friendly
 - [`opt-cold-path`](rules/opt-cold-path.md) - Use `core::hint::cold_path()` to mark unlikely inline paths (Rust 1.95+)
 - [`opt-select-unpredictable`](rules/opt-select-unpredictable.md) - Use `core::hint::select_unpredictable()` for branchless conditional moves (Rust 1.88+)
 
@@ -241,7 +241,7 @@ Reference these guidelines when:
 - [`type-deref-coercion`](rules/type-deref-coercion.md) - Implement `Deref`/`DerefMut` only for smart-pointer and transparent wrapper types
 - [`type-display-vs-debug`](rules/type-display-vs-debug.md) - Use `Display` for user-facing output and `Debug` for diagnostics; never swap them
 - [`type-numeric-fmt`](rules/type-numeric-fmt.md) - Implement `LowerHex`, `UpperHex`, `Octal`, and `Binary` for numeric newtypes
-- [`type-derive-more-boilerplate`](rules/type-derive-more-boilerplate.md) - Use `derive_more` for newtype boilerplate reduction
+- [`type-derive-more-boilerplate`](rules/type-derive-more-boilerplate.md) - Use `derive_more` to remove mechanical trait boilerplate when the generated trait semantics are actually part of your API
 - [`type-newtype-repr-transparent`](rules/type-newtype-repr-transparent.md) - Use `#[repr(transparent)]` only when a newtype intentionally promises the wrapped field's layout or ABI
 - [`type-nonzero-intrinsics`](rules/type-nonzero-intrinsics.md) - Use `NonZero<T>` when zero is invalid, and use only operations whose result semantics preserve that invariant
 - [`type-nutype-validated`](rules/type-nutype-validated.md) - Use validated newtypes to make invalid states unrepresentable; `nutype` is useful when generated constructors and invariant-preserving trait impls justify a proc macro
@@ -393,11 +393,11 @@ Reference these guidelines when:
 
 - [`perf-iter-over-index`](rules/perf-iter-over-index.md) - Prefer direct iteration when you are traversing values; use indexing when the index is part of the algorithm
 - [`perf-iter-lazy`](rules/perf-iter-lazy.md) - Keep iterator pipelines lazy when streaming or short-circuiting is useful; collect only when ownership, reuse, sorting, indexing, or another concrete requirement needs a collection
-- [`perf-collect-once`](rules/perf-collect-once.md) - Don't collect intermediate iterators
+- [`perf-collect-once`](rules/perf-collect-once.md) - Keep iterator pipelines lazy until you actually need an owned collection; materialize intermediate results when their semantics justify it
 - [`perf-entry-api`](rules/perf-entry-api.md) - Use entry API for map insert-or-update
 - [`perf-drain-reuse`](rules/perf-drain-reuse.md) - Use `drain` or `extract_if` when you need to remove owned elements while retaining the source collection's allocation; do not introduce an intermediate collection unless ownership requires one
 - [`perf-extend-batch`](rules/perf-extend-batch.md) - Use `extend`, `extend_from_slice`, or `append` when adding a batch expresses the ownership you want; reserve explicitly when the final size is cheaply known
-- [`perf-chain-avoid`](rules/perf-chain-avoid.md) - Avoid chain in hot loops
+- [`perf-chain-avoid`](rules/perf-chain-avoid.md) - Use `Iterator::chain` when it expresses the traversal clearly; split or materialize only when measurement shows the chained iterator is a bottleneck
 - [`perf-collect-into`](rules/perf-collect-into.md) - Reuse an existing destination with `clear()` + `extend()` on stable Rust; nightly `Iterator::collect_into` appends like `Extend::extend` and does not clear for you
 - [`perf-black-box-bench`](rules/perf-black-box-bench.md) - Use black_box in benchmarks
 - [`perf-release-profile`](rules/perf-release-profile.md) - Optimize release profile settings
