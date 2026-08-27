@@ -1,275 +1,205 @@
 # doc-intra-links
 
-> Use intra-doc links to reference types and items
+> Use intra-doc links for important relationships that rustdoc should resolve and validate
 
 ## Why It Matters
 
-Intra-doc links (`[TypeName]`, `[method](Self::method)`) create clickable references in generated documentation. They're verified at doc-build time, catching broken links early. Unlike URL links, they automatically update when items are renamed or moved. Plain text references become stale and unclickable.
+Rustdoc intra-doc links turn documentation references into navigable links to Rust items. Because rustdoc resolves the target when documentation is built, broken relationships can be caught by documentation lints instead of silently remaining stale prose.
 
-## Bad
+They do **not** magically follow arbitrary renames or moves. A source-level rename may make a link stop resolving; the benefit is that rustdoc can report that breakage so the documentation is repaired together with the code.
 
-```rust
-/// Returns the length of the buffer.
-/// 
-/// See also `capacity()` for the allocated size, and the
-/// `Buffer` struct for more details.
-pub fn len(&self) -> usize {
-    self.data.len()
-}
+Use links where navigation helps the reader. Do not turn every mention of a type into link-heavy prose.
 
-/// Parses the input using std::str::FromStr trait.
-/// Check the Error enum for possible failures.
-/// 
-/// See also: ParseError for error types.
-/// Uses the Tokenizer internally.
-pub fn parse<T: FromStr>(input: &str) -> Result<T, Error> {
-    // ...
-}
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
-```rust
-/// Returns the length of the buffer.
-/// 
-/// See also [`capacity()`](Self::capacity) for the allocated size, and
-/// [`Buffer`] for more details.
-pub fn len(&self) -> usize {
-    self.data.len()
-}
-
-/// Parses the input using [`FromStr`] trait.
-/// Check [`Error`] for possible failures.
-///
-/// [`FromStr`]: std::str::FromStr
-pub fn parse<T: FromStr>(input: &str) -> Result<T, Error> {
-    // ...
-}
-```
-
-## Link Syntax
-
-| Syntax | Links To | Example |
-|--------|----------|---------|
-| `[Name]` | Item in scope | `[Vec]`, `[Option]` |
-| `[path::Name]` | Fully qualified item | `[std::vec::Vec]` |
-| `[Self::method]` | Method on current type | `[Self::new]` |
-| `[Type::method]` | Method on other type | `[String::new]` |
-| `[Type::CONST]` | Associated constant | `[usize::MAX]` |
-| `[text](path)` | Custom text | `[see here](Self::len)` |
-| `[type::Item]` | Associated type | `[Iterator::Item]` |
-| `[mod@module_name]` | Module | `[mod@parser]` |
-
-## Common Patterns
-
-### Linking to Self Members
+## Good: Link the Relationships Readers Need
 
 ```rust
+/// A growable byte buffer.
+#[derive(Default)]
+pub struct Buffer {
+    data: Vec<u8>,
+}
+
 impl Buffer {
-    /// Creates an empty buffer.
+    /// Creates an empty [`Buffer`].
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns the number of stored bytes.
     ///
-    /// Use [`with_capacity`](Self::with_capacity) if you know the size.
-    pub fn new() -> Self { /* ... */ }
-    
-    /// Creates a buffer with pre-allocated capacity.
+    /// See [`Self::capacity`] for allocated capacity.
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Returns allocated capacity.
     ///
-    /// See [`new`](Self::new) for the default constructor.
-    pub fn with_capacity(cap: usize) -> Self { /* ... */ }
-}
-```
+    /// See [`Self::len`] for the logical length.
+    pub fn capacity(&self) -> usize {
+        self.data.capacity()
+    }
 
-### Linking to Trait Items
-
-```rust
-/// Implements [`Iterator`] for lazy evaluation.
-///
-/// The [`Iterator::next`] method advances the cursor.
-/// 
-/// For parallel iteration, see [`rayon::ParallelIterator`].
-pub struct MyIterator { ... }
-
-impl Iterator for MyIterator {
-    /// Advances and returns the next value.
-    ///
-    /// See also [`Iterator::nth`] for skipping elements.
-    fn next(&mut self) -> Option<Self::Item> { ... }
-}
-```
-
-### Linking to Trait Methods
-
-```rust
-/// Converts to a string representation.
-///
-/// This is the implementation of [`Display::fmt`](std::fmt::Display::fmt).
-impl Display for MyType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        // ...
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
     }
 }
-```
 
-### Related Types and Methods
-
-Link to related items to aid discoverability:
-
-```rust
-/// A configuration builder.
-///
-/// # Example
-///
-/// ```
-/// use my_crate::Config;
-///
-/// let config = Config::builder()
-///     .timeout(30)
-///     .build()?;
-/// ```
-///
-/// # Methods
-///
-/// - [`Config::builder`] - Create a new builder
-/// - [`Config::default`] - Create with defaults
-///
-/// # Related Types
-///
-/// - [`ConfigBuilder`] - The builder returned by [`Config::builder`]
-/// - [`ConfigError`] - Errors that can occur when building
-pub struct Config { ... }
-
-impl Config {
-    /// Creates a new [`ConfigBuilder`].
-    ///
-    /// This is equivalent to [`ConfigBuilder::new`].
-    pub fn builder() -> ConfigBuilder { ... }
+fn main() {
+    let buffer = Buffer::new();
+    assert!(buffer.is_empty());
 }
 ```
 
-### Module-Level Documentation with Links
+The code and link targets are real items rather than pseudocode placeholders.
 
-Intra-doc links at the module level create a navigable index:
+## Common Link Forms
+
+| Form | Typical target |
+|---|---|
+| ``[`Name`]`` | an item resolvable in the documentation scope |
+| ``[`path::Name`]`` | an explicit path |
+| ``[`Self::method`]`` | an associated item on the documented type |
+| ``[`Type::method`]`` | an associated item on another type |
+| ``[`Iterator::Item`]`` | an associated type |
+| ``[custom text][`path::Item`]`` | custom prose with an explicit target |
+| ``[`foo()`](fn@foo)`` | a disambiguated function |
+| ``[`foo`](mod@foo)`` | a disambiguated module |
+
+Use `crate::...`, `self::...`, or `super::...` when a relative bare name would be ambiguous or fragile.
+
+## Linking Trait Items Requires a Complete Trait Implementation
 
 ```rust
-//! # Parser Module
-//!
-//! This module provides parsing utilities.
-//!
-//! ## Main Types
-//!
-//! - [`Parser`] - The main parser struct
-//! - [`Token`] - Tokens produced by tokenization
-//! - [`Ast`] - The abstract syntax tree
-//!
-//! ## Functions
-//!
-//! - [`parse`] - Parse a string
-//! - [`parse_file`] - Parse a file
-//!
-//! ## Errors
-//!
-//! All functions return [`ParseError`] on failure.
+/// Iterator over a fixed range of integers.
+pub struct Counter {
+    next: u32,
+    end: u32,
+}
 
-pub struct Parser { ... }
-pub enum Token { ... }
-pub struct Ast { ... }
+impl Counter {
+    pub fn new(end: u32) -> Self {
+        Self { next: 0, end }
+    }
+}
+
+impl Iterator for Counter {
+    type Item = u32;
+
+    /// Advances this iterator according to [`Iterator::next`].
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next == self.end {
+            return None;
+        }
+
+        let value = self.next;
+        self.next += 1;
+        Some(value)
+    }
+}
+
+fn main() {
+    assert_eq!(Counter::new(3).collect::<Vec<_>>(), vec![0, 1, 2]);
+}
 ```
 
-### Disambiguation
+The old corpus example omitted `type Item`, so its supposed documentation example failed for an unrelated trait-implementation error.
 
-When names conflict, use disambiguators:
-
-```rust
-/// See [`foo()`](fn@foo) for the function and [`foo`](mod@foo) for the module.
-
-/// Works with [`Error`](struct@Error) struct or [`Error`](trait@Error) trait.
-```
-
-| Suffix | Item Type |
-|--------|----------|
-| `fn@` | Function |
-| `mod@` | Module |
-| `struct@` | Struct |
-| `enum@` | Enum |
-| `trait@` | Trait |
-| `type@` | Type alias |
-| `const@` | Constant |
-| `macro@` | Macro |
-
-> **Note**: Rustdoc can auto-disambiguate trait vs derive macro in some cases
-> (e.g., both a trait named `Clone` and a `#[derive(Clone)]` macro exist), but
-> explicit disambiguators are preferred for clarity and stability.
-
-### Reference-Style Links
-
-For repeated links or long paths:
+## Link to Standard-Library Items with Paths When Useful
 
 ```rust
-/// Parses using [`serde`] with [`Deserialize`] trait.
-/// Returns a [`Result`] that may contain [`Error`].
+/// Returns the first value, following [`Option`] semantics.
 ///
-/// [`serde`]: https://serde.rs
-/// [`Deserialize`]: serde::Deserialize
-/// [`Result`]: std::result::Result
-/// [`Error`]: crate::Error
+/// The returned container is [`std::option::Option`].
+pub fn first(values: &[u32]) -> Option<u32> {
+    values.first().copied()
+}
+
+fn main() {
+    assert_eq!(first(&[3, 4]), Some(3));
+}
 ```
 
-### Linking to External Crate Types
+A fully qualified target can be clearer when a short name could refer to multiple items.
+
+## Disambiguate Name Collisions
+
+Rustdoc supports namespaces/disambiguators when the same textual name could denote different kinds of item:
 
 ```rust
-/// Works with [`std::collections::HashMap`].
-/// See also [`rayon::ParallelIterator`].
+pub mod parse {
+    pub const NAME: &str = "module";
+}
+
+/// See [`parse()`](fn@parse) for the function and [`parse`](mod@parse)
+/// for the module.
+pub fn parse() -> &'static str {
+    "function"
+}
+
+fn main() {
+    assert_eq!(parse(), "function");
+    assert_eq!(parse::NAME, "module");
+}
 ```
 
-## Link Resolution
+Common disambiguators include `fn@`, `mod@`, `struct@`, `enum@`, `trait@`, `type@`, `const@`, and `macro@`.
 
-- Links resolve from the **definition module**, not the re-export module
-- Relative paths like `super::Parent` work based on the item's definition location
-- Use `crate::path::Item` for unambiguous links
-- For items in the current module, bare `[Name]` suffices
+## Resolution Is Based on Where the Documentation Is Defined
 
-## Lints and Enforcement
+Intra-doc links in an item's documentation resolve from the scope where that documentation is defined. Re-exporting the item elsewhere does not reinterpret the original doc comment as though it had been written in the re-exporting module.
 
-Enable these rustdoc lints to catch linking issues:
+When re-exports are part of the public API, build the final documentation and inspect the paths readers see rather than reasoning only from source layout.
+
+## Reference-Style Links
+
+Long or repeated targets can be defined once:
 
 ```rust
-#![deny(broken_intra_doc_links)]
-#![warn(private_intra_doc_links)]    // Links to private items
-#![warn(redundant_explicit_links)]   // Unnecessary full paths
+/// Converts a value using [`From`].
+///
+/// [`From`]: std::convert::From
+pub fn widen(value: u8) -> u16 {
+    u16::from(value)
+}
+
+fn main() {
+    assert_eq!(widen(7), 7_u16);
+}
 ```
 
-Or in `Cargo.toml`:
+## Lints and Verification
 
-```toml
-[lints.rustdoc]
-broken_intra_doc_links = "deny"
-private_intra_doc_links = "warn"
-redundant_explicit_links = "warn"
+A strong baseline is to deny broken intra-doc links when documentation is built:
+
+```rust
+#![deny(rustdoc::broken_intra_doc_links)]
+
+/// See [`std::vec::Vec`].
+pub fn documented() {}
+
+fn main() {}
 ```
 
-- **`private_intra_doc_links`** (warn-by-default): warns when an intra-doc link
-  targets a private item. Helps avoid linking users to inaccessible items.
-- **`redundant_explicit_links`** (warn-by-default): warns when you write
-  `[text](path)` where `text` already matches the link target. Write `[path]`
-  instead.
+Other rustdoc lints, including `private_intra_doc_links` and `redundant_explicit_links`, can refine a project's style policy.
 
-## Verification
-
-Enable link checking in CI:
+In CI, build the documentation rather than grepping compiler text whose wording can change:
 
 ```bash
-# Fail the build on any broken link
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
-
-# Or check link warnings specifically
-cargo doc --no-deps 2>&1 | grep "warning: unresolved link"
 ```
 
-This fails if any intra-doc links are broken.
+## Practical Guidance
+
+- Link important API relationships, not every noun.
+- Expect renames and moves to require link maintenance; let rustdoc catch broken targets.
+- Prefer `Self::...` for associated items on the current type.
+- Use explicit paths or disambiguators when resolution would otherwise be unclear.
+- Keep examples valid Rust so trait/type errors do not obscure documentation checks.
+- Verify the generated docs for re-export-heavy APIs.
 
 ## See Also
 
+- [doc-link-types](./doc-link-types.md) - Cross-linking related API types
 - [doc-all-public](./doc-all-public.md) - Documenting public items
 - [doc-examples-section](./doc-examples-section.md) - Adding examples
-- [doc-errors-section](./doc-errors-section.md) - Documenting errors
 - [doc-module-inner](./doc-module-inner.md) - Module-level documentation
