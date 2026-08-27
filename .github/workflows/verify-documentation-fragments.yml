@@ -1,0 +1,45 @@
+name: Verify documentation fragment contracts
+
+on:
+  push:
+    branches: [fix/documentation-fragment-contracts]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - name: Regenerate index
+        run: python3 checks/gen_index.py
+      - name: Run complete verifier
+        run: bash checks/check.sh
+      - name: Show contract counts
+        run: |
+          cd checks
+          python3 gen.py
+          python3 - <<'PY'
+          import json
+          from collections import Counter
+          c = Counter(x['expect'] for x in json.load(open('manifest.json')).values())
+          print(' '.join(f'{k}={c[k]}' for k in sorted(c)))
+          PY
+      - name: Commit generated index
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add SKILL.md
+          git commit -m 'Regenerate documentation rule index'
+          git push
