@@ -1,128 +1,214 @@
 # mem-drop-order
 
-> Know and control drop order: struct fields drop top-to-bottom, locals in reverse
+> Know Rust's deterministic destruction order, and make resource dependencies explicit when one value must outlive another
 
 ## Why It Matters
 
-Drop order is observable. RAII guards (mutex locks, file handles, database transactions, span guards) do meaningful work in their `Drop` implementations, and dropping them in the wrong order silently causes bugs: releasing a lock while a transaction that depends on it is still alive, closing a connection before its transaction has committed, or dropping a tracing span before the work it covers has finished. The rules are fixed and deterministic, but easy to overlook when fields and locals accumulate over time.
+Drop order is observable for RAII resources: lock guards unlock, transactions may roll back or commit, tracing guards close spans, and file/socket wrappers release operating-system resources.
 
-## The Rules
+The important design question is not merely “what drops first?” but **which resource must remain alive while another resource is being destroyed or finalized?** Encode that dependency clearly instead of relying on a comment that contradicts the code.
 
-| Construct | Drop order |
-|---|---|
-| Struct fields | Declaration order: first field declared, first dropped |
-| Tuple / array elements | In order: index 0, 1, 2, … |
-| Local variables | Reverse declaration order: last declared, first dropped |
-| Temporaries in a statement | End of the statement (with some exceptions) |
-| Function arguments | Reverse order of the parameter list |
+## Core Rules
 
-## Bad
+For ordinary values:
 
-```rust
-use std::sync::{Mutex, MutexGuard};
+- struct fields are dropped in **declaration order** after the struct's own `Drop::drop` method (if any) returns;
+- tuple elements are dropped from first to last;
+- local variables are normally dropped in reverse order of declaration when their scope ends;
+- `drop(value)` can end a local value earlier by consuming it;
+- temporary scopes have additional language rules and changed in some cases in Edition 2024, so do not summarize every temporary as “end of statement.”
 
-struct DatabaseSession {
-    // BUG: `guard` is declared first, so it drops FIRST.
-    // But `guard` protects the connection — dropping the lock
-    // before the transaction is committed lets another thread
-    // see the connection in a partial state.
-    guard: MutexGuard<'static, ()>,
-    transaction: Transaction,
-}
+These rules are deterministic, but pattern bindings, temporaries, partial moves, and control flow can make real code less obvious than a simple table suggests.
 
-struct Transaction; // pretend this commits on drop
+## Struct Fields: Dependency Goes First
 
-impl Drop for Transaction {
-    fn drop(&mut self) {
-        println!("transaction committed");
-    }
-}
-```
-
-In this struct, `guard` drops before `transaction`, releasing the mutex while the transaction is still in-flight.
-
-## Good
+If `child` must be dropped while `parent` is still alive, declare `child` before `parent`:
 
 ```rust
-use std::sync::{Mutex, MutexGuard};
+struct Child;
+struct Parent;
 
-struct Transaction; // commits on drop
-
-impl Drop for Transaction {
+impl Drop for Child {
     fn drop(&mut self) {
-        println!("transaction committed");
+        println!("drop child");
     }
 }
 
-struct DatabaseSession {
-    // CORRECT: `transaction` is declared first, so it drops first
-    // (commit happens), THEN `guard` drops (lock released).
-    transaction: Transaction,
-    guard: MutexGuard<'static, ()>,
+impl Drop for Parent {
+    fn drop(&mut self) {
+        println!("drop parent");
+    }
+}
+
+struct Resources {
+    // Fields drop in declaration order.
+    child: Child,
+    parent: Parent,
+}
+
+fn main() {
+    let _resources = Resources {
+        child: Child,
+        parent: Parent,
+    };
 }
 ```
 
-Fields drop in declaration order, so the field at the top of the struct drops first.
+Here `child` is destroyed before `parent`.
 
-## Controlling Drop Order for Locals
+Field order can also affect layout, especially with explicit representation attributes such as `#[repr(C)]`, so do not reorder fields casually in layout-sensitive types. A nested owner type can make lifetime/dependency structure clearer than relying on field order alone.
 
-Local variables drop in **reverse** declaration order, which is often what you want (last-in, first-out). When the natural order is wrong, use explicit `drop`:
+## Locals: Last Declared, First Dropped
+
+For straightforward local bindings, declaration order gives stack-like destruction:
 
 ```rust
-fn process() {
-    let conn = open_connection();   // dropped third (last to drop)
-    let txn  = begin_transaction(); // dropped second
-    let guard = acquire_lock();     // dropped first — WRONG if txn needs the lock
+struct Resource(&'static str);
 
-    // fix: drop guard explicitly before txn and conn drop naturally
-    do_work(&txn);
-    drop(guard); // lock released here
-    txn.commit(); // runs before conn closes
-} // conn drops here
-# fn open_connection() -> () {}
-# fn begin_transaction() -> () {}
-# fn acquire_lock() -> () {}
-# fn do_work(_: &()) {}
-# trait Commit { fn commit(self); }
-# impl Commit for () { fn commit(self) {} }
+impl Drop for Resource {
+    fn drop(&mut self) {
+        println!("dropping {}", self.0);
+    }
+}
+
+fn main() {
+    let _connection = Resource("connection");
+    let _transaction = Resource("transaction");
+    let _statement = Resource("statement");
+
+    // statement, then transaction, then connection
+}
 ```
 
-## `ManuallyDrop` for Full Control
+This is often useful when later resources depend on earlier ones.
 
-When you need to opt completely out of automatic drop (e.g., in `unsafe` code, or to move a value out of a struct in `Drop`), use `std::mem::ManuallyDrop`:
+## Explicit `drop` Must Match the Dependency
+
+If a transaction needs a lock during commit, commit **before** releasing the lock:
+
+```rust
+use std::sync::Mutex;
+
+fn update(shared: &Mutex<u32>) {
+    let mut guard = shared.lock().unwrap();
+
+    *guard += 1;
+    // Finalize all work that requires protected state here.
+
+    drop(guard); // unlock only after protected work is complete
+}
+
+fn main() {
+    let value = Mutex::new(0);
+    update(&value);
+    assert_eq!(*value.lock().unwrap(), 1);
+}
+```
+
+The previous version of this rule showed the opposite ordering—dropping a guard before a transaction it said depended on that guard. That defeats the purpose of controlling drop order.
+
+Prefer an explicit smaller scope when it reads naturally:
+
+```rust
+use std::sync::Mutex;
+
+fn read_then_continue(shared: &Mutex<Vec<u8>>) -> usize {
+    let len = {
+        let guard = shared.lock().unwrap();
+        guard.len()
+    }; // guard unlocks here
+
+    len
+}
+
+fn main() {
+    let values = Mutex::new(vec![1, 2, 3]);
+    assert_eq!(read_then_continue(&values), 3);
+}
+```
+
+Scopes make the lifetime visible without a standalone `drop(...)` call.
+
+## `Drop::drop` Runs Before Fields Are Automatically Dropped
+
+A custom destructor receives `&mut self` while all fields are still present. After it returns, fields are automatically destroyed in declaration order.
+
+```rust
+struct Inner;
+
+impl Drop for Inner {
+    fn drop(&mut self) {
+        println!("inner field");
+    }
+}
+
+struct Outer {
+    inner: Inner,
+}
+
+impl Drop for Outer {
+    fn drop(&mut self) {
+        println!("outer Drop::drop");
+    }
+}
+
+fn main() {
+    let _outer = Outer { inner: Inner };
+}
+```
+
+Do not attempt to move a normal field directly out of `self` inside `Drop::drop`; use an `Option<T>`, `mem::take`, `mem::replace`, or another ownership design when early extraction is required.
+
+## `ManuallyDrop` Is an Unsafe Escape Hatch
+
+`ManuallyDrop<T>` suppresses automatic destruction of `T`. Calling `ManuallyDrop::drop` is unsafe because you must ensure the value is not subsequently used or dropped again.
 
 ```rust
 use std::mem::ManuallyDrop;
 
 struct ResourcePair {
-    // child must be cleaned up before parent
-    child: ManuallyDrop<Child>,
-    parent: Parent,
+    child: ManuallyDrop<String>,
+    parent: String,
 }
 
 impl Drop for ResourcePair {
     fn drop(&mut self) {
-        // SAFETY: `child` is not accessed after this point
+        // SAFETY: `child` is manually dropped exactly once and is never used again.
         unsafe { ManuallyDrop::drop(&mut self.child) };
-        // `parent` drops automatically after this block
+        // `parent` is dropped automatically afterward.
     }
 }
 
-struct Child;
-struct Parent;
+fn main() {
+    let _pair = ResourcePair {
+        child: ManuallyDrop::new("child".to_owned()),
+        parent: "parent".to_owned(),
+    };
+}
 ```
 
-`ManuallyDrop<T>` inhibits the compiler from inserting automatic drop calls, giving you precise control.
+Prefer ordinary ownership, field order, nested scopes, or `Option<T>` before reaching for `ManuallyDrop` just to control sequencing.
 
-## Key Points
+## `mem::forget` Is Not a Drop-Ordering Tool
 
-- Reorder struct fields to encode the correct drop sequence — the declaration is the contract.
-- Add a comment explaining the ordering when it is non-obvious: `// NOTE: drop order matters — transaction before connection`.
-- Prefer explicit `drop(x)` calls in functions over relying on scope-exit order when the correct sequence is not immediately clear from the code.
-- `std::mem::forget` drops nothing at all (leaks); only use it for FFI hand-off or when transferring ownership to unmanaged code.
+`mem::forget(value)` intentionally prevents the value's destructor from running. It is safe to call because Rust never guarantees destructors will run, but it can leak memory or other resources. Use it only when intentionally transferring or abandoning ownership according to another API's contract—not as a convenient way to reorder cleanup.
+
+## Edition 2024 Temporary Scope Changes
+
+Edition 2024 changes the destruction point of some temporaries, including `if let` scrutinee temporaries and tail-expression temporaries. If correctness depends on a temporary guard's exact lifetime, bind it to a named local or introduce a block so the intended scope is explicit. See [lint-edition-2024](./lint-edition-2024.md) for migration guidance.
+
+## Practical Guidance
+
+- Model resource dependencies first: which value must outlive which?
+- Use local scopes or explicit `drop` for important early release points.
+- For structs, remember fields drop in declaration order; document non-obvious dependency ordering.
+- Remember a custom `Drop::drop` runs before automatic field destruction.
+- Avoid `ManuallyDrop` unless ordinary ownership cannot express the required behavior.
+- Do not rely on oversimplified rules for temporary lifetimes; name important guards.
 
 ## See Also
 
-- [test-fixture-raii](test-fixture-raii.md) - use RAII pattern (Drop) for test cleanup
-- [own-mutex-interior](own-mutex-interior.md) - use `Mutex<T>` for interior mutability (multi-thread)
-- [mem-take-replace](mem-take-replace.md) - use `mem::take` / `mem::replace` to move out of `&mut`
+- [mem-take-replace](./mem-take-replace.md) - Moving values out through replacement
+- [own-mutex-interior](./own-mutex-interior.md) - Mutex ownership and guards
+- [lint-edition-2024](./lint-edition-2024.md) - Edition 2024 temporary-scope changes
+- [test-fixture-raii](./test-fixture-raii.md) - RAII cleanup in tests

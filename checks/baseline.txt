@@ -14,15 +14,6 @@ anti-over-abstraction.md :: Special Case: Deref Overuse :: block 5 :: E0308
 anti-type-erasure.md :: impl Trait Positions :: block 4 :: E0107
 anti-unsafe-send-sync.md :: Pattern: Use Existing Safe Types :: block 6 :: E0428
 anti-vec-for-slice.md :: Mutable Slices :: block 4 :: E0428
-mem-arena-allocator.md :: Alternative: slotmap for Stable Handles :: block 8 :: E0782
-mem-avoid-format.md :: Pre-allocate for Multiple Appends :: block 4 :: E0428
-mem-box-large-variant.md :: Recursive Types Require Boxing :: block 5 :: E0072,E0428
-mem-boxed-slice.md :: Anti-Pattern: Vec Round-Trip :: block 5 :: E0428
-mem-clone-from.md :: How clone_from Works :: block 3 :: E0117
-mem-compact-string.md :: Memory Comparison :: block 6 :: E0107
-mem-compact-string.md :: When to Use :: block 7 :: E0428
-mem-drop-order.md :: Controlling Drop Order for Locals :: block 3 :: P:expected one of `!` or
-mem-write-over-format.md :: Benchmark Difference :: block 7 :: E0599
 name-acronym-word.md :: Standard Library Examples :: block 3 :: P:expected `;`, found `std`
 name-into-ownership.md :: Standard Library Examples :: block 3 :: E0308
 name-is-has-bool.md :: Standard Library Examples :: block 3 :: P:expected `;`, found `char`,P:expected `;`, found `option`,P:expected `;`, found `path`,P:expected `;`, found `result`,P:expected `;`, found `str`,P:expected `;`, found keyword `let`
