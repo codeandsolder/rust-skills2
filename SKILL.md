@@ -321,17 +321,17 @@ Reference these guidelines when:
 - [`name-variants-camel`](rules/name-variants-camel.md) - Use `UpperCamelCase` for enum variants
 - [`name-funcs-snake`](rules/name-funcs-snake.md) - Use `snake_case` for functions, methods, variables, and modules
 - [`name-consts-screaming`](rules/name-consts-screaming.md) - Use `SCREAMING_SNAKE_CASE` for constants and statics
-- [`name-lifetime-short`](rules/name-lifetime-short.md) - Use short, conventional lifetime names: `'a`, `'b`, `'de`, `'src`
-- [`name-type-param-single`](rules/name-type-param-single.md) - Use single uppercase letters for type parameters: `T`, `E`, `K`, `V`
+- [`name-lifetime-short`](rules/name-lifetime-short.md) - Keep lifetime parameter names short and lowercase; use `'a` by default and descriptive names such as `'src` when they add real meaning
+- [`name-type-param-single`](rules/name-type-param-single.md) - Use concise `UpperCamelCase` type-parameter names—often `T`, `E`, `K`, `V`, but descriptive names are appropriate when they improve clarity
 - [`name-as-free`](rules/name-as-free.md) - `as_` prefix: free reference conversion
 - [`name-to-expensive`](rules/name-to-expensive.md) - Use `to_` prefix for expensive conversions that allocate or compute
-- [`name-into-ownership`](rules/name-into-ownership.md) - Use `into_` prefix for ownership-consuming conversions
-- [`name-no-get-prefix`](rules/name-no-get-prefix.md) - Omit get_ prefix for simple getters
-- [`name-is-has-bool`](rules/name-is-has-bool.md) - Use `is_`, `has_`, `can_`, `should_` prefixes for boolean-returning methods
-- [`name-iter-convention`](rules/name-iter-convention.md) - Use iter/iter_mut/into_iter for iterator methods
+- [`name-into-ownership`](rules/name-into-ownership.md) - Use `into_` for ad-hoc conversions that consume an owned value and produce another owned representation
+- [`name-no-get-prefix`](rules/name-no-get-prefix.md) - Omit `get_` for ordinary named getters; reserve `get` for APIs where “get the one obvious value” or validated/indexed access is the established operation
+- [`name-is-has-bool`](rules/name-is-has-bool.md) - Name boolean methods as clear predicates; use `is_`, `has_`, `can_`, and similar prefixes when they match the question being answered
+- [`name-iter-convention`](rules/name-iter-convention.md) - For collection-wide traversal, use the conventional `iter`, `iter_mut`, and `IntoIterator` ownership shapes
 - [`name-iter-method`](rules/name-iter-method.md) - Implement `IntoIterator` delegation for `for` loop support
-- [`name-iter-type-match`](rules/name-iter-type-match.md) - Name iterator types after their source method
-- [`name-acronym-word`](rules/name-acronym-word.md) - Treat acronyms as words in identifiers: `HttpServer`, not `HTTPServer`
+- [`name-iter-type-match`](rules/name-iter-type-match.md) - Name public iterator types after the methods or functions that produce them
+- [`name-acronym-word`](rules/name-acronym-word.md) - In `UpperCamelCase`, treat acronyms as ordinary words: `HttpServer`, `Uuid`, `TcpStream`
 - [`name-crate-no-rs`](rules/name-crate-no-rs.md) - Don't suffix crate names with `-rs` or `-rust`
 - [`name-feature`](rules/name-feature.md) - Name Cargo features without placeholder words like `abc`, `use-abc`, or `with-abc`
 - [`name-word-order`](rules/name-word-order.md) - Keep compound names in a consistent, idiomatic word order

@@ -14,16 +14,6 @@ anti-over-abstraction.md :: Special Case: Deref Overuse :: block 5 :: E0308
 anti-type-erasure.md :: impl Trait Positions :: block 4 :: E0107
 anti-unsafe-send-sync.md :: Pattern: Use Existing Safe Types :: block 6 :: E0428
 anti-vec-for-slice.md :: Mutable Slices :: block 4 :: E0428
-name-acronym-word.md :: Standard Library Examples :: block 3 :: P:expected `;`, found `std`
-name-into-ownership.md :: Standard Library Examples :: block 3 :: E0308
-name-is-has-bool.md :: Standard Library Examples :: block 3 :: P:expected `;`, found `char`,P:expected `;`, found `option`,P:expected `;`, found `path`,P:expected `;`, found `result`,P:expected `;`, found `str`,P:expected `;`, found keyword `let`
-name-iter-convention.md :: Standard Library Examples :: block 5 :: P:expected `;`, found `map`,P:expected `;`, found `vec`
-name-iter-type-match.md :: Custom Iterator Methods :: block 3 :: E0308,E0392
-name-iter-type-match.md :: Standard Library Pattern :: block 1 :: E0116,E0117
-name-lifetime-short.md :: Serde Convention :: block 4 :: P:cannot deserialize when there is
-name-no-get-prefix.md :: Standard Library Examples :: block 4 :: P:expected `;`, found `btreemap`,P:expected `;`, found `hashmap`,P:expected `;`, found `option`,P:expected `;`, found `path`,P:expected `;`, found `result`,P:expected `;`, found `vec`
-name-no-get-prefix.md :: When get_ IS Appropriate :: block 3 :: E0116
-name-type-param-single.md :: Trait Bounds :: block 4 :: E0404,E0428,P:free function without a body
 opt-cache-friendly.md :: Avoid Pointer Chasing :: block 5 :: E0308
 opt-inline-never-cold.md :: Pattern: Extract Cold Code :: block 8 :: E0428
 opt-target-cpu.md :: Feature Detection at Runtime :: block 1 :: E0308
