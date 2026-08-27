@@ -155,7 +155,7 @@ Reference these guidelines when:
 - [`api-typestate`](rules/api-typestate.md) - Use typestate pattern to encode state machine invariants in the type system
 - [`api-sealed-trait`](rules/api-sealed-trait.md) - Use sealed traits to prevent external implementations while allowing use
 - [`api-extension-trait`](rules/api-extension-trait.md) - Use extension traits to add methods to external types
-- [`api-parse-dont-validate`](rules/api-parse-dont-validate.md) - Parse into validated types at boundaries
+- [`api-parse-dont-validate`](rules/api-parse-dont-validate.md) - Parse weakly typed input into invariant-bearing domain types at system boundaries instead of repeatedly validating primitives downstream
 - [`api-impl-into`](rules/api-impl-into.md) - Accept `impl Into<T>` for flexible APIs, implement `From<T>` for conversions
 - [`api-impl-asref`](rules/api-impl-asref.md) - Use `AsRef<T>` when you only need to borrow the inner data
 - [`api-must-use`](rules/api-must-use.md) - Mark types and functions with `#[must_use]` when ignoring results is likely a bug
@@ -168,7 +168,7 @@ Reference these guidelines when:
 - [`api-operator-overload`](rules/api-operator-overload.md) - Overload operators only when the semantics are natural and unsurprising
 - [`api-bon-builder`](rules/api-bon-builder.md) - Use `bon` when typestate builders for structs or functions improve the API; account for proc-macro and typestate compile cost
 - [`api-do-not-recommend`](rules/api-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` (Rust 1.85.0) to hide blanket impls from compiler diagnostics
-- [`api-nutype-validated`](rules/api-nutype-validated.md) - Use `nutype` (v0.7.0, `greyblake/nutype`) for sanitized and validated newtypes with zero overhead
+- [`api-nutype-validated`](rules/api-nutype-validated.md) - Use `nutype` when generated sanitization, validation, and invariant-preserving trait impls materially simplify a public newtype API
 
 ### 6. Async/Await (HIGH)
 
@@ -244,7 +244,7 @@ Reference these guidelines when:
 - [`type-derive-more-boilerplate`](rules/type-derive-more-boilerplate.md) - Use `derive_more` for newtype boilerplate reduction
 - [`type-newtype-repr-transparent`](rules/type-newtype-repr-transparent.md) - Use `#[repr(transparent)]` only when a newtype intentionally promises the wrapped field's layout or ABI
 - [`type-nonzero-intrinsics`](rules/type-nonzero-intrinsics.md) - Use `NonZero<uN>` for non-zero integer invariants
-- [`type-nutype-validated`](rules/type-nutype-validated.md) - Use `nutype` for validated newtypes
+- [`type-nutype-validated`](rules/type-nutype-validated.md) - Use validated newtypes to make invalid states unrepresentable; `nutype` is useful when generated constructors and invariant-preserving trait impls justify a proc macro
 
 ### 11. Trait & Generics Design (MEDIUM)
 

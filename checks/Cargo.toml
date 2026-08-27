@@ -52,7 +52,8 @@ proc-macro2 = "1"
 # harness prevents missing-crate errors from hiding API drift behind the
 # "standalone fragment" classifier.
 bon = "3"
-nutype = { version = "0.7", features = ["serde"] }
+nutype = { version = "0.7", features = ["serde", "regex"] }
+regex = "1"
 derive_more = { version = "2", features = ["full"] }
 slotmap = { version = "1", features = ["serde"] }
 ecow = "0.3"
