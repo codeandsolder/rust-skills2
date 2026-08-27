@@ -95,7 +95,6 @@ opt-target-cpu.md :: Feature Detection at Runtime :: block 1 :: E0308
 own-clone-explicit.md :: When to Avoid Clone :: block 6 :: E0428
 own-cow-conditional.md :: Edition 2024 RPIT Makes `Cow<'_, str>` Returns More Ergonomic :: block 7 :: E0428
 own-cow-rpit-edition2024.md :: Eliminates Clone-for-Lifetime Workarounds :: block 3 :: E0428
-own-lifetime-elision.md :: Precise Capture with `use<...>` :: block 7 :: E0277,E0369
 perf-chain-avoid.md :: When Chain Is Fine :: block 4 :: E0106
 perf-collect-once.md :: Anti-Pattern: HashMap::values().collect() Then Iterate :: block 5 :: E0428
 perf-iter-over-index.md :: Fixed-Size Windows with array_windows (Rust 1.94+) :: block 3 :: E0428
