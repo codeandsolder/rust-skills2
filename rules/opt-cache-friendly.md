@@ -1,187 +1,199 @@
 # opt-cache-friendly
 
-> Organize data for cache-efficient access patterns
+> Shape data around measured access patterns and working sets; do not assume one layout is universally cache-friendly
 
 ## Why It Matters
 
-Cache misses are expensive—a L3 cache miss costs ~100+ cycles vs ~4 cycles for L1 hit. Data layout and access patterns determine cache efficiency. Arrays of structs (AoS) vs structs of arrays (SoA), memory locality, and access patterns can make order-of-magnitude performance differences.
+Modern processors have several levels of cache, but exact cache sizes, line sizes, miss costs, prefetch behavior, and memory latency are hardware- and workload-dependent. The useful rule is therefore about **locality**: keep data that is consumed together near each other, avoid touching cold data in hot loops, and measure the actual workload before redesigning a representation.
 
-## Bad
+Do not bake universal numbers such as “an L3 miss is 100 cycles” or “a cache line is always 64 bytes” into general Rust guidance. Those are common values on some machines, not language guarantees.
+
+## AoS and SoA Are Workload Choices
+
+An array of structs is often good when most fields of each object are used together:
 
 ```rust
-// Array of Structs (AoS) - poor cache use when accessing one field
+#[derive(Clone, Copy)]
 struct Particle {
-    position: [f32; 3],  // 12 bytes
-    velocity: [f32; 3],  // 12 bytes
-    mass: f32,           // 4 bytes
-    id: u64,             // 8 bytes
-    flags: u8,           // 1 byte + padding
-    // Total: 40 bytes per particle
-}
-
-fn update_positions(particles: &mut [Particle], dt: f32) {
-    for p in particles {
-        // Access position and velocity - 24 bytes
-        // But loads 40-byte struct per particle
-        // 16 bytes wasted per cache line load
-        p.position[0] += p.velocity[0] * dt;
-        p.position[1] += p.velocity[1] * dt;
-        p.position[2] += p.velocity[2] * dt;
-    }
-}
-```
-
-## Good
-
-```rust
-// Struct of Arrays (SoA) - cache-efficient for field access
-struct Particles {
-    positions_x: Vec<f32>,
-    positions_y: Vec<f32>,
-    positions_z: Vec<f32>,
-    velocities_x: Vec<f32>,
-    velocities_y: Vec<f32>,
-    velocities_z: Vec<f32>,
-    masses: Vec<f32>,
-    ids: Vec<u64>,
-    flags: Vec<u8>,
-}
-
-fn update_positions(p: &mut Particles, dt: f32) {
-    // Access contiguous memory - perfect cache utilization
-    for (px, vx) in p.positions_x.iter_mut().zip(&p.velocities_x) {
-        *px += vx * dt;
-    }
-    for (py, vy) in p.positions_y.iter_mut().zip(&p.velocities_y) {
-        *py += vy * dt;
-    }
-    for (pz, vz) in p.positions_z.iter_mut().zip(&p.velocities_z) {
-        *pz += vz * dt;
-    }
-}
-```
-
-## Hot/Cold Splitting
-
-```rust
-// Separate frequently and rarely accessed fields
-struct EntityHot {
     position: [f32; 3],
     velocity: [f32; 3],
-    // Hot data - accessed every frame
+    mass: f32,
+}
+
+fn integrate(particles: &mut [Particle], dt: f32) {
+    for particle in particles {
+        for axis in 0..3 {
+            particle.position[axis] += particle.velocity[axis] * dt;
+        }
+    }
+}
+
+fn main() {
+    let mut particles = [Particle {
+        position: [0.0; 3],
+        velocity: [1.0, 0.0, 0.0],
+        mass: 1.0,
+    }];
+    integrate(&mut particles, 0.5);
+    assert_eq!(particles[0].position[0], 0.5);
+}
+```
+
+A struct of arrays can be better when hot loops touch only a subset of fields across many objects:
+
+```rust
+struct Particles {
+    positions: Vec<f32>,
+    velocities: Vec<f32>,
+    masses: Vec<f32>,
+}
+
+impl Particles {
+    fn integrate_x(&mut self, dt: f32) {
+        for (position, velocity) in self.positions.iter_mut().zip(&self.velocities) {
+            *position += *velocity * dt;
+        }
+    }
+}
+
+fn main() {
+    let mut particles = Particles {
+        positions: vec![0.0, 10.0],
+        velocities: vec![2.0, -1.0],
+        masses: vec![1.0, 50.0],
+    };
+    particles.integrate_x(0.5);
+    assert_eq!(particles.positions, [1.0, 9.5]);
+    assert_eq!(particles.masses[1], 50.0);
+}
+```
+
+Neither layout is categorically better. SoA can improve locality and vectorization for field-wise passes, while AoS can reduce indirection and simplify code when fields are consumed together.
+
+## Split Hot and Cold State When It Helps
+
+If a tight loop repeatedly touches a small portion of a large record, separating rarely used state can reduce the hot working set:
+
+```rust
+struct EntityHot {
+    position: [f32; 2],
+    velocity: [f32; 2],
 }
 
 struct EntityCold {
     name: String,
-    creation_time: Instant,
-    metadata: HashMap<String, Value>,
-    // Cold data - rarely accessed
+    notes: String,
 }
 
-struct Entities {
+struct World {
     hot: Vec<EntityHot>,
     cold: Vec<EntityCold>,
 }
 
-// Hot loop touches only hot data
-fn update(entities: &mut Entities, dt: f32) {
-    for e in &mut entities.hot {
-        e.position[0] += e.velocity[0] * dt;
-        // Cold data stays out of cache
+fn step(world: &mut World, dt: f32) {
+    for entity in &mut world.hot {
+        entity.position[0] += entity.velocity[0] * dt;
+        entity.position[1] += entity.velocity[1] * dt;
     }
+}
+
+fn main() {
+    let mut world = World {
+        hot: vec![EntityHot {
+            position: [0.0, 0.0],
+            velocity: [1.0, 2.0],
+        }],
+        cold: vec![EntityCold {
+            name: "demo".into(),
+            notes: "rarely read".into(),
+        }],
+    };
+    step(&mut world, 1.0);
+    assert_eq!(world.hot[0].position, [1.0, 2.0]);
+    assert_eq!(world.cold[0].name, "demo");
 }
 ```
 
-## Prefetching
+This adds representation complexity and may require keeping parallel collections synchronized. Use it when profiling shows the working-set reduction matters.
+
+## Contiguous Storage Often Helps, but Pointer Chasing Is Not Automatically a Miss
+
+Heap-linked structures tend to have weaker spatial locality than contiguous vectors, but an individual pointer dereference is not synonymous with a cache miss.
 
 ```rust
-// Process in cache-line-sized chunks
-const CACHE_LINE: usize = 64;
-
-fn process_with_prefetch(data: &mut [u8]) {
-    for chunk in data.chunks_mut(CACHE_LINE) {
-        // Prefetch next chunk while processing current
-        // (automatic in many cases, manual for complex patterns)
-        process_chunk(chunk);
-    }
-}
-
-// Matrix multiplication - block for cache
-fn matmul_blocked(a: &[f64], b: &[f64], c: &mut [f64], n: usize) {
-    const BLOCK: usize = 32;  // Fits in L1 cache
-    
-    for i0 in (0..n).step_by(BLOCK) {
-        for j0 in (0..n).step_by(BLOCK) {
-            for k0 in (0..n).step_by(BLOCK) {
-                // Process BLOCK x BLOCK tile
-                for i in i0..min(i0 + BLOCK, n) {
-                    for j in j0..min(j0 + BLOCK, n) {
-                        // Inner loop operates on cached data
-                    }
-                }
-            }
-        }
-    }
-}
-```
-
-## Avoid Pointer Chasing
-
-```rust
-// Bad: linked list - random memory access
 struct Node {
     value: i32,
     next: Option<Box<Node>>,
 }
 
-fn sum_linked(head: &Node) -> i32 {
-    // Each node is a cache miss
+fn sum_linked(mut node: Option<&Node>) -> i32 {
+    let mut sum = 0;
+    while let Some(current) = node {
+        sum += current.value;
+        node = current.next.as_deref();
+    }
+    sum
 }
 
-// Good: contiguous vector
-fn sum_vector(data: &[i32]) -> i32 {
-    data.iter().sum()  // Sequential access, prefetcher happy
+fn sum_contiguous(values: &[i32]) -> i32 {
+    values.iter().sum()
 }
 
-// Good: if graph needed, use indices
-struct Graph {
-    values: Vec<i32>,
-    edges: Vec<usize>,  // Indices into values
+fn main() {
+    let list = Node {
+        value: 1,
+        next: Some(Box::new(Node {
+            value: 2,
+            next: None,
+        })),
+    };
+    assert_eq!(sum_linked(Some(&list)), 3);
+    assert_eq!(sum_contiguous(&[1, 2]), 3);
 }
 ```
 
-## Memory Layout Attributes
+Choose indexed/contiguous representations when they fit the semantics and measurement shows locality matters; linked or boxed structures can still be the right design for stable ownership, sparse mutation, or recursive shape.
+
+## Blocking and Chunk Sizes Must Be Tuned
+
+Cache blocking can improve matrix/image/array kernels, but a constant such as 32 or 64 is not guaranteed to fit the useful cache level on every machine. Prefer a benchmarked block size, a library with architecture-specific kernels, or a parameter that can be tuned.
+
+Likewise, `slice::chunks()` only groups iteration; it does not issue a manual hardware prefetch by itself.
+
+## Alignment and False Sharing
+
+`#[repr(align(N))]` requests a minimum alignment for a Rust type. It can be useful for hardware interfaces or deliberately padded concurrent data, but choosing `N = 64` does not mean Rust has discovered the machine's cache-line size.
 
 ```rust
-// Ensure cache-line alignment
-#[repr(C, align(64))]
-struct CacheAligned {
-    data: [u8; 64],
-}
+use std::sync::atomic::{AtomicU64, Ordering};
 
-// Prevent false sharing in concurrent code
-#[repr(C, align(64))]
-struct PaddedCounter {
-    value: AtomicU64,
-    _pad: [u8; 56],
+#[repr(align(64))]
+struct AlignedCounter(AtomicU64);
+
+fn main() {
+    let counter = AlignedCounter(AtomicU64::new(0));
+    counter.0.fetch_add(1, Ordering::Relaxed);
+    assert_eq!(counter.0.load(Ordering::Relaxed), 1);
 }
 ```
 
-## Measuring Cache Performance
+Treat padding/alignment as a target-specific optimization and verify both memory overhead and contention effects.
 
-```bash
-# Linux perf
-perf stat -e cache-references,cache-misses ./my_program
+## Measure the Workload
 
-# Detailed cache analysis
-perf stat -e L1-dcache-loads,L1-dcache-load-misses,LLC-loads,LLC-load-misses ./my_program
+Useful measurements include end-to-end latency/throughput, CPU profiles, allocation counts, working-set size, and hardware performance counters where available. On Linux, `perf stat`/`perf record` can help; cache simulators can be useful too, but neither substitutes for measuring the deployment workload.
 
-# Cachegrind
-valgrind --tool=cachegrind ./my_program
-```
+## Practical Guidance
+
+- Optimize the fields and traversal order that are actually hot.
+- Prefer contiguous storage when it matches the ownership/update model and improves measured locality.
+- Consider SoA or hot/cold splitting for field-wise workloads, not as universal replacements for structs.
+- Do not infer cache misses from source-level pointer dereferences.
+- Do not hard-code cache sizes, line sizes, or cycle costs as portable facts.
+- Benchmark block sizes, padding, and layout changes on representative hardware and data.
 
 ## See Also
 
-- [mem-smaller-integers](./mem-smaller-integers.md) - Smaller data fits more in cache
-- [mem-box-large-variant](./mem-box-large-variant.md) - Keep enum sizes small
-- [opt-bounds-check](./opt-bounds-check.md) - Sequential access patterns
+- [mem-smaller-integers](./mem-smaller-integers.md) - Reducing representation size when the range permits it
+- [mem-box-large-variant](./mem-box-large-variant.md) - Enum size and boxing trade-offs
+- [perf-profile-first](./perf-profile-first.md) - Measure before optimizing
