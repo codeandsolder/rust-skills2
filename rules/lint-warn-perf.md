@@ -2,21 +2,22 @@
 
 **Rule**: `lint-warn-perf`
 
-> Enable clippy::perf for performance improvements
+> Enable `clippy::perf` for established performance anti-patterns; measure before adding optimizer hints
 
 ## Why It Matters
 
-The `clippy::perf` lint group catches performance anti-patterns—inefficient allocations, unnecessary copies, suboptimal API usage. While not all performance issues are critical, avoiding obvious inefficiencies is good practice.
+`clippy::perf` contains lints for patterns that are commonly more expensive than a straightforward alternative: redundant allocations, unnecessary cloning, avoidable indirection, and inefficient collection access. It is a useful default warning group, but it is not a profiler and it does not prove that a linted expression matters to your workload.
 
-### Stdlib Hints (Not Clippy Lints)
-
-Since Rust 1.88, `std::hint::select_unpredictable` can guide the optimizer on branch-heavy code. Since Rust 1.95, `std::hint::cold_path` marks paths the optimizer should treat as cold. These are not clippy lints but complement `clippy::perf`:
+Compiler hints such as `std::hint::select_unpredictable` and `std::hint::cold_path` are a separate tool. They can change code generation, but their effect is intentionally not guaranteed and can make performance worse when the hint does not match reality.
 
 ## Configuration
 
+In a crate root:
+
 ```rust
-// In lib.rs or main.rs
 #![warn(clippy::perf)]
+
+fn main() {}
 ```
 
 Or in `Cargo.toml`:
@@ -26,135 +27,133 @@ Or in `Cargo.toml`:
 perf = "warn"
 ```
 
-## What It Catches
+For libraries with an MSRV, configure Clippy consistently with that MSRV before accepting suggestions that rely on newer standard-library APIs.
 
-### Unnecessary Allocations
+## Representative `clippy::perf` Lints
+
+The exact lint set evolves with Clippy. Current examples include:
+
+| Lint | Typical issue |
+|---|---|
+| `box_collection` | Adds a redundant heap indirection around an already heap-backed collection |
+| `boxed_local` | Boxes a local value when ownership does not require allocation |
+| `cmp_owned` | Creates an owned value only to compare it |
+| `iter_nth` | Uses iterator stepping on a standard collection that has direct indexed access |
+| `iter_overeager_cloned` | Clones items before adapters that may discard most of them |
+| `large_enum_variant` | A large variant inflates every value of the enum |
+| `redundant_allocation` | Adds an unnecessary layer of allocation/indirection |
+| `slow_vector_initialization` | Builds a zero-filled vector through a slower multi-step pattern |
+
+Do not assume every style-looking suggestion belongs to `clippy::perf`. Clippy has separate `style`, `complexity`, `correctness`, `suspicious`, and other groups.
+
+## Good: Fix the Cost, Not Merely the Spelling
 
 ```rust
-// WARN: Unnecessary to_string before into
-fn take_string(s: impl Into<String>) { }
-take_string("hello".to_string());  // Just use: "hello"
-
-// WARN: Box::new in return with deref coercion
-fn make_trait() -> Box<dyn Trait> {
-    Box::new(concrete)  // Could use Into
+fn keep_first_ten(values: &[String]) -> Vec<String> {
+    values.iter().take(10).cloned().collect()
 }
 
-// WARN: Unnecessary vec! for iteration
-for x in vec![1, 2, 3] { }  // Use array: [1, 2, 3]
-```
-
-### Inefficient Operations
-
-```rust
-// WARN: Single-character string patterns
-s.starts_with("x")  // Use char: 'x'
-s.contains("a")     // Use char: 'a'
-
-// WARN: iter().nth(0) instead of first()
-iter.nth(0)  // Use: iter.first() or iter.next()
-
-// WARN: Manual saturating arithmetic
-if x > i32::MAX - y { i32::MAX } else { x + y }
-// Use: x.saturating_add(y)
-```
-
-### Collection Inefficiencies
-
-```rust
-// WARN: extend with a single element
-vec.extend(std::iter::once(item));  // Use: vec.push(item)
-
-// WARN: Inefficient to_vec
-slice.iter().cloned().collect::<Vec<_>>()  // Use: slice.to_vec()
-
-// WARN: Manual string concatenation
-let s = format!("{}{}", a, b);  // When both are &str, use: a.to_owned() + b
-```
-
-## Notable Lints in This Group
-
-| Lint | Improvement |
-|------|-------------|
-| `box_collection` | Use `Vec<T>` not `Box<Vec<T>>` |
-| `iter_nth` | Use `.get(n)` or `.next()` |
-| `large_enum_variant` | Box large variants |
-| `manual_memcpy` | Use slice copy methods |
-| `redundant_allocation` | Remove double boxing |
-| `single_char_pattern` | Use `char` not `&str` |
-| `slow_vector_initialization` | Use `vec![0; n]` |
-| `unnecessary_to_owned` | Remove redundant `.to_owned()` |
-
-## Examples
-
-```rust
-// Before (perf warnings)
-fn process(input: &str) -> String {
-    let parts: Vec<_> = input.split(",").collect();
-    let mut result = String::new();
-    for part in parts.iter() {
-        if part.starts_with(" ") {
-            result = result + &part.trim().to_string();
-        }
-    }
-    result
+fn contains_name(names: &[String], wanted: &str) -> bool {
+    names.iter().any(|name| name == wanted)
 }
 
-// After (optimized)
-fn process(input: &str) -> String {
-    input.split(',')
-        .filter(|part| part.starts_with(' '))
-        .map(str::trim)
-        .collect()
+fn main() {
+    let names = vec!["Ada".to_owned(), "Grace".to_owned()];
+    assert!(contains_name(&names, "Ada"));
+    assert_eq!(keep_first_ten(&names).len(), 2);
 }
 ```
 
-## Stdlib Hints for Performance
+The useful transformation is usually semantic: postpone cloning until after filtering/taking, compare borrowed values directly, or remove an allocation layer. Do not mechanically rewrite code simply because two spellings look similar.
+
+## `select_unpredictable` (Rust 1.88+)
+
+`select_unpredictable(condition, true_val, false_val)` is functionally equivalent to an `if` expression, while telling the optimizer that the condition is difficult for a CPU branch predictor.
 
 ```rust
-// std::hint::select_unpredictable (1.88+)
-// Guides the optimizer when a value is unpredictable:
 use std::hint::select_unpredictable;
-let idx = select_unpredictable(branchy_value);
-array[idx]  // May use conditional move instead of branch
 
-// std::hint::cold_path (1.95+)
-// Marks a code path as cold for the optimizer:
+fn choose(condition: bool, left: u32, right: u32) -> u32 {
+    select_unpredictable(condition, left, right)
+}
+
+fn main() {
+    assert_eq!(choose(true, 10, 20), 10);
+    assert_eq!(choose(false, 10, 20), 20);
+}
+```
+
+On targets with conditional-select instructions, the optimizer **might** choose branchless code. That lowering is not guaranteed. Do not use this as a constant-time cryptography primitive, and benchmark it against an ordinary `if`; a predictable branch may be faster.
+
+## `cold_path` (Rust 1.95+)
+
+`cold_path()` marks the path containing the call as unlikely. It takes no arguments and returns `()`.
+
+```rust
 use std::hint::cold_path;
-if unlikely_condition {
-    cold_path();
-    return;
+
+fn classify(value: i32) -> &'static str {
+    if value >= 0 {
+        "ordinary"
+    } else {
+        cold_path();
+        "exceptional"
+    }
+}
+
+fn main() {
+    assert_eq!(classify(1), "ordinary");
+    assert_eq!(classify(-1), "exceptional");
 }
 ```
 
-## Allocation Patterns
+Like other optimizer hints, `cold_path` is advisory. Use it only for paths that are genuinely rare and where measurement shows a benefit.
+
+## Allocation Guidance
+
+`Vec::new()` and `vec![]` both create an empty vector without allocating element storage. The useful optimization is normally to avoid an allocation altogether or reserve capacity when the final size is reasonably predictable.
 
 ```rust
-// Unnecessary allocation
-let vec: Vec<i32> = vec![];  // Creates capacity
-let vec: Vec<i32> = Vec::new();  // No allocation
+fn squares(count: usize) -> Vec<usize> {
+    let mut out = Vec::with_capacity(count);
+    for value in 0..count {
+        out.push(value * value);
+    }
+    out
+}
 
-// Pre-allocation
-let mut vec = Vec::with_capacity(100);  // One allocation
-for i in 0..100 {
-    vec.push(i);  // No reallocation
+fn main() {
+    assert_eq!(squares(4), vec![0, 1, 4, 9]);
 }
 ```
 
-## String Patterns
+`with_capacity` is not automatically better: substantial over-reservation wastes memory, and tiny vectors may not justify forecasting capacity.
+
+## Single-Character Patterns
+
+When the operation really is about one character, a `char` pattern can express that directly and may enable a simpler implementation. Treat this as an API/measurement choice, not a universal statement that every one-character `&str` is measurably slow.
 
 ```rust
-// Slow: str pattern
-s.contains("x");
-s.find("y");
+fn contains_comma(text: &str) -> bool {
+    text.contains(',')
+}
 
-// Fast: char pattern
-s.contains('x');
-s.find('y');
+fn main() {
+    assert!(contains_comma("a,b"));
+}
 ```
+
+## Practical Guidance
+
+- Enable `clippy::perf` as a warning group and review its findings rather than blindly applying them.
+- Keep the project's MSRV in mind when Clippy suggests newer APIs.
+- Prefer removing allocations/copies to micro-tuning syntax.
+- Profile before changing hot code on performance grounds.
+- Treat `select_unpredictable` and `cold_path` as measured, advisory hints—not code-generation contracts.
 
 ## See Also
 
 - [lint-warn-complexity](./lint-warn-complexity.md) - Complexity warnings
 - [mem-with-capacity](./mem-with-capacity.md) - Pre-allocation
 - [perf-profile-first](./perf-profile-first.md) - Profile before optimizing
+- [opt-bounds-check](./opt-bounds-check.md) - Bounds-check-sensitive loops
