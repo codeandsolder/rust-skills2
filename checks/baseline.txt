@@ -2,10 +2,4 @@
 # Format: file :: section :: block N :: sorted(error-tokens)
 # Migration debt only; new, changed, and stale signatures fail CI.
 
-opt-cache-friendly.md :: Avoid Pointer Chasing :: block 5 :: E0308
-opt-inline-never-cold.md :: Pattern: Extract Cold Code :: block 8 :: E0428
-opt-target-cpu.md :: Feature Detection at Runtime :: block 1 :: E0308
-own-clone-explicit.md :: When to Avoid Clone :: block 6 :: E0428
-perf-chain-avoid.md :: When Chain Is Fine :: block 4 :: E0106
-perf-collect-once.md :: Anti-Pattern: HashMap::values().collect() Then Iterate :: block 5 :: E0428
-type-derive-more-boilerplate.md :: Complete Example :: block 3 :: E0382
+
