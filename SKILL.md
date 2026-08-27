@@ -77,8 +77,8 @@ Reference these guidelines when:
 - [`own-borrow-over-clone`](rules/own-borrow-over-clone.md) - Prefer `&T` borrowing over `.clone()`
 - [`own-slice-over-vec`](rules/own-slice-over-vec.md) - Accept `&[T]` not `&Vec<T>`, `&str` not `&String`
 - [`own-cow-conditional`](rules/own-cow-conditional.md) - Use `Cow<'a, T>` for conditional ownership
-- [`own-arc-shared`](rules/own-arc-shared.md) - Use `Arc<T>` for thread-safe shared ownership
-- [`own-rc-single-thread`](rules/own-rc-single-thread.md) - Use `Rc<T>` for shared ownership in single-threaded contexts
+- [`own-arc-shared`](rules/own-arc-shared.md) - Use `Arc<T>` when multiple owners may cross thread boundaries; add synchronization only for mutation that actually requires it
+- [`own-rc-single-thread`](rules/own-rc-single-thread.md) - Use `Rc<T>` for shared ownership that is confined to one thread
 - [`own-refcell-interior`](rules/own-refcell-interior.md) - Use `RefCell<T>` when thread-local shared access genuinely needs runtime-checked interior mutability
 - [`own-mutex-interior`](rules/own-mutex-interior.md) - Use the right `Mutex<T>` for the execution model: `std`/`parking_lot` for synchronous code, `tokio::sync::Mutex` for async code
 - [`own-rwlock-readers`](rules/own-rwlock-readers.md) - Use the right `RwLock<T>` when reads significantly outnumber writes
@@ -228,8 +228,8 @@ Reference these guidelines when:
 
 ### 10. Type Safety (MEDIUM)
 
-- [`type-newtype-ids`](rules/type-newtype-ids.md) - Wrap IDs in newtypes
-- [`type-newtype-validated`](rules/type-newtype-validated.md) - Use newtypes to enforce validation at construction
+- [`type-newtype-ids`](rules/type-newtype-ids.md) - Wrap semantically distinct IDs in distinct types, and encode additional invariants such as non-zero values at construction
+- [`type-newtype-validated`](rules/type-newtype-validated.md) - Put durable domain invariants behind checked constructors so downstream code can rely on the type instead of re-validating primitives
 - [`type-enum-states`](rules/type-enum-states.md) - Use enums for mutually exclusive states
 - [`type-option-nullable`](rules/type-option-nullable.md) - Use `Option<T>` for values that might not exist
 - [`type-result-fallible`](rules/type-result-fallible.md) - Use `Result<T, E>` for fallible operations
@@ -243,7 +243,7 @@ Reference these guidelines when:
 - [`type-numeric-fmt`](rules/type-numeric-fmt.md) - Implement `LowerHex`, `UpperHex`, `Octal`, and `Binary` for numeric newtypes
 - [`type-derive-more-boilerplate`](rules/type-derive-more-boilerplate.md) - Use `derive_more` for newtype boilerplate reduction
 - [`type-newtype-repr-transparent`](rules/type-newtype-repr-transparent.md) - Use `#[repr(transparent)]` only when a newtype intentionally promises the wrapped field's layout or ABI
-- [`type-nonzero-intrinsics`](rules/type-nonzero-intrinsics.md) - Use `NonZero<uN>` for non-zero integer invariants
+- [`type-nonzero-intrinsics`](rules/type-nonzero-intrinsics.md) - Use `NonZero<T>` when zero is invalid, and use only operations whose result semantics preserve that invariant
 - [`type-nutype-validated`](rules/type-nutype-validated.md) - Use validated newtypes to make invalid states unrepresentable; `nutype` is useful when generated constructors and invariant-preserving trait impls justify a proc macro
 
 ### 11. Trait & Generics Design (MEDIUM)
@@ -408,7 +408,7 @@ Reference these guidelines when:
 - [`perf-atomic-update`](rules/perf-atomic-update.md) - Use `Atomic*::update` and `try_update` for cleaner compare-and-update loops
 - [`perf-copy-range`](rules/perf-copy-range.md) - Treat `Copy` ranges as an ownership and ergonomics choice, not an automatic performance optimization
 - [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` for conditional extraction when you need to keep both removed and retained elements
-- [`perf-hint-apis`](rules/perf-hint-apis.md) - Use branch hint APIs for hot-path optimization
+- [`perf-hint-apis`](rules/perf-hint-apis.md) - Use compiler hint APIs only when their semantics match a measured hot path; they are advisory optimizations, not code-generation guarantees
 
 ### 24. Project Structure (LOW)
 
