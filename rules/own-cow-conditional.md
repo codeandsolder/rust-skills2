@@ -1,183 +1,174 @@
 # own-cow-conditional
 
-> Use `Cow<'a, T>` for conditional ownership
+> Use `Cow<'a, B>` when an API can usually borrow data but sometimes needs an owned value
 
 ## Why It Matters
 
-`Cow` (Clone-on-Write) lets you avoid allocations when you *might* need to own data but usually don't. It holds either a borrowed reference or an owned value, cloning only when mutation is needed.
+`std::borrow::Cow` represents either borrowed data (`Cow::Borrowed`) or the corresponding owned form (`Cow::Owned`). It is useful when the common path can return or carry a borrow while an uncommon path must allocate/own.
 
-## Bad
+`Cow` does not magically remove allocations: producing an owned variant still has the owned type's cost, and mutating a borrowed value through `to_mut()` clones it first. Use it when those semantics match the API, not merely because an allocation might exist somewhere.
 
-```rust
-// Always allocates, even when input doesn't need modification
-fn normalize_path(path: &str) -> String {
-    if path.contains("//") {
-        path.replace("//", "/")  // Allocation needed
-    } else {
-        path.to_string()  // Unnecessary allocation!
-    }
-}
-
-// Always clones the error message
-fn format_error(code: u32) -> String {
-    match code {
-        404 => "Not Found".to_string(),      // Unnecessary!
-        500 => "Internal Error".to_string(), // Unnecessary!
-        _ => format!("Error {}", code),      // This one needs allocation
-    }
-}
-```
-
-## Good
+## Good: Borrow on the Common Path, Own When Needed
 
 ```rust
 use std::borrow::Cow;
 
-// Only allocates when needed
 fn normalize_path(path: &str) -> Cow<'_, str> {
     if path.contains("//") {
-        Cow::Owned(path.replace("//", "/"))  // Allocate
+        Cow::Owned(path.replace("//", "/"))
     } else {
-        Cow::Borrowed(path)  // Zero-cost borrow
+        Cow::Borrowed(path)
     }
 }
 
-// Static strings stay borrowed
-fn format_error(code: u32) -> Cow<'static, str> {
-    match code {
-        404 => Cow::Borrowed("Not Found"),      // No allocation
-        500 => Cow::Borrowed("Internal Error"), // No allocation
-        _ => Cow::Owned(format!("Error {}", code)), // Allocate only for unknown
-    }
+fn main() {
+    assert!(matches!(normalize_path("a/b"), Cow::Borrowed(_)));
+    assert_eq!(normalize_path("a//b"), "a/b");
 }
 ```
 
-## Real-World Example from ripgrep
+The unchanged path performs no new string allocation. The replacement path returns an owned `String` because replacement necessarily constructs new contents.
+
+## Static-or-Formatted Results
+
+`Cow<'static, str>` is useful when known cases can be string literals but fallback cases are formatted dynamically.
 
 ```rust
-// https://github.com/BurntSushi/ripgrep/blob/master/crates/globset/src/pathutil.rs
-pub(crate) fn file_name<'a>(path: &Cow<'a, [u8]>) -> Option<Cow<'a, [u8]>> {
-    let last_slash = path.rfind_byte(b'/').map(|i| i + 1).unwrap_or(0);
-    match *path {
-        Cow::Borrowed(path) => Some(Cow::Borrowed(&path[last_slash..])),
-        Cow::Owned(ref path) => {
-            let mut path = path.clone();
-            path.drain_bytes(..last_slash);
-            Some(Cow::Owned(path))
+use std::borrow::Cow;
+
+fn error_message(code: u32) -> Cow<'static, str> {
+    match code {
+        404 => Cow::Borrowed("not found"),
+        500 => Cow::Borrowed("internal error"),
+        _ => Cow::Owned(format!("error {code}")),
+    }
+}
+
+fn main() {
+    assert!(matches!(error_message(404), Cow::Borrowed(_)));
+    assert!(matches!(error_message(418), Cow::Owned(_)));
+}
+```
+
+Here `'static` describes the lifetime of the borrowed variant. Owned variants are self-contained and can inhabit the same `Cow<'static, str>` type.
+
+## Clone-on-Write Mutation
+
+`to_mut()` returns mutable access to the owned representation. If the `Cow` is borrowed, it clones into the owned form first; if it is already owned, it mutates that allocation directly.
+
+```rust
+use std::borrow::Cow;
+
+fn uppercase_if_needed(mut text: Cow<'_, str>) -> Cow<'_, str> {
+    if text.bytes().any(|byte| byte.is_ascii_lowercase()) {
+        text.to_mut().make_ascii_uppercase();
+    }
+    text
+}
+
+fn main() {
+    let unchanged = uppercase_if_needed(Cow::Borrowed("123"));
+    assert!(matches!(unchanged, Cow::Borrowed(_)));
+
+    let changed = uppercase_if_needed(Cow::Borrowed("hello"));
+    assert_eq!(changed, "HELLO");
+    assert!(matches!(changed, Cow::Owned(_)));
+}
+```
+
+Use `into_owned()` when you actually want to leave the `Cow` abstraction and obtain the owned value. For a borrowed `Cow`, that conversion clones even if no mutation follows.
+
+## `Cow` Works for More Than `str`
+
+The borrowed type must implement `ToOwned`; common examples include `str`/`String` and `[T]`/`Vec<T>`.
+
+```rust
+use std::borrow::Cow;
+
+fn ensure_trailing_zero(bytes: &[u8]) -> Cow<'_, [u8]> {
+    if bytes.last() == Some(&0) {
+        Cow::Borrowed(bytes)
+    } else {
+        let mut owned = bytes.to_vec();
+        owned.push(0);
+        Cow::Owned(owned)
+    }
+}
+
+fn main() {
+    assert!(matches!(ensure_trailing_zero(&[1, 0]), Cow::Borrowed(_)));
+    let terminated = ensure_trailing_zero(&[1]);
+    assert_eq!(terminated.as_ref(), &[1, 0]);
+}
+```
+
+## When `Cow` Is the Wrong Shape
+
+| Situation | Prefer |
+|---|---|
+| Always returns owned data | `String`, `Vec<T>`, or the actual owned type |
+| Always returns a borrow | `&str`, `&[T]`, or another reference |
+| Caller must share ownership independently of the source borrow | `Arc<T>` / `Rc<T>` as appropriate |
+| Mutation almost always occurs | Taking/returning the owned type may be simpler |
+| Performance-sensitive path | Benchmark the real borrowed/owned distribution |
+
+`Cow` itself introduces a branch on which representation is active, and a borrowed value may clone on first mutation. “Hot path” is not by itself a reason to use `Cow`.
+
+## Edition 2024 RPIT Does Not Change Direct `Cow` Returns
+
+A signature such as this is a direct concrete return type:
+
+```rust
+use std::borrow::Cow;
+
+struct Greeter {
+    name: String,
+}
+
+impl Greeter {
+    fn greeting(&self) -> Cow<'_, str> {
+        if self.name == "world" {
+            Cow::Borrowed("hello world")
+        } else {
+            Cow::Owned(format!("hello {}", self.name))
         }
     }
 }
-```
 
-## Clone-on-Write Pattern
-
-```rust
-use std::borrow::Cow;
-
-fn process_text(text: Cow<'_, str>) -> Cow<'_, str> {
-    if text.contains("bad_word") {
-        // to_mut() clones if borrowed, returns &mut if owned
-        let mut owned = text.into_owned();
-        owned = owned.replace("bad_word", "***");
-        Cow::Owned(owned)
-    } else {
-        text  // Pass through unchanged
-    }
-}
-
-// Usage
-let borrowed: Cow<str> = Cow::Borrowed("hello world");
-let result = process_text(borrowed);  // No allocation!
-
-let with_bad: Cow<str> = Cow::Borrowed("hello bad_word");
-let result = process_text(with_bad);  // Allocates only here
-```
-
-## Cow with Collections
-
-```rust
-use std::borrow::Cow;
-
-// Mixed borrowed/owned in a collection
-fn collect_errors<'a>(
-    static_errors: &[&'static str],
-    dynamic_errors: Vec<String>,
-) -> Vec<Cow<'a, str>> {
-    let mut errors: Vec<Cow<str>> = Vec::new();
-    
-    // Static strings - no allocation
-    for &e in static_errors {
-        errors.push(Cow::Borrowed(e));
-    }
-    
-    // Dynamic strings - take ownership
-    for e in dynamic_errors {
-        errors.push(Cow::Owned(e));
-    }
-    
-    errors
+fn main() {
+    let greeter = Greeter { name: "Ada".into() };
+    assert_eq!(greeter.greeting(), "hello Ada");
 }
 ```
 
-## When to Use Cow
+There is no `impl Trait` in that signature, so Edition-2024 RPIT capture rules are not what make the lifetime work. Ordinary lifetime elision/inference ties the placeholder lifetime to the receiver borrow.
 
-| Situation | Use Cow? |
-|-----------|----------|
-| Usually borrow, sometimes own | Yes |
-| Always need owned data | No, just use owned type |
-| Always borrow | No, just use reference |
-| Hot path, avoiding all allocations | Yes |
-| Returning static strings or formatted | Yes |
+Edition 2024 matters when the function instead returns an opaque `impl Trait` whose hidden concrete type contains a borrow. See `own-cow-rpit-edition2024` for that specific case.
 
-## Recent Additions
+## `LazyCell::from` Is Unrelated to Clone-on-Write
 
-### `From<T>` for `LazyCell` / `LazyLock` (1.96)
+Rust 1.96 added `From<T>` for `LazyCell<T, F>` and `LazyLock<T, F>`, but those conversions construct a lazy container that starts **already initialized** with the supplied value. They are not equivalent to `LazyCell::new(|| value)`, which stores an initializer to be run on first access.
 
-```rust
-use std::cell::LazyCell;
-use std::borrow::Cow;
+That API belongs in lazy-initialization guidance, not in a `Cow` ownership rule.
 
-// 1.96+: LazyCell and LazyLock implement From<T>
-let lazy: LazyCell<Cow<'static, str>> = LazyCell::from(Cow::Borrowed("hello"));
-// Equivalent to LazyCell::new(|| Cow::Borrowed("hello"))
-```
+## Diagnostic Attributes Are Also Unrelated
 
-### Edition 2024 RPIT Makes `Cow<'_, str>` Returns More Ergonomic
+`#[diagnostic::do_not_recommend]` is a hint on trait implementations that affects compiler diagnostics. It does not change `Cow`, `From`, ownership, or coherence rules, and it cannot make an otherwise illegal foreign-trait implementation legal.
 
-In Edition 2024, return-position `impl Trait` automatically captures in-scope lifetimes. This makes it much easier to write functions that return `Cow<'_, str>` from borrowed `&self`:
+Keep diagnostic customization in the dedicated diagnostic rule rather than attaching arbitrary `From<T> for Cow<...>` examples here.
 
-```rust
-// Edition 2021: need explicit lifetime (or clone workaround)
-fn display(&self) -> impl Display + '_ { ... }
+## Practical Guidance
 
-// Edition 2024: lifetimes captured automatically
-fn display(&self) -> impl Display { ... }
-
-// Especially useful with Cow:
-fn greeting(&self) -> Cow<'_, str> {
-    if self.needs_formatting() {
-        Cow::Owned(format!("Hello, {}!", self.name))
-    } else {
-        Cow::Borrowed(self.name.as_str())
-    }
-}
-// In 2024, the lifetime ties to &self automatically
-```
-
-### `#[diagnostic::do_not_recommend]` (1.85)
-
-Prevent misleading trait implementation suggestions when `Cow` is involved:
-
-```rust
-#[diagnostic::do_not_recommend]
-impl<T> From<T> for Cow<'static, str> {
-    // Prevents rustc from suggesting this conversion
-    // when the user's real intent was different
-}
-```
+- Use `Cow` when “borrow most of the time, own sometimes” is the real data model.
+- Prefer `Borrowed` when the output can safely reference existing data.
+- Use `to_mut()` when mutation should clone a borrowed value on demand.
+- Use `into_owned()` only when the caller truly needs the owned representation.
+- Do not attribute direct `Cow<'_, T>` lifetime elision to Edition-2024 RPIT capture.
+- Benchmark when `Cow` is justified primarily by performance rather than API semantics.
 
 ## See Also
 
-- [own-borrow-over-clone](own-borrow-over-clone.md) - Prefer borrowing over cloning
-- [own-cow-rpit-edition2024](own-cow-rpit-edition2024.md) - Edition 2024 RPIT with Cow
-- [mem-avoid-format](mem-avoid-format.md) - Avoid format! when possible
+- [own-borrow-over-clone](./own-borrow-over-clone.md) - Prefer borrowing over cloning
+- [own-cow-rpit-edition2024](./own-cow-rpit-edition2024.md) - Cow hidden behind RPIT in Edition 2024
+- [own-lifetime-elision](./own-lifetime-elision.md) - Elision versus RPIT capture
+- [own-lazy-init](./own-lazy-init.md) - LazyCell and LazyLock semantics
