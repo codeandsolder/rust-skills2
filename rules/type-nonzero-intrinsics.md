@@ -1,129 +1,159 @@
 # type-nonzero-intrinsics
 
-> Use `NonZero<uN>` for non-zero integer invariants
+> Use `NonZero<T>` when zero is invalid, and use only operations whose result semantics preserve that invariant
 
 **Rule**: `type-nonzero-intrinsics`
 
 ## Why It Matters
 
-`core::num::NonZero<uN>` encodes "this integer is never zero" in the type system, eliminating null-pointer-like sentinel bugs at compile time. As a bonus, `Option<NonZero<uN>>` is guaranteed to be the same size as `uN` (zero-cost optional), because the compiler uses the zero bit pattern as the `None` discriminant. With Rust 1.85+, `NonZero` types gained parity with plain integers: `div_ceil`, `midpoint`, `checked_`/`wrapping_`/`saturating_` arithmetic, and `cast_signed`/`cast_unsigned` for safe signed↔unsigned conversion.
+`core::num::NonZero<T>` makes “not zero” part of the value's validity invariant. For supported primitive types, the all-zero bit pattern is excluded, which gives `Option<NonZero<T>>` a guaranteed niche representation without an additional discriminant.
 
-## Bad
+That invariant also shapes the arithmetic API. `NonZero` does **not** simply expose every method of the underlying integer: operations are provided when their signatures/results can express overflow or otherwise preserve non-zero validity.
 
-```rust
-use core::num::NonZeroU32;
-
-// Sentinel zero value — every caller must remember to check
-struct UserId(u32);
-
-fn find_user(id: UserId) -> Option<User> {
-    if id.0 == 0 {
-        return None;  // Sentinel check required
-    }
-    // ...
-}
-
-// Wasted space — 8 bytes instead of 4
-let maybe: Option<u32> = Some(42);
-assert_eq!(std::mem::size_of_val(&maybe), 8);
-
-// Manual zero-avoidance logic
-fn midpoint(a: u32, b: u32) -> u32 {
-    // Risk of overflow, no type-level guarantee
-    a + (b - a) / 2
-}
-```
-
-## Good
+## Good: Encode the Invariant Once
 
 ```rust
 use core::num::NonZero;
 
-// NonZero encodes the invariant in the type system
-struct UserId(NonZero<u32>);
-
-// Option<NonZero<u32>> is zero-cost (4 bytes, same as u32)
-assert_eq!(std::mem::size_of::<Option<NonZero<u32>>>(), std::mem::size_of::<u32>());
-
-// Arithmetic on NonZero (Rust 1.85+)
-let a = NonZero::<u32>::new(10).unwrap();
-let b = NonZero::<u32>::new(3).unwrap();
-
-// div_ceil (Rust 1.92+)
-assert_eq!(a.div_ceil(b).get(), 4);  // ceil(10/3) = 4
-
-// midpoint (Rust 1.85+)
-let mid = a.midpoint(b);
-assert_eq!(mid.get(), 6);  // (10 + 3) / 2 = 6 (with overflow protection)
-
-// Safe signed/unsigned conversion (Rust 1.87+)
-let unsigned = NonZero::<u32>::new(42).unwrap();
-let signed: NonZero<i32> = unsigned.cast_signed();    // Ok
-let back: NonZero<u32> = signed.cast_unsigned();      // Ok
-```
-
-## `NonZero<char>` (Rust 1.89+)
-
-```rust
-use core::num::NonZero;
-
-// NonZero<char> guarantees the char is not '\0'
-let c = NonZero::<char>::new('R').unwrap();
-assert!(c.is_ascii());
-
-// Option<NonZero<char>> is same size as char (4 bytes)
-assert_eq!(std::mem::size_of::<Option<NonZero<char>>>(), std::mem::size_of::<char>());
-```
-
-## Zero-Cost Optional Pattern
-
-```rust
-use core::num::NonZero;
-
-// A handle that can't be zero — free Option optimization
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Handle(NonZero<u64>);
+struct WorkerId(NonZero<u32>);
 
-impl Handle {
-    pub fn new(value: u64) -> Option<Self> {
-        Some(Self(NonZero::new(value)?))
+impl WorkerId {
+    fn new(raw: u32) -> Option<Self> {
+        NonZero::new(raw).map(Self)
     }
 
-    pub fn get(self) -> u64 {
+    fn get(self) -> u32 {
         self.0.get()
     }
 }
 
-// These are both 8 bytes!
-assert_eq!(std::mem::size_of::<Handle>(), 8);
-assert_eq!(std::mem::size_of::<Option<Handle>>(), 8);
-assert_eq!(std::mem::size_of::<Option<Handle>>(), std::mem::size_of::<u64>());
+fn main() {
+    assert!(WorkerId::new(0).is_none());
+    assert_eq!(WorkerId::new(7).unwrap().get(), 7);
+
+    assert_eq!(
+        core::mem::size_of::<Option<WorkerId>>(),
+        core::mem::size_of::<u32>(),
+    );
+}
 ```
 
-## Complete Arithmetic API (Rust 1.92+)
+The size/layout optimization is useful, but the primary benefit is semantic: safe code holding a `WorkerId` does not need to re-check for zero.
+
+## Arithmetic Is Invariant-Aware, Not Full Integer Parity
+
+Unsigned `NonZero` integers provide operations whose return types account for overflow while preserving non-zero results.
 
 ```rust
 use core::num::NonZero;
 
-let n = NonZero::<u32>::new(7).unwrap();
-let m = NonZero::<u32>::new(2).unwrap();
+fn main() {
+    let seven = NonZero::<u32>::new(7).unwrap();
+    let two = NonZero::<u32>::new(2).unwrap();
 
-// All operations available on plain integers also exist on NonZero:
-let _ = n.checked_add(5);
-let _ = n.checked_mul(3);
-let _ = n.saturating_sub(10);
-let _ = n.wrapping_add(100);
-let _ = n.overflowing_sub(20);
+    assert_eq!(seven.checked_add(5).unwrap().get(), 12);
+    assert_eq!(NonZero::<u32>::MAX.checked_add(1), None);
+    assert_eq!(NonZero::<u32>::MAX.saturating_add(1), NonZero::<u32>::MAX);
 
-// NonZero-specific operations
-assert_eq!(n.div_ceil(m).get(), 4);  // ceil(7/2) = 4
-assert_eq!(n.midpoint(m).get(), 4);  // (7+2)/2 = 4
+    assert_eq!(seven.div_ceil(two).get(), 4);
+    assert_eq!(seven.midpoint(two).get(), 4);
+}
 ```
+
+Do not claim that every wrapping/overflowing/subtraction method from `u32` has a corresponding `NonZero<u32>` method. An operation that can naturally produce zero may need to return `Option`, use a different operand/result shape, or be performed on the underlying integer followed by explicit reconstruction.
+
+For example, if wrapping semantics are genuinely required:
+
+```rust
+use core::num::NonZero;
+
+fn wrapping_add_nonzero(value: NonZero<u32>, amount: u32) -> Option<NonZero<u32>> {
+    NonZero::new(value.get().wrapping_add(amount))
+}
+
+fn main() {
+    let max = NonZero::<u32>::MAX;
+    assert!(wrapping_add_nonzero(max, 1).is_none());
+}
+```
+
+The `Option` is important: ordinary integer wrapping can land exactly on zero, which cannot be represented as `NonZero<u32>`.
+
+## Signed/Unsigned Casts Reinterpret the Bit Pattern
+
+`cast_signed` / `cast_unsigned` preserve the bits and switch to the same-width signed/unsigned `NonZero` type. They are **not** range-checked numerical conversions.
+
+```rust
+use core::num::NonZero;
+
+fn main() {
+    let all_bits = NonZero::<u32>::new(u32::MAX).unwrap();
+    let signed = all_bits.cast_signed();
+    assert_eq!(signed.get(), -1);
+
+    let minus_one = NonZero::<i32>::new(-1).unwrap();
+    let unsigned = minus_one.cast_unsigned();
+    assert_eq!(unsigned.get(), u32::MAX);
+}
+```
+
+Use `TryFrom`/`try_into` when the requirement is numeric range preservation rather than bit reinterpretation.
+
+## `NonZero<char>`
+
+`NonZero<char>` represents any Unicode scalar value except `'\0'`.
+
+```rust
+use core::num::NonZero;
+
+fn main() {
+    let c = NonZero::<char>::new('R').unwrap();
+    assert!(c.get().is_ascii());
+    assert!(NonZero::<char>::new('\0').is_none());
+
+    assert_eq!(
+        core::mem::size_of::<Option<NonZero<char>>>(),
+        core::mem::size_of::<char>(),
+    );
+}
+```
+
+Methods of `char` are reached through `.get()`; `NonZero<char>` is not itself a `char` and does not transparently forward the full `char` method set.
+
+## Construction and Unsafe Construction
+
+Prefer `NonZero::new(value)` when zero is possible at runtime. Use `new_unchecked` only when a local proof already establishes non-zero; passing zero to it is undefined behavior.
+
+```rust
+use core::num::NonZero;
+
+fn main() {
+    let runtime = 42u32;
+    let checked = NonZero::new(runtime).expect("42 is non-zero");
+    assert_eq!(checked.get(), 42);
+
+    // SAFETY: the literal 7 is non-zero.
+    let constant = unsafe { NonZero::<u32>::new_unchecked(7) };
+    assert_eq!(constant.get(), 7);
+}
+```
+
+For constants, prefer stable const construction patterns that keep the proof obvious; unsafe construction should not be used merely to save an `Option` match in ordinary runtime code.
+
+## Layout Is a Real Contract; Arithmetic Surface Is Versioned API
+
+The niche/layout guarantee for `Option<NonZero<T>>` is part of the type's documented representation contract. The set of convenience methods, however, evolves with Rust releases and differs between signed, unsigned, and non-integer `NonZero` instantiations.
+
+When adding a “recent API” example, check the current standard-library documentation for the exact receiver, operand, result type, and stabilization status rather than extrapolating from primitive integers.
 
 ## See Also
 
-- [type-newtype-ids](./type-newtype-ids.md) — ID newtypes
-- [type-repr-transparent](./type-repr-transparent.md) — Layout guarantees for newtypes
-- [mem-compact-string](./mem-compact-string.md) — Small string optimization
-- [core::num::NonZero docs](https://doc.rust-lang.org/std/num/struct.NonZero.html)
+- [type-newtype-ids](./type-newtype-ids.md) — semantic IDs
+- [type-newtype-validated](./type-newtype-validated.md) — checked construction
+- [type-repr-transparent](./type-repr-transparent.md) — layout promises for wrappers
+
+## References
+
+- [core::num::NonZero](https://doc.rust-lang.org/core/num/struct.NonZero.html)
