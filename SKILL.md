@@ -113,12 +113,12 @@ Reference these guidelines when:
 
 ### 3. Memory Optimization (CRITICAL)
 
-- [`mem-with-capacity`](rules/mem-with-capacity.md) - Use `with_capacity()` when size is known
-- [`mem-smallvec`](rules/mem-smallvec.md) - Use `SmallVec` for usually-small collections
-- [`mem-arrayvec`](rules/mem-arrayvec.md) - Use `ArrayVec<T, N>` for fixed-capacity collections that never heap-allocate
+- [`mem-with-capacity`](rules/mem-with-capacity.md) - Pre-allocate when you have a useful size bound
+- [`mem-smallvec`](rules/mem-smallvec.md) - Use `SmallVec` when collections are usually small but may grow
+- [`mem-arrayvec`](rules/mem-arrayvec.md) - Use `ArrayVec<T, N>` when a hard capacity belongs in the type
 - [`mem-box-large-variant`](rules/mem-box-large-variant.md) - Consider indirection when one enum variant makes every enum value much larger, but measure the workload before paying for a heap allocation
 - [`mem-boxed-slice`](rules/mem-boxed-slice.md) - Use `Box<[T]>` when owned heap data has a fixed length and you do not need spare capacity or growth operations
-- [`mem-thinvec`](rules/mem-thinvec.md) - Use `ThinVec<T>` for nullable collections with minimal overhead
+- [`mem-thinvec`](rules/mem-thinvec.md) - Use `ThinVec<T>` when a pointer-sized collection handle is valuable
 - [`mem-clone-from`](rules/mem-clone-from.md) - Use `Clone::clone_from` when repeatedly replacing an existing value and the concrete type can profitably reuse its resources
 - [`mem-reuse-collections`](rules/mem-reuse-collections.md) - Reuse collection capacity across repeated temporary workloads when allocation behavior or profiling shows it is worthwhile
 - [`mem-avoid-format`](rules/mem-avoid-format.md) - Avoid creating an intermediate `String` with `format!` when the caller can use a literal, formatting arguments, or an existing output buffer directly
@@ -132,7 +132,7 @@ Reference these guidelines when:
 - [`mem-drop-order`](rules/mem-drop-order.md) - Know Rust's deterministic destruction order, and make resource dependencies explicit when one value must outlive another
 - [`mem-arc-str`](rules/mem-arc-str.md) - Prefer `Arc<str>` over `Arc<String>` for thread-shared immutable strings
 - [`mem-box-new-uninit`](rules/mem-box-new-uninit.md) - Use `Box::new_uninit()` when you genuinely need deferred or in-place heap initialization; call `assume_init()` only after the allocation contains a valid `T`
-- [`mem-ecow-clone-heavy`](rules/mem-ecow-clone-heavy.md) - Use `EcoString` for clone-heavy string workloads
+- [`mem-ecow-clone-heavy`](rules/mem-ecow-clone-heavy.md) - Consider `EcoString` for clone-heavy immutable-or-COW strings
 - [`mem-hotpath-profile`](rules/mem-hotpath-profile.md) - Profile memory before optimizing
 - [`mem-slotmap-arena`](rules/mem-slotmap-arena.md) - Use `SlotMap` for generation-checked stable keys; use `DenseSlotMap` when densely stored values and fast iteration are important
 
