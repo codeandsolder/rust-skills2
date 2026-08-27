@@ -1,161 +1,171 @@
 # perf-iter-lazy
 
-> Keep iterators lazy, collect only when needed
+> Keep iterator pipelines lazy when streaming or short-circuiting is useful; collect only when ownership, reuse, sorting, indexing, or another concrete requirement needs a collection
 
 ## Why It Matters
 
-Rust iterators are lazy—they compute values on demand. This enables single-pass processing, avoids intermediate allocations, and allows short-circuiting. Calling `.collect()` too early forces evaluation and allocates unnecessarily.
+Iterator adapters such as `map`, `filter`, and `take` normally produce another lazy iterator. Work happens as a consumer requests items. This can avoid intermediate allocations and can stop early for consumers such as `find`, `any`, or `take`.
 
-## Bad
+Laziness is not automatically faster. A collection is the right representation when values must be stored, sorted, indexed repeatedly, shared independently from the source, or traversed multiple times.
+
+## Avoid Intermediate Collections That Carry No Ownership Need
 
 ```rust
-// Collects intermediate results unnecessarily
-fn process(data: Vec<i32>) -> Vec<i32> {
-    let filtered: Vec<_> = data.into_iter()
+fn first_positive_squares(values: &[i32], count: usize) -> Vec<i32> {
+    values
+        .iter()
+        .copied()
         .filter(|x| *x > 0)
-        .collect();  // Unnecessary allocation
-    
-    let mapped: Vec<_> = filtered.into_iter()
-        .map(|x| x * 2)
-        .collect();  // Another unnecessary allocation
-    
-    mapped.into_iter()
-        .take(10)
+        .map(|x| x * x)
+        .take(count)
         .collect()
 }
 
-// Collects before checking existence
-fn has_positive(data: &[i32]) -> bool {
-    let positives: Vec<_> = data.iter()
-        .filter(|&&x| x > 0)
-        .collect();  // Allocates entire filtered result
-    
-    !positives.is_empty()
+fn main() {
+    assert_eq!(first_positive_squares(&[-1, 2, 3, 4], 2), [4, 9]);
 }
 ```
 
-## Good
+Collecting after `filter`, then collecting again after `map`, would create temporary allocations without changing the ownership semantics of this function.
+
+## Short-Circuit Directly
 
 ```rust
-// Single chain, single collect
-fn process(data: Vec<i32>) -> Vec<i32> {
-    data.into_iter()
-        .filter(|x| *x > 0)
-        .map(|x| x * 2)
-        .take(10)
-        .collect()
+fn has_negative(values: &[i32]) -> bool {
+    values.iter().any(|value| *value < 0)
 }
 
-// Short-circuits on first match
-fn has_positive(data: &[i32]) -> bool {
-    data.iter().any(|&x| x > 0)
+fn first_even(values: &[i32]) -> Option<i32> {
+    values.iter().copied().find(|value| value % 2 == 0)
+}
+
+fn main() {
+    assert!(has_negative(&[4, -1, 9]));
+    assert_eq!(first_even(&[1, 7, 8, 10]), Some(8));
 }
 ```
 
-## Lazy Iterator Methods
+`any` and `find` stop once the answer is known. Collecting all matching elements first would force work the caller does not need.
 
-These methods return iterators (lazy):
+## Adapters vs Consumers
 
-| Method | Description |
-|--------|-------------|
-| `.filter()` | Keep matching elements |
-| `.map()` | Transform elements |
-| `.take(n)` | Limit to n elements |
-| `.skip(n)` | Skip first n elements |
-| `.zip()` | Pair with another iterator |
-| `.chain()` | Concatenate iterators |
-| `.flat_map()` | Map and flatten |
-| `.enumerate()` | Add index |
-| `.next_if()` (on Peekable) | Conditionally consume next (1.94+) |
-| `.next_if_map()` (on Peekable) | Map+consume next (1.94+) |
+Typical lazy adapters include:
 
-## Consuming Methods
+- `map`, `filter`, `filter_map`;
+- `take`, `skip`;
+- `chain`, `zip`, `enumerate`;
+- `flat_map`, `flatten`, `scan`.
 
-These methods consume the iterator (evaluate immediately):
+Typical consumers include:
 
-| Method | Description |
-|--------|-------------|
-| `.collect()` | Gather into collection |
-| `.for_each()` | Execute side effect |
-| `.count()` | Count elements |
-| `.sum()` | Sum elements |
-| `.fold()` | Accumulate value |
-| `.any()` | Check if any match |
-| `.all()` | Check if all match |
-| `.find()` | Find first match |
+- `collect`;
+- `fold`, `reduce`, `sum`, `product`;
+- `count`, `for_each`;
+- `find`, `position`, `any`, `all`.
 
-## Short-Circuit Benefits
+Some iterator methods do not fit neatly into “adapter” or “terminal consumer.” `Peekable::next_if` and `next_if_map`, for example, conditionally consume the **next item of an existing iterator**; they do not return a new iterator.
+
+## `Peekable::next_if`
+
+`next_if` consumes the next item only when the predicate accepts a reference to it. If the predicate rejects the item, it remains available to `peek`/`next`.
 
 ```rust
-// Without lazy: processes ALL items
-let found: Vec<_> = items.iter()
-    .filter(|x| expensive_check(x))
-    .collect();
-let result = found.first();
+fn main() {
+    let mut values = [0, 0, 2, 3].into_iter().peekable();
 
-// With lazy: stops at first match
-let result = items.iter()
-    .find(|x| expensive_check(x));
-```
+    while values.next_if(|value| *value == 0).is_some() {}
 
-## Fixed-Size Slice Iteration: as_chunks and array_windows
-
-For zero-allocation processing of slices in fixed-size units, use `<[T]>::as_chunks` (Rust 1.88+) and `<[T]>::array_windows` (Rust 1.94+). These return `&[T; N]` references with no bounds-check overhead, keeping iteration fully lazy:
-
-```rust
-// Process in chunks of 4 — no allocation, no bounds checks
-let (chunks, remainder) = data.as_chunks::<4>();
-for &[a, b, c, d] in chunks {
-    process_four(a, b, c, d);
-}
-
-// Sliding window — no allocation, no bounds checks
-for &[a, b, c] in data.array_windows::<3>() {
-    process_triple(a, b, c);
+    assert_eq!(values.next(), Some(2));
+    assert_eq!(values.next(), Some(3));
 }
 ```
 
-## Peekable::next_if and next_if_map (Rust 1.94+)
+`next_if` has been stable much longer than the newer mapping variant; do not label both as a Rust 1.94 addition.
 
-`Peekable::next_if` and `next_if_map` enable conditional lazy consumption without allocating an intermediate collection:
+## `Peekable::next_if_map` (Rust 1.94+)
+
+`next_if_map` takes ownership of the next `I::Item`. The closure returns `Ok(mapped)` to consume the item and produce a mapped result, or `Err(item)` to put an item back into the iterator.
 
 ```rust
-let mut iter = [1, 2, 3, 4, 5].into_iter().peekable();
+fn main() {
+    let mut values = [2, 4, 11, 6].into_iter().peekable();
+    let mut doubled = Vec::new();
 
-// Skip leading zeros (lazy, no allocation)
-while iter.next_if(|&x| x == 0).is_some() {}
+    while let Some(value) = values.next_if_map(|item| {
+        if item < 10 {
+            Ok(item * 2)
+        } else {
+            Err(item)
+        }
+    }) {
+        doubled.push(value);
+    }
 
-// Transform-accept pattern
-while let Some(doubled) = iter.next_if_map(|x| {
-    if *x < 10 { Some(x * 2) } else { None }
-}) {
-    process(doubled);
+    assert_eq!(doubled, [4, 8]);
+    assert_eq!(values.next(), Some(11));
+    assert_eq!(values.next(), Some(6));
 }
 ```
 
-## Pattern: Process Without Collecting
+It does **not** take `&I::Item` and it does **not** use `Option` as the closure result. Returning `Err(item)` is what preserves an unaccepted owned item for the next iteration step.
+
+Use `next_if_map_mut` when mutably inspecting the next item without taking ownership is a better fit for the transformation.
+
+## Fixed-Size Slice Views
+
+When an algorithm naturally consumes fixed-size chunks or overlapping windows, slice APIs can expose array references without creating temporary vectors.
 
 ```rust
-// Print all matches without allocating
-data.iter()
-    .filter(|x| x.is_valid())
-    .for_each(|x| println!("{}", x));
+fn pair_sums(values: &[u32]) -> Vec<u32> {
+    let (pairs, remainder) = values.as_chunks::<2>();
+    let mut sums: Vec<_> = pairs.iter().map(|&[a, b]| a + b).collect();
+    sums.extend(remainder.iter().copied());
+    sums
+}
 
-// Count without collecting
-let count = data.iter()
-    .filter(|x| x.is_valid())
-    .count();
-
-// Sum without intermediate collection
-let total: i64 = data.iter()
-    .filter(|x| x.is_valid())
-    .map(|x| x.value as i64)
-    .sum();
+fn main() {
+    assert_eq!(pair_sums(&[1, 2, 3, 4, 9]), [3, 7, 9]);
+}
 ```
+
+For overlapping fixed-size windows, use `array_windows` when the toolchain version targeted by the project provides it. These APIs solve indexing/layout problems; they are not themselves “lazy iterators.”
+
+## Collection Is Sometimes the Point
+
+```rust
+fn sorted_unique(values: impl IntoIterator<Item = i32>) -> Vec<i32> {
+    let mut values: Vec<_> = values.into_iter().collect();
+    values.sort_unstable();
+    values.dedup();
+    values
+}
+
+fn main() {
+    assert_eq!(sorted_unique([3, 1, 3, 2]), [1, 2, 3]);
+}
+```
+
+Sorting requires materialized storage, so collecting here is not an anti-pattern. The useful question is whether the collection enables an operation or ownership boundary the pipeline actually needs.
+
+## Review Questions
+
+Before adding `.collect()` in the middle of a pipeline, ask:
+
+- Does the next operation require a slice/collection rather than an iterator?
+- Must these values outlive the source iterator independently?
+- Will they be sorted, indexed, mutated, or traversed multiple times?
+- Is collection needed for parallelism or an external API boundary?
+- Would a short-circuiting consumer avoid most of the work?
+
+If there is a real answer, collect. If not, keeping the iterator lazy is usually simpler.
 
 ## See Also
 
-- [perf-collect-once](./perf-collect-once.md) - Single collect
-- [perf-iter-over-index](./perf-iter-over-index.md) - Prefer iterators
-- [perf-array-windows](./perf-array-windows.md) - Fixed-size windows
-- [anti-collect-intermediate](./anti-collect-intermediate.md) - Anti-pattern
+- [perf-collect-once](./perf-collect-once.md) — avoid gratuitous repeated collection
+- [perf-iter-over-index](./perf-iter-over-index.md) — iterator-oriented traversal
+- [anti-collect-intermediate](./anti-collect-intermediate.md) — unnecessary intermediates
+
+## References
+
+- [`Iterator`](https://doc.rust-lang.org/std/iter/trait.Iterator.html)
+- [`Peekable`](https://doc.rust-lang.org/std/iter/struct.Peekable.html)

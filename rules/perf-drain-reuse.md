@@ -1,229 +1,166 @@
 # perf-drain-reuse
 
-> Use drain and extract_if to reuse allocations
+> Use `drain` or `extract_if` when you need to remove owned elements while retaining the source collection's allocation; do not introduce an intermediate collection unless ownership requires one
 
 ## Why It Matters
 
-`drain()` removes elements from a collection while keeping its allocated capacity. This allows reusing the same allocation across iterations, avoiding repeated allocate/deallocate cycles in loops. `extract_if` provides conditional drain semantics — removing only selected elements while keeping the rest — without a separate filter pass. Stabilized across two releases: `Vec::extract_if` and `LinkedList::extract_if` in Rust 1.87, `HashMap::extract_if` and `HashSet::extract_if` in Rust 1.88.
+`drain` removes elements and yields them by value while the collection keeps its backing allocation. `extract_if` conditionally removes matching elements and yields those owned values. These operations are useful when the caller wants to reuse the source container rather than consume it wholesale.
 
-## Bad
+They are ownership tools first. Whether they improve performance depends on the surrounding algorithm, retained capacity, element movement, and whether the removed values must be stored elsewhere.
+
+## Reuse a Scratch Destination When a Separate Batch Is Required
 
 ```rust
-// Allocates new Vec every iteration
-fn process_batches(data: Vec<Item>) {
-    let mut remaining = data;
-    
-    while !remaining.is_empty() {
-        let batch: Vec<_> = remaining.drain(..100.min(remaining.len())).collect();
-        process_batch(batch);
-        // remaining keeps its capacity - good
-        // but batch allocates new every time - bad
+fn sums_in_chunks(mut values: Vec<u32>, chunk_size: usize) -> Vec<u32> {
+    assert!(chunk_size > 0);
+
+    let mut sums = Vec::new();
+    let mut chunk = Vec::with_capacity(chunk_size);
+
+    while !values.is_empty() {
+        chunk.clear();
+        let take = chunk_size.min(values.len());
+        chunk.extend(values.drain(..take));
+        sums.push(chunk.iter().sum());
     }
+
+    sums
 }
 
-// Clears and reallocates
-fn reuse_buffer() {
-    for _ in 0..1000 {
-        let mut buffer = Vec::new();  // Allocates each iteration
-        fill_buffer(&mut buffer);
-        process(&buffer);
-    }
-}
-
-// Manual retain + collect pattern (wasteful)
-fn extract_high_priority(work: &mut Vec<Task>) {
-    let high_priority: Vec<_> = work.iter()
-        .filter(|t| t.priority > 5)
-        .cloned()  // Clone because we still hold the borrow
-        .collect();
-    work.retain(|t| t.priority <= 5);
-    // Two passes, clones, intermediate allocation
+fn main() {
+    assert_eq!(sums_in_chunks(vec![1, 2, 3, 4, 5], 2), [3, 7, 5]);
 }
 ```
 
-## Good
+Here `chunk.clear()` retains the scratch allocation. If the downstream operation can consume the drained iterator directly, the scratch `Vec` may be unnecessary.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## `Vec::extract_if` Takes a Range and a Predicate
+
+Since Rust 1.87, `Vec::extract_if` considers only elements inside the supplied range. Use `..` to inspect the whole vector.
+
 ```rust
-// Reuses allocation with drain
-fn process_batches(mut data: Vec<Item>) {
-    let mut batch = Vec::with_capacity(100);
-    
-    while !data.is_empty() {
-        batch.extend(data.drain(..100.min(data.len())));
-        process_batch(&batch);
-        batch.clear();  // Keeps capacity
-    }
-}
+fn main() {
+    let mut numbers = vec![1, 2, 3, 4, 5, 6];
+    let evens: Vec<_> = numbers.extract_if(.., |n| *n % 2 == 0).collect();
 
-// Reuses buffer across iterations
-fn reuse_buffer() {
-    let mut buffer = Vec::new();
-    
-    for _ in 0..1000 {
-        buffer.clear();  // Keeps capacity
-        fill_buffer(&mut buffer);
-        process(&buffer);
-    }
-}
-
-// extract_if on Vec (Rust 1.87+) — single pass, no clones
-fn extract_high_priority(work: &mut Vec<Task>) -> Vec<Task> {
-    work.extract_if(|t| t.priority > 5).collect()
-    // work retains only low-priority tasks
-    // no clones, no double iteration
+    assert_eq!(numbers, [1, 3, 5]);
+    assert_eq!(evens, [2, 4, 6]);
 }
 ```
 
-## Drain Methods
-
-| Collection | Method | Behavior |
-|------------|--------|----------|
-| `Vec<T>` | `.drain(range)` | Remove range, shift remaining |
-| `Vec<T>` | `.drain(..)` | Remove all (like clear) |
-| `VecDeque<T>` | `.drain(range)` | Remove range |
-| `String` | `.drain(range)` | Remove char range |
-| `HashMap<K,V>` | `.drain()` | Remove all entries |
-| `HashSet<T>` | `.drain()` | Remove all elements |
-
-## extract_if
-
-`extract_if` replaces the nightly `drain_filter`. It returns an iterator that yields elements matching a predicate, removing them from the original collection. The original collection retains the non-matching elements.
-
-| Collection | Method | Since | Behavior |
-|------------|--------|-------|----------|
-| `Vec<T>` | `.extract_if(pred)` | 1.87 | Extract matching elements |
-| `LinkedList<T>` | `.extract_if(pred)` | 1.87 | Extract matching elements |
-| `HashMap<K,V>` | `.extract_if(pred)` | 1.88 | Extract matching entries |
-| `HashSet<T>` | `.extract_if(pred)` | 1.88 | Extract matching elements |
-| `BTreeMap<K,V>` | `.extract_if(pred)` | nightly | Not yet stable |
+A subrange can be useful when only part of the vector is eligible:
 
 ```rust
-// Vec: extract matching, keep rest
-let mut numbers = vec![1, 2, 3, 4, 5, 6];
-let evens: Vec<_> = numbers.extract_if(|n| *n % 2 == 0).collect();
-// numbers == [1, 3, 5]
-// evens == [2, 4, 6]
+fn main() {
+    let mut values = vec![10, 11, 12, 13, 14, 15];
+    let removed: Vec<_> = values.extract_if(2..5, |n| *n % 2 == 0).collect();
 
-// HashMap: extract entries matching predicate
+    assert_eq!(removed, [12, 14]);
+    assert_eq!(values, [10, 11, 13, 15]);
+}
+```
+
+The range is part of the API. Writing `vec.extract_if(|...|)` is not the `Vec` method signature.
+
+## Other Collections Have Different `extract_if` Signatures
+
+Do not generalize the `Vec` range argument to every collection. Collection APIs are intentionally shaped around their storage model.
+
+```rust
 use std::collections::HashMap;
-let mut map: HashMap<&str, i32> = [("a", 1), ("b", 2), ("c", 3)].into();
-let over_one: HashMap<_, _> = map.extract_if(|_, v| *v > 1).collect();
-// map contains only ("a", 1)
+
+fn main() {
+    let mut map = HashMap::from([("low", 1), ("mid", 5), ("high", 9)]);
+    let removed: HashMap<_, _> = map.extract_if(|_, value| *value >= 5).collect();
+
+    assert_eq!(map.get("low"), Some(&1));
+    assert_eq!(removed.len(), 2);
+}
 ```
 
-## VecDeque pop_front_if / pop_back_if (Rust 1.93+)
+For `HashMap`/`HashSet`, `extract_if` operates over the collection rather than a positional range. Check the exact collection's current signature instead of assuming all `extract_if` methods are interchangeable.
 
-For dequeues, specialized conditional removal avoids scanning the entire buffer:
+## `drain`, `clear`, `extract_if`, and `mem::take` Express Different Ownership
+
+| Operation | Removes | Yields removed values | Keeps source allocation |
+|---|---|---|---|
+| `clear()` | all | no | yes |
+| `drain(range)` | range/all | yes | yes |
+| `extract_if(...)` | matching | yes | yes |
+| `mem::take(&mut collection)` | whole collection | returns the collection itself | no; source is replaced by default value |
+
+Example:
+
+```rust
+fn main() {
+    let mut values = vec![1, 2, 3, 4];
+    let capacity = values.capacity();
+
+    let tail: Vec<_> = values.drain(2..).collect();
+    assert_eq!(values, [1, 2]);
+    assert_eq!(tail, [3, 4]);
+    assert_eq!(values.capacity(), capacity);
+
+    values.clear();
+    assert!(values.is_empty());
+    assert_eq!(values.capacity(), capacity);
+}
+```
+
+`drain(..)` is useful when you need ownership of removed elements. If you only want an empty container, `clear()` is simpler.
+
+## Avoid Intermediate Collections When Moving Between Destinations
+
+```rust
+fn move_even(src: &mut Vec<u32>, dst: &mut Vec<u32>) {
+    dst.extend(src.extract_if(.., |value| *value % 2 == 0));
+}
+
+fn main() {
+    let mut src = vec![1, 2, 3, 4, 5];
+    let mut dst = vec![10];
+
+    move_even(&mut src, &mut dst);
+    assert_eq!(src, [1, 3, 5]);
+    assert_eq!(dst, [10, 2, 4]);
+}
+```
+
+Collecting the extracted elements into a temporary `Vec` before extending `dst` would allocate storage that this ownership flow does not need.
+
+## Conditional Deque Pops Are a Different Tool
+
+For `VecDeque`, `pop_front_if` / `pop_back_if` conditionally remove only an end element. They do not scan/extract arbitrary matching elements.
 
 ```rust
 use std::collections::VecDeque;
 
-let mut deque: VecDeque<i32> = (1..=10).collect();
+fn main() {
+    let mut queue = VecDeque::from([1, 2, 3, 9]);
 
-// Remove from front while predicate holds
-while let Some(val) = deque.pop_front_if(|x| *x < 5) {
-    process_small(val);
-}
-// deque now starts at 5
-
-// Remove from back while predicate holds
-while let Some(val) = deque.pop_back_if(|x| *x > 8) {
-    process_large(val);
-}
-// deque now ends at 8
-```
-
-## BTreeMap insert_entry (Rust 1.92+)
-
-For `BTreeMap`, `.entry(key).insert_entry(value)` returns an `OccupiedEntry` after insertion, enabling further mutation without a second lookup:
-
-```rust
-use std::collections::BTreeMap;
-
-let mut map = BTreeMap::new();
-map.entry("key")
-    .insert_entry("value")  // Insert and get OccupiedEntry
-    .into_mut();            // Mutable reference to the value
-```
-
-## Pattern: Batch Processing
-
-```rust
-fn process_in_chunks(mut items: Vec<Item>, chunk_size: usize) {
-    while !items.is_empty() {
-        let chunk: Vec<_> = items.drain(..chunk_size.min(items.len())).collect();
-        process_chunk(chunk);
-    }
+    assert_eq!(queue.pop_front_if(|x| *x < 2), Some(1));
+    assert_eq!(queue.pop_front_if(|x| *x < 2), None);
+    assert_eq!(queue.pop_back_if(|x| *x > 8), Some(9));
+    assert_eq!(queue, [2, 3]);
 }
 ```
 
-## Pattern: Transfer Between Collections
+Choose these when only the front/back is relevant; `extract_if` and `drain` solve different removal patterns.
 
-```rust
-// Move all elements without reallocation
-fn transfer_all(src: &mut Vec<Item>, dst: &mut Vec<Item>) {
-    dst.extend(src.drain(..));
-    // src is now empty but keeps capacity
-}
+## Retained Capacity Has a Cost
 
-// Move matching elements (classic approach)
-fn transfer_matching(src: &mut Vec<Item>, dst: &mut Vec<Item>, predicate: impl Fn(&Item) -> bool) {
-    let matching: Vec<_> = src.drain(..).filter(predicate).collect();
-    dst.extend(matching);
-}
+Reusing a collection also retains its high-water allocation. If one iteration grows to an exceptional size, keeping that allocation indefinitely can cost more memory than repeated allocation would have cost CPU time.
 
-// Move matching elements (Vec: Rust 1.87+, HashMap/HashSet: Rust 1.88+)
-fn transfer_matching_modern(src: &mut Vec<Item>, dst: &mut Vec<Item>, predicate: impl Fn(&Item) -> bool) {
-    dst.extend(src.extract_if(predicate));
-    // Single pass, no intermediate allocation
-}
-```
-
-## Pattern: HashMap Drain
-
-```rust
-use std::collections::HashMap;
-
-fn process_and_clear(map: &mut HashMap<String, Value>) {
-    // Process all entries, clearing the map
-    for (key, value) in map.drain() {
-        process(key, value);
-    }
-    // map is now empty but keeps capacity
-}
-```
-
-## drain vs clear vs take
-
-| Operation | Elements | Capacity | Returns |
-|-----------|----------|----------|---------|
-| `.clear()` | Removed | Kept | Nothing |
-| `.drain(..)` | Removed | Kept | Iterator |
-| `.extract_if(pred)` | Some removed | Kept | Iterator (matching only) |
-| `std::mem::take()` | Moved out | Reset to 0 | Owned collection |
-
-```rust
-// clear: just empty
-vec.clear();
-
-// drain: empty and iterate
-for item in vec.drain(..) {
-    process(item);
-}
-
-// extract_if: conditionally remove
-for bad in vec.extract_if(|x| x.is_corrupt()) {
-    log_error(bad);
-}
-
-// take: swap with empty, get ownership
-let old_vec = std::mem::take(&mut vec);
-```
+Measure long-lived scratch buffers, especially in services with highly variable request sizes. Reuse is useful when the working set is recurrent and allocation behavior actually matters.
 
 ## See Also
 
-- [perf-extract-if](./perf-extract-if.md) - extract_if details
-- [mem-reuse-collections](./mem-reuse-collections.md) - Reusing collections
-- [perf-extend-batch](./perf-extend-batch.md) - Batch insertions
-- [mem-with-capacity](./mem-with-capacity.md) - Pre-allocation
+- [mem-reuse-collections](./mem-reuse-collections.md) — retained-capacity tradeoffs
+- [perf-extend-batch](./perf-extend-batch.md) — extending destinations
+- [perf-collect-into](./perf-collect-into.md) — collecting into an existing destination
+
+## References
+
+- [`Vec::drain`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.drain)
+- [`Vec::extract_if`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.extract_if)
+- [`HashMap::extract_if`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.extract_if)

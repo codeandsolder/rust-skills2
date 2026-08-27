@@ -1,140 +1,168 @@
 # api-must-use
 
-> Mark types and functions with `#[must_use]` when ignoring results is likely a bug
+> Add `#[must_use]` when silently discarding a value is plausibly a bug; rely on the built-in `unused_must_use` semantics instead of treating every return value alike
 
 ## Why It Matters
 
-Some return values should never be ignored—`Result`, locks, RAII guards, computed values that have no side effects. Without `#[must_use]`, silently discarding these values can introduce subtle bugs that are hard to detect. The attribute generates compiler warnings when the value is unused.
+`#[must_use]` asks the compiler to warn when a value is produced as an expression statement and then discarded. It is useful for values whose purpose is normally in the returned value itself: results of pure computations, lazy values, builders, guards, and domain objects that have no useful effect when immediately dropped.
 
-## Bad
+Do not add it mechanically to every function. A warning that fires for normal intentional usage teaches callers to ignore warnings instead of catching bugs.
+
+## Good: Mark a Returned Value Whose Effect Is in the Value
 
 ```rust
-// Result ignored - error silently dropped
-fn send_email(to: &str, body: &str) -> Result<(), EmailError> { ... }
+#[must_use = "the checksum is the result of this computation"]
+fn checksum(bytes: &[u8]) -> u32 {
+    bytes.iter().map(|&b| u32::from(b)).sum()
+}
 
-send_email("user@example.com", "Hello!");  // No warning if Result ignored!
-// Email may have failed, but we don't know
-
-// Computed value ignored - likely a bug
-fn compute_checksum(data: &[u8]) -> u32 { ... }
-
-let data = vec![1, 2, 3, 4];
-compute_checksum(&data);  // Result discarded - pointless call
+fn main() {
+    let value = checksum(&[1, 2, 3]);
+    assert_eq!(value, 6);
+}
 ```
 
-## Good
+A discarded call such as `checksum(&data);` now triggers `unused_must_use`.
 
-<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
+## Types Can Carry the Contract
+
 ```rust
-#[must_use = "this `Result` may be an `Err` that should be handled"]
-fn send_email(to: &str, body: &str) -> Result<(), EmailError> { ... }
+#[must_use = "dropping this request without sending it has no effect"]
+struct RequestBuilder {
+    path: String,
+}
 
-send_email("user@example.com", "Hello!");  
-// Warning: unused `Result` that must be used
+impl RequestBuilder {
+    fn new(path: impl Into<String>) -> Self {
+        Self { path: path.into() }
+    }
 
-// Mark pure functions
-#[must_use = "this returns a new value and does not modify the input"]
-fn compute_checksum(data: &[u8]) -> u32 { ... }
+    #[must_use]
+    fn with_prefix(mut self, prefix: &str) -> Self {
+        self.path = format!("{prefix}{}", self.path);
+        self
+    }
 
-compute_checksum(&data);
-// Warning: unused return value of `compute_checksum` that must be used
+    fn send(self) -> String {
+        self.path
+    }
+}
+
+fn main() {
+    let sent = RequestBuilder::new("/users")
+        .with_prefix("https://example.test")
+        .send();
+    assert_eq!(sent, "https://example.test/users");
+}
 ```
 
-## Apply to Types
+Putting `#[must_use]` on the type covers expressions that produce that type. A method-level annotation can still be useful when the method's return value deserves a more specific message.
+
+## `Result`, Iterators, Futures, and Other Existing Must-Use Types
+
+Many standard types already carry `#[must_use]`. Do not add redundant attributes merely because a function returns `Result` or an iterator.
 
 ```rust
-// Mark the type itself when it should always be used
-#[must_use = "futures do nothing unless polled"]
-struct MyFuture<T> { ... }
+fn parse_port(raw: &str) -> Result<u16, std::num::ParseIntError> {
+    raw.parse()
+}
 
-// Mark RAII guards
-#[must_use = "if unused, the lock will be immediately released"]
-struct MutexGuard<'a, T> { ... }
+fn main() {
+    assert_eq!(parse_port("443").unwrap(), 443);
 
-// Mark results/errors
-#[must_use = "errors should be handled"]
-enum AppError { ... }
+    let values = [1, 2, 3];
+    let doubled: Vec<_> = values.iter().map(|x| x * 2).collect();
+    assert_eq!(doubled, [2, 4, 6]);
+}
 ```
 
-## Standard Library Examples
+Ignoring `parse_port("443")` already warns because `Result` is must-use. Likewise, iterator adapters inherit the iterator type's must-use behavior.
+
+## When the Return Value Is Optional Information
+
+A side-effecting operation can legitimately return metadata that callers often do not care about. In that case, forcing every caller to write `let _ = ...` may add noise rather than safety.
 
 ```rust
-// Result and Option are #[must_use]
-let v: Vec<i32> = vec![1, 2, 3];
-v.first();  // Warning: unused Option
+fn record_metric(name: &str, value: u64) -> u64 {
+    println!("{name}={value}");
+    value
+}
 
-// Iterator adapters are #[must_use]
-v.iter().map(|x| x * 2);  // Warning: iterators are lazy
-
-// String methods that return new values
-let s = "hello";
-s.to_uppercase();  // Warning: unused String
+fn main() {
+    record_metric("requests", 3);
+}
 ```
 
-## When to Apply
+Whether that return value deserves `#[must_use]` is an API-design decision, not a rule derived from its type alone.
+
+## Rust 1.92+: Uninhabited Error/Break Types Do Not Trigger `unused_must_use`
+
+The language has a narrow exception for must-use container types that cannot represent the must-handle branch. `Result<(), E>` does not trigger `unused_must_use` when `E` is uninhabited; likewise for `ControlFlow<B, ()>` when `B` is uninhabited.
+
+Use a stable uninhabited type in examples. `core::convert::Infallible` works on stable Rust; using `!` as a generic type argument is still not the right stable example.
 
 ```rust
-// ✅ Pure functions (no side effects)
-#[must_use]
-fn add(a: i32, b: i32) -> i32 { a + b }
+#![deny(unused_must_use)]
 
-// ✅ Builder methods returning Self
-#[must_use = "builder methods return a new builder"]
-fn with_timeout(self, t: Duration) -> Self { ... }
+use core::convert::Infallible;
+use core::ops::ControlFlow;
 
-// ✅ Fallible operations
-#[must_use]
-fn try_parse(s: &str) -> Result<Data, ParseError> { ... }
-
-// ✅ Iterators and futures (lazy)
-#[must_use = "iterators are lazy and do nothing unless consumed"]
-struct Map<I, F> { ... }
-
-// ❌ Side-effecting functions where result is optional
-fn log(msg: &str) -> Result<(), io::Error> { ... }  // Might be ok to ignore
-
-// ❌ Methods with useful side effects
-fn vec.push(item);  // Mutates vec, no return to use
-```
-
-## Custom Messages
-
-```rust
-#[must_use = "creating a guard does nothing without assignment"]
-struct ScopeGuard { ... }
-
-#[must_use = "this returns the old value"]
-fn replace(&mut self, new: T) -> T { ... }
-
-#[must_use = "use `.await` to execute the future"]
-async fn fetch() -> Data { ... }
-```
-
-## Exceptions: Uninhabited Types (Rust 1.92)
-
-Since Rust 1.92 (December 2025), `unused_must_use` no longer warns on `Result<(), Uninhabited>` or `ControlFlow<Uninhabited, ()>` — because an uninhabited return (e.g., `!`, `Infallible`) can never actually occur, the warning would be noise:
-
-```rust
-// No warning in 1.92+ — ! type means Err can never be constructed
-fn always_ok() -> Result<(), !> {
+fn infallible_result() -> Result<(), Infallible> {
     Ok(())
 }
 
-always_ok();  // No warning — this is an infallible operation
+fn cannot_break() -> ControlFlow<Infallible, ()> {
+    ControlFlow::Continue(())
+}
+
+fn main() {
+    // Rust 1.92+: accepted despite Result/ControlFlow being must-use because
+    // their error/break variants cannot be constructed.
+    infallible_result();
+    cannot_break();
+}
 ```
 
-## Clippy Lints
+This does **not** make ordinary `Result<(), E>` optional to handle. If `E` has any inhabitant, the usual must-use warning applies.
 
-```toml
-[lints.clippy]
-must_use_candidate = "warn"           # Suggests where to add #[must_use]
-return_self_not_must_use = "warn"     # Warns -> Self without #[must_use]
-unused_must_use = "deny"               # Built-in, treat warnings as errors
-double_must_use = "warn"               # Redundant #[must_use]
+## Messages Should Explain the Consequence
+
+```rust
+#[must_use = "this returns a normalized copy; it does not mutate the input"]
+fn normalized(input: &str) -> String {
+    input.trim().to_lowercase()
+}
+
+fn main() {
+    assert_eq!(normalized("  Hello "), "hello");
+}
 ```
+
+Prefer a message that tells the caller why discarding the value is suspicious. Repeating “must use this value” adds little beyond the lint itself.
+
+## Lint Policy
+
+Projects that want ignored must-use values to be hard errors can elevate the built-in lint:
+
+```rust
+#![deny(unused_must_use)]
+
+fn main() {
+    let _ = "42".parse::<u32>(); // explicit discard is still permitted
+}
+```
+
+An explicit `let _ = ...` communicates that discarding was intentional. Reserve stronger local handling (`?`, `match`, logging, propagation) for cases where the value actually matters.
+
+Clippy's `must_use_candidate`, `return_self_not_must_use`, and `double_must_use` can help review API consistency, but enabling them is a project choice rather than a universal requirement.
 
 ## See Also
 
-- [api-builder-must-use](./api-builder-must-use.md) - Builder pattern must_use
-- [err-result-over-panic](./err-result-over-panic.md) - Result types require handling
-- [lint-deny-correctness](./lint-deny-correctness.md) - Enabling useful lints
+- [api-builder-must-use](./api-builder-must-use.md) — builder-specific guidance
+- [err-result-over-panic](./err-result-over-panic.md) — handling recoverable errors
+- [lint-deny-correctness](./lint-deny-correctness.md) — lint policy
+
+## References
+
+- [Rust Reference: `must_use`](https://doc.rust-lang.org/reference/attributes/diagnostics.html#the-must_use-attribute)
+- [`unused_must_use` lint](https://doc.rust-lang.org/rustc/lints/listing/warn-by-default.html#unused-must-use)

@@ -27,8 +27,6 @@ api-impl-asref.md :: Common AsRef Implementations :: block 5 :: E0117,P:non-item
 api-impl-asref.md :: Pattern: Optional AsRef Bound :: block 6 :: E0428
 api-impl-into.md :: Implement From, Not Into :: block 3 :: E0119
 api-impl-into.md :: When NOT to Use impl Into :: block 6 :: E0562
-api-must-use.md :: Exceptions: Uninhabited Types (Rust 1.92) :: block 7 :: E0658
-api-must-use.md :: When to Apply :: block 5 :: P:expected one of `->`, `<`,,P:missing parameters for function definition
 api-sealed-trait.md :: Full Pattern :: block 3 :: P:missing `fn` or `struct` for,P:non-item in item list
 api-typestate.md :: Anti-pattern: Hand-rolling Typestate for Simple Builders :: block 7 :: E0392,E0658
 api-typestate.md :: Builder Typestate :: block 3 :: E0599
@@ -103,7 +101,6 @@ own-borrow-over-clone.md :: slice::get_disjoint_mut (1.86) — Borrow multiple i
 own-clone-explicit.md :: When to Avoid Clone :: block 6 :: E0428
 own-cow-conditional.md :: Edition 2024 RPIT Makes `Cow<'_, str>` Returns More Ergonomic :: block 7 :: E0428
 own-cow-rpit-edition2024.md :: Eliminates Clone-for-Lifetime Workarounds :: block 3 :: E0428
-own-lazy-init.md :: `LazyCell` / `LazyLock` implement `From<T>` (1.96) :: block 5 :: E0015,E0428
 own-lifetime-elision.md :: After (Edition 2024): Automatic lifetime capture :: block 9 :: E0107
 own-lifetime-elision.md :: Before (Edition 2021): Explicit lifetime annotations required :: block 8 :: E0107
 own-lifetime-elision.md :: Common Patterns :: block 15 :: P:expected one of `!`, `(`,
@@ -118,8 +115,6 @@ own-slice-over-vec.md :: Path Types Too :: block 7 :: E0428
 own-slice-over-vec.md :: Standard Library Range Types (Rust 1.96) :: block 4 :: E0119,E0428
 perf-chain-avoid.md :: When Chain Is Fine :: block 4 :: E0106
 perf-collect-once.md :: Anti-Pattern: HashMap::values().collect() Then Iterate :: block 5 :: E0428
-perf-drain-reuse.md :: extract_if :: block 3 :: E0061
-perf-iter-lazy.md :: Peekable::next_if and next_if_map (Rust 1.94+) :: block 5 :: E0308,E0614
 perf-iter-over-index.md :: Fixed-Size Windows with array_windows (Rust 1.94+) :: block 3 :: E0428
 proj-mod-rs-dir.md :: Consistency Rule :: block 5 :: P:expected `;`, found `mod_module_files`,P:expected one of `.`, `;`,
 proj-mod-rs-dir.md :: Edition 2024: `gen` Keyword Reservation :: block 4 :: P:expected identifier, found reserved keyword
@@ -131,7 +126,6 @@ type-enum-states.md :: `cfg_select!` for Compile-Time State Selection (Rust 1.95
 type-enum-states.md :: `let_chains` for Peeling Nested States (Edition 2024, Rust 1.85+) :: block 5 :: E0428
 type-never-diverge.md :: Standard Library Examples :: block 7 :: P:expected one of `where` or
 type-never-diverge.md :: `Result::flatten` with `!`/`Infallible` (Rust 1.89+) :: block 4 :: E0428
-type-no-stringly.md :: Reduce Boilerplate with `derive_more::FromStr` :: block 4 :: E0277,P:expected `error` argument here
 type-option-nullable.md :: `Option::as_slice()` (Rust 1.81+) :: block 5 :: E0277
 type-option-nullable.md :: `let_chains` for Multiple Option Checks (Edition 2024, Rust 1.85+) :: block 6 :: E0428
 type-result-fallible.md :: `#[diagnostic::do_not_recommend]` (Rust 1.85+) :: block 7 :: E0210
