@@ -1,0 +1,37 @@
+name: Inventory example contracts
+
+on:
+  push:
+    branches: [fix/explicit-example-contracts-1]
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - name: Generate contract inventory
+        run: |
+          cd checks
+          python3 gen.py
+          python3 - <<'PY'
+          import json
+          from collections import Counter, defaultdict
+          m=json.load(open('manifest.json'))
+          counts=Counter(x['expect'] for x in m.values())
+          print('COUNTS')
+          for k in sorted(counts): print(f'{k}={counts[k]}')
+          print('\nNONSTRICT')
+          for name, x in sorted(m.items(), key=lambda kv:(kv[1]['expect'],kv[1]['file'],kv[1]['line'])):
+              if x['expect'] in {'auto','fragment','ignore','nightly'}:
+                  print(f"{x['expect']}\t{x['file']}\t{x['line']}\t{x['section']}\t{x['reason']}")
+          print('\nREASONS')
+          rs=Counter((x['expect'],x['reason']) for x in m.values() if x['expect'] in {'auto','fragment','ignore','nightly'})
+          for (e,r),n in sorted(rs.items()): print(f'{e}\t{n}\t{r}')
+          PY
