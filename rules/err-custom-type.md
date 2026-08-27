@@ -1,243 +1,176 @@
 # err-custom-type
 
-> Define custom error types for domain-specific failures
+> Define domain error types when callers benefit from knowing what failed
 
 ## Why It Matters
 
-Generic errors like `String`, `Box<dyn Error>`, or catch-all enums obscure what can actually go wrong. Custom error types document failure modes in the type system, enable pattern matching for specific handling, and provide clear API contracts. They make your code self-documenting and help callers handle errors appropriately.
+A custom error type turns failure modes into structured data. Callers can match variants, inspect fields, decide which failures are retryable, and display a human-readable message without parsing strings.
 
-## Bad
+Do not create a bespoke enum merely for ceremony: at a private application boundary, a context-rich dynamic error may be simpler. Typed errors are most valuable where the failure structure is part of an API contract.
+
+## Good: Model Distinct Failures
 
 ```rust
-// Generic string errors - no structure
-fn validate_user(user: &User) -> Result<(), String> {
-    if user.name.is_empty() {
-        return Err("Name is empty".to_string());
-    }
-    if user.age > 150 {
-        return Err("Age is invalid".to_string());
-    }
-    Ok(())
+use std::fmt;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ValidationError {
+    EmptyName,
+    NameTooLong { max: usize, actual: usize },
+    InvalidAge(u8),
 }
 
-// Caller can't match on specific errors
-match validate_user(&user) {
-    Ok(()) => save(user),
-    Err(msg) => {
-        // Can only do string comparison - fragile!
-        if msg.contains("Name") {
-            prompt_for_name()
+impl fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyName => f.write_str("name cannot be empty"),
+            Self::NameTooLong { max, actual } => {
+                write!(f, "name has {actual} characters; maximum is {max}")
+            }
+            Self::InvalidAge(age) => write!(f, "invalid age {age}"),
         }
     }
 }
-```
 
-## Good
+impl std::error::Error for ValidationError {}
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum ValidationError {
-    #[error("name cannot be empty")]
-    EmptyName,
-    
-    #[error("name exceeds maximum length of {max} characters")]
-    NameTooLong { max: usize, actual: usize },
-    
-    #[error("invalid age {0}: must be between 0 and 150")]
-    InvalidAge(u8),
-    
-    #[error("email format is invalid: {0}")]
-    InvalidEmail(String),
+struct User {
+    name: String,
+    age: u8,
 }
 
-fn validate_user(user: &User) -> Result<(), ValidationError> {
+fn validate(user: &User) -> Result<(), ValidationError> {
     if user.name.is_empty() {
         return Err(ValidationError::EmptyName);
     }
     if user.name.len() > 100 {
-        return Err(ValidationError::NameTooLong { 
-            max: 100, 
-            actual: user.name.len() 
+        return Err(ValidationError::NameTooLong {
+            max: 100,
+            actual: user.name.len(),
         });
     }
-    if user.age > 150 {
+    if user.age > 120 {
         return Err(ValidationError::InvalidAge(user.age));
     }
     Ok(())
 }
 
-// Caller can match specifically
-match validate_user(&user) {
-    Ok(()) => save(user),
-    Err(ValidationError::EmptyName) => prompt_for_name(),
-    Err(ValidationError::InvalidAge(age)) => {
-        show_error(&format!("Please enter a valid age (you entered {})", age))
-    }
-    Err(e) => show_error(&e.to_string()),
+fn main() {
+    let user = User { name: String::new(), age: 20 };
+    assert_eq!(validate(&user), Err(ValidationError::EmptyName));
 }
 ```
 
-## Error Type Design Guidelines
+The caller can now distinguish programmatically meaningful cases without matching error text.
+
+## Include Data Needed for Handling
 
 ```rust
-// 1. Group related errors in domain-specific enums
-#[derive(Error, Debug)]
-pub enum AuthError {
-    #[error("invalid credentials")]
-    InvalidCredentials,
-    #[error("account locked after {attempts} failed attempts")]
-    AccountLocked { attempts: u32 },
-    #[error("token expired")]
-    TokenExpired,
-}
+use std::path::PathBuf;
 
-#[derive(Error, Debug)]
-pub enum PaymentError {
-    #[error("insufficient funds: need {required}, have {available}")]
-    InsufficientFunds { required: Decimal, available: Decimal },
-    #[error("card declined: {reason}")]
-    CardDeclined { reason: String },
-}
-
-// 2. Include relevant data for error handling/display
-#[derive(Error, Debug)]
-pub enum FileError {
-    #[error("file not found: {path}")]
+#[derive(Debug)]
+enum FileError {
     NotFound { path: PathBuf },
-    #[error("permission denied for {path}")]
     PermissionDenied { path: PathBuf },
 }
+```
 
-// 3. Consider #[non_exhaustive] for public APIs
-#[derive(Error, Debug)]
-#[non_exhaustive]  // Allows adding variants without breaking changes
+Fields should support useful decisions or diagnostics. Avoid stuffing every local temporary into the public error type.
+
+## Preserve Sources When Wrapping Errors
+
+If one failure is caused by another error, implement or derive `Error::source` rather than flattening the cause into a string.
+
+```rust
+use std::{fmt, io};
+
+#[derive(Debug)]
+struct LoadError {
+    path: String,
+    source: io::Error,
+}
+
+impl fmt::Display for LoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "failed to load {}", self.path)
+    }
+}
+
+impl std::error::Error for LoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+```
+
+A derive crate such as `thiserror` can remove this boilerplate without changing the public error semantics.
+
+## `#[non_exhaustive]` for Evolvable Public Enums
+
+A public error enum is part of your compatibility surface. If downstream exhaustive matching would make adding a variant a breaking change, consider `#[non_exhaustive]`.
+
+```rust
+#[derive(Debug)]
+#[non_exhaustive]
 pub enum ApiError {
-    #[error("rate limited")]
     RateLimited,
-    #[error("not found")]
     NotFound,
 }
 ```
 
-## thiserror 2.0: no_std Support
+This deliberately requires downstream code to include a wildcard arm.
 
-thiserror 2.0+ supports `no_std` environments (Rust 1.81+):
-
-```toml
-# Cargo.toml
-[dependencies]
-thiserror = { version = "2", default-features = false }
-```
-
-```rust
-#![no_std]
-
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum SpiError {
-    #[error("DMA transfer failed on channel {channel}")]
-    DmaFailed {
-        channel: u8,
-        #[source]
-        source: DmaError,
-    },
-
-    #[error("CS assertion failed")]
-    CsAssert(#[from] GpioError),
-}
-```
-
-## #[error(transparent)]
-
-Delegates both Display and source to the inner error, useful for wrapping other error types:
+## `thiserror` for Boilerplate
 
 ```rust
 use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum AppError {
-    #[error(transparent)]
-    Internal(#[from] InternalError),
-
-    #[error(transparent)]
+#[derive(Debug, Error)]
+enum ConfigError {
+    #[error("failed to read configuration")]
     Io(#[from] std::io::Error),
 
-    // Without transparent, wrapping is more verbose
-    #[error("parse error: {0}")]
-    Parse(String),
+    #[error("missing field {0}")]
+    MissingField(String),
 }
 ```
 
-## Alternative: snafu 0.9
+Use `#[from]` when conversion from the source error is unambiguous and preserves the semantics you want; use `#[source]` without `#[from]` when construction needs additional context.
 
-`snafu` 0.9 (March 2026) provides context selectors and a `Report` macro:
+## `#[diagnostic::do_not_recommend]` Is Not an Orphan-Rule Escape Hatch
 
-```rust
-use snafu::prelude::*;
-
-#[derive(Debug, Snafu)]
-pub enum ConfigError {
-    #[snafu(display("failed to read config at {path}"))]
-    ReadFailed {
-        path: String,
-        source: std::io::Error,
-    },
-}
-
-// snafu's Report macro for unified output
-fn main() {
-    if let Err(e) = run() {
-        eprintln!("{}", Report::from_error(e));
-        std::process::exit(1);
-    }
-}
-```
-
-## #[diagnostic::do_not_recommend] (Rust 1.85+)
-
-Hide blanket error conversion impls from compiler suggestions:
+Rust 1.85 stabilized `#[diagnostic::do_not_recommend]` for legal trait impls whose appearance in compiler diagnostics would mislead users. It does not make an illegal blanket conversion legal.
 
 ```rust
+trait InternalErrorMarker {}
+trait PublicErrorMarker {}
+
 #[diagnostic::do_not_recommend]
-impl<T: std::error::Error + 'static> From<T> for Box<dyn std::error::Error> {
-    fn from(err: T) -> Self {
-        Box::new(err)
-    }
-}
+impl<T: InternalErrorMarker> PublicErrorMarker for T {}
+
+struct DomainError;
+impl PublicErrorMarker for DomainError {}
+
+fn main() {}
 ```
 
-## When to Use What
+Do not use examples such as implementing `From<T>` for `Box<dyn std::error::Error>`: both the trait and target type are foreign, so such an impl violates coherence regardless of the diagnostic attribute.
 
-| Error Pattern | Use Case |
-|---------------|----------|
-| Custom enum | Library with specific failure modes |
-| `thiserror` | Libraries needing `std::error::Error` or `core::error::Error` |
-| `anyhow::Error` | Applications, prototypes |
-| Struct with source | Single error type with wrapped cause |
+For full guidance, see [err-diagnostic-do-not-recommend](./err-diagnostic-do-not-recommend.md).
 
-## Struct-Based Errors
+## Choose the Error Shape from the Boundary
 
-For single error types with rich context:
-
-```rust
-#[derive(Error, Debug)]
-#[error("query failed for table '{table}' with filter '{filter}'")]
-pub struct QueryError {
-    pub table: String,
-    pub filter: String,
-    #[source]
-    pub source: DatabaseError,
-}
-```
+| Boundary | Typical choice |
+|---|---|
+| Public library API with actionable failure modes | typed enum/struct |
+| Internal application plumbing | often context-rich dynamic error |
+| Single wrapped cause plus context | error struct with `source` |
+| Public enum expected to gain variants | consider `#[non_exhaustive]` |
 
 ## See Also
 
-- [err-thiserror-lib](./err-thiserror-lib.md) - thiserror for error definitions
-- [err-no-std-error](./err-no-std-error.md) - no_std error patterns
-- [err-anyhow-app](./err-anyhow-app.md) - When to use anyhow instead
-- [err-diagnostic-do-not-recommend](./err-diagnostic-do-not-recommend.md) - Cleaner compiler diagnostics
-- [api-non-exhaustive](./api-non-exhaustive.md) - Forward-compatible enums
+- [err-thiserror-lib](./err-thiserror-lib.md) — deriving typed errors
+- [err-anyhow-app](./err-anyhow-app.md) — application-oriented dynamic errors
+- [err-from-impl](./err-from-impl.md) — conversion rules
+- [err-diagnostic-do-not-recommend](./err-diagnostic-do-not-recommend.md) — compiler diagnostic hints
+- [api-non-exhaustive](./api-non-exhaustive.md) — evolvable enums
