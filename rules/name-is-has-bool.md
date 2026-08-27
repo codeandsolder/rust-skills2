@@ -1,151 +1,202 @@
 # name-is-has-bool
 
-> Use `is_`, `has_`, `can_`, `should_` prefixes for boolean-returning methods
+> Name boolean methods as clear predicates; use `is_`, `has_`, `can_`, and similar prefixes when they match the question being answered
 
 ## Why It Matters
 
-Boolean methods answer yes/no questions. Prefixes like `is_`, `has_`, `can_` make the question explicit, so code reads naturally: `if user.is_active()`, `if buffer.has_remaining()`. Without prefixes, boolean methods are ambiguous and require reading documentation.
+A boolean-returning API should read like a predicate at the call site. `is_empty()`, `has_permission()`, and `can_retry()` make their intent obvious, but Rust does **not** require every boolean method to begin with one of these prefixes. Standard APIs also use verbs and verb phrases such as `contains`, `starts_with`, `ends_with`, and `eq_ignore_ascii_case`.
 
-## Bad
+Choose the name that describes the question naturally rather than mechanically adding `is_` to every `bool` return.
+
+## State Predicates: `is_`
+
+`is_` is a strong convention for state or property checks:
 
 ```rust
+struct User {
+    active: bool,
+    admin: bool,
+}
+
 impl User {
-    // Unclear: does this check or set?
-    fn active(&self) -> bool { ... }
-    
-    // Unclear: does this delete or check?
-    fn deleted(&self) -> bool { ... }
-    
-    // Unclear return type
-    fn admin(&self) -> bool { ... }
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn is_admin(&self) -> bool {
+        self.admin
+    }
 }
 
-// Reading code is confusing
-if user.active() { ... }  // Is this checking or activating?
+fn main() {
+    let user = User { active: true, admin: false };
+    assert!(user.is_active());
+    assert!(!user.is_admin());
+}
 ```
 
-## Good
+## Possession and Capability
 
-<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
+Use semantic prefixes when they genuinely fit the domain:
+
 ```rust
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Permission {
+    Read,
+    Write,
+}
+
+struct User {
+    permissions: Vec<Permission>,
+}
+
 impl User {
-    // Clear: answers "is the user active?"
-    fn is_active(&self) -> bool { ... }
-    
-    // Clear: answers "is the user deleted?"
-    fn is_deleted(&self) -> bool { ... }
-    
-    // Clear: answers "is the user an admin?"
-    fn is_admin(&self) -> bool { ... }
-    
-    // Clear: answers "does the user have permission X?"
-    fn has_permission(&self, perm: Permission) -> bool { ... }
-    
-    // Clear: answers "can the user edit?"
-    fn can_edit(&self) -> bool { ... }
+    fn has_permission(&self, permission: Permission) -> bool {
+        self.permissions.contains(&permission)
+    }
+
+    fn can_edit(&self) -> bool {
+        self.has_permission(Permission::Write)
+    }
 }
 
-// Reads naturally
-if user.is_active() && user.has_permission(Permission::Write) {
-    // ...
+fn main() {
+    let user = User { permissions: vec![Permission::Read] };
+    assert!(user.has_permission(Permission::Read));
+    assert!(!user.can_edit());
 }
 ```
 
-## Common Prefixes
+`should_`, `needs_`, and `will_` can likewise be useful when they express policy, requirements, or predicted behavior, but they are domain vocabulary rather than mandated Rust prefixes.
 
-| Prefix | Use For | Example |
-|--------|---------|---------|
-| `is_` | State/property check | `is_empty()`, `is_valid()`, `is_some()` |
-| `has_` | Possession/containment | `has_key()`, `has_children()`, `has_remaining()` |
-| `can_` | Capability/permission | `can_read()`, `can_write()`, `can_execute()` |
-| `should_` | Recommendation/policy | `should_retry()`, `should_cache()` |
-| `needs_` | Requirement | `needs_update()`, `needs_auth()` |
-| `will_` | Future action | `will_block()`, `will_overflow()` |
+## Boolean Methods Need Not Use a Prefix
 
-## Standard Library Examples
+Many good predicates are already verb phrases:
 
 ```rust
-// is_ prefix
-vec.is_empty()
-option.is_some()
-option.is_none()
-result.is_ok()
-result.is_err()
-char.is_alphabetic()
-str.is_ascii()
-path.is_file()
-path.is_dir()
-
-// Option/Result idioms
-let opt: Option<i32> = Some(42);
-assert!(opt.is_some());
-assert!(!opt.is_none());
-
-let res: Result<i32, &str> = Ok(42);
-assert!(res.is_ok());
-assert!(!res.is_err());
-
-// has_ prefix (less common in std)
-iterator.has_next()  // conceptual
-
-// Checking methods
-str.contains("foo")      // Not is_ because takes argument
-str.starts_with("bar")   // Descriptive verb phrase
-str.ends_with("baz")
+fn main() {
+    let text = "hello.rs";
+    assert!(text.contains("lo"));
+    assert!(text.starts_with("he"));
+    assert!(text.ends_with(".rs"));
+    assert!("Rust".eq_ignore_ascii_case("rust"));
+}
 ```
 
-## `is_` with `&mut self`
+Names such as `is_contains`, `is_starts_with`, or `has_contains` would be worse.
 
-Since clippy 1.62 (PR #8738), `is_*` methods may take `&mut self` in addition to `&self`:
+## Standard-Library Predicate Shapes
+
+Use real calls when learning the convention:
 
 ```rust
-impl MyType {
-    // Allowed: is_ with &mut self
-    fn is_empty(&mut self) -> bool {
-        self.buffer.clear();  // Side effect during check
-        self.items.is_empty()
+use std::path::Path;
+
+fn main() {
+    let values = Vec::<u8>::new();
+    assert!(values.is_empty());
+
+    let option = Some(42);
+    assert!(option.is_some());
+    assert!(!option.is_none());
+
+    let result: Result<u32, &str> = Ok(42);
+    assert!(result.is_ok());
+    assert!(!result.is_err());
+
+    assert!('a'.is_alphabetic());
+    assert!("abc".is_ascii());
+
+    let path = Path::new(".");
+    let _is_file = path.is_file();
+    let _is_dir = path.is_dir();
+}
+```
+
+Do not invent nonexistent “conceptual standard-library examples” such as `iterator.has_next()` and present them as if they were APIs.
+
+## Receiver Shape and `clippy::wrong_self_convention`
+
+Clippy permits `is_*` methods with `&self`, `&mut self`, or no receiver. That is a receiver-shape rule, **not** an endorsement of surprising mutation inside a predicate.
+
+A mutating predicate can be legitimate when checking requires advancing or normalizing state, but the side effect should be inherent and documented. Do not write an `is_empty(&mut self)` that secretly clears the collection merely because Clippy permits `&mut self`.
+
+```rust
+struct Cursor {
+    remaining: usize,
+}
+
+impl Cursor {
+    fn is_finished(&self) -> bool {
+        self.remaining == 0
+    }
+}
+
+fn main() {
+    let cursor = Cursor { remaining: 0 };
+    assert!(cursor.is_finished());
+}
+```
+
+## Prefer Positive Predicates
+
+Positive names compose better with caller-side negation:
+
+```rust
+struct Connection {
+    active: bool,
+}
+
+impl Connection {
+    fn is_active(&self) -> bool {
+        self.active
+    }
+}
+
+fn main() {
+    let connection = Connection { active: false };
+    if !connection.is_active() {
+        // reconnect
     }
 }
 ```
 
-## Negation
+Avoid awkward names such as `is_not_active()` unless the negative state is genuinely a first-class domain concept. Established negative predicates like `is_empty()` or `is_none()` are perfectly idiomatic because “empty” and “none” are meaningful states in their own right.
 
-```rust
-// Prefer positive form with caller negation
-if !user.is_active() { ... }
+## Boolean Fields Are Different
 
-// Rather than negative method
-if user.is_inactive() { ... }  // Avoid double negatives: !is_inactive()
-
-// Exception: when negative is the common case
-fn is_empty(&self) -> bool { ... }     // Checking for empty is common
-fn is_not_empty(&self) -> bool { ... } // Rarely needed, use !is_empty()
-```
-
-## Boolean Fields
+Fields do not need method-style predicate prefixes:
 
 ```rust
 struct Config {
-    // Field names can omit prefix
     enabled: bool,
     verbose: bool,
-    debug: bool,
 }
 
 impl Config {
-    // But methods should have prefix
     fn is_enabled(&self) -> bool {
         self.enabled
     }
-    
-    fn is_verbose(&self) -> bool {
-        self.verbose
-    }
+}
+
+fn main() {
+    let config = Config { enabled: true, verbose: false };
+    assert!(config.is_enabled());
+    assert!(!config.verbose);
 }
 ```
+
+## Practical Guidance
+
+- Use `is_foo` for state/property predicates when it reads naturally.
+- Use `has_foo`, `can_foo`, `should_foo`, or `needs_foo` only when those verbs match the domain meaning.
+- Keep natural verb predicates such as `contains` and `starts_with` as verbs; do not prefix them mechanically.
+- Prefer positive predicate names unless the negative condition is itself a meaningful state.
+- Do not hide surprising side effects behind a predicate-sounding name.
+- Treat Clippy's receiver convention as a syntactic convention, not a complete API-design rule.
 
 ## See Also
 
 - [name-no-get-prefix](./name-no-get-prefix.md) - Getter naming
 - [name-funcs-snake](./name-funcs-snake.md) - Function naming
-- [api-must-use](./api-must-use.md) - Boolean functions should be checked
+- [api-must-use](./api-must-use.md) - Important return values
