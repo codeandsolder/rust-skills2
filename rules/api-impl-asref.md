@@ -1,77 +1,56 @@
 # api-impl-asref
 
-> Use `AsRef<T>` when you only need to borrow the inner data
+> Use `AsRef<T>` for cheap generic borrowed views when accepting several source types is genuinely useful
 
 ## Why It Matters
 
-`AsRef<T>` provides a cheap borrowed view of data without taking ownership or copying. Functions accepting `impl AsRef<T>` can work with multiple types that contain or represent `T`, making APIs flexible while avoiding unnecessary allocations. Use `AsRef` when you only need to read, `Into` when you need to own.
+`AsRef<T>` represents a cheap, infallible conversion from `&Self` to `&T`. It is useful when an API wants a borrowed view such as `&str`, `&[u8]`, or `&Path` and several input types naturally provide that view.
 
-## Bad
+Do not turn every `&T` parameter into `impl AsRef<T>`. A concrete borrow is simpler, avoids extra generic surface area, and communicates exactly what the function needs.
 
-```rust
-// Forces callers to provide exact types
-fn process_text(text: &str) { ... }
-fn read_file(path: &Path) { ... }
+Also distinguish the trait's borrowing operation from the **function parameter's ownership**: a function taking `value: impl AsRef<T>` by value still moves an owned argument into the function.
 
-// Can't call directly with owned types
-let s = String::from("hello");
-process_text(&s);  // Works but verbose
-
-let p = PathBuf::from("/file");
-read_file(&p);  // Works but verbose
-read_file("/file");  // Error! &str != &Path
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-// Accept anything that can be viewed as the target type
-fn process_text(text: impl AsRef<str>) {
-    let s: &str = text.as_ref();
-    println!("{}", s);
-}
-
-fn read_file(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
-    std::fs::read(path.as_ref())
-}
-
-// All of these work:
-process_text("literal");        // &str
-process_text(String::from("owned"));  // String
-process_text(Cow::from("cow")); // Cow<str>
-
-read_file("/path/to/file");     // &str  
-read_file(Path::new("/path"));  // &Path
-read_file(PathBuf::from("/path")); // PathBuf
-read_file(OsStr::new("/path")); // &OsStr
-```
-
-## AsRef vs Into vs Borrow
+## Good: Generic Borrowed View When It Improves the Call Sites
 
 ```rust
-// AsRef<T>: cheap borrow, no ownership transfer
-fn read(p: impl AsRef<Path>) {
-    let path: &Path = p.as_ref();
+use std::path::{Path, PathBuf};
+
+fn component_count(path: impl AsRef<Path>) -> usize {
+    path.as_ref().components().count()
 }
 
-// Into<T>: ownership transfer, may allocate
-fn store(p: impl Into<PathBuf>) {
-    let owned: PathBuf = p.into();
-}
-
-// Borrow<T>: like AsRef but with Eq/Hash consistency guarantee
-use std::borrow::Borrow;
-fn lookup<Q: ?Sized>(map: &HashMap<String, V>, key: &Q) -> Option<&V>
-where
-    String: Borrow<Q>,
-    Q: Hash + Eq,
-{
-    map.get(key)
+fn main() {
+    assert_eq!(component_count("a/b/c"), 3);
+    assert_eq!(component_count(PathBuf::from("a/b")), 2);
 }
 ```
 
-## Implement AsRef for Custom Types
+The conversion performed by `as_ref()` is a borrow; it should not allocate or otherwise perform a costly conversion.
+
+The `PathBuf` argument above is nevertheless **moved** because the function parameter is by value. If callers should retain ownership and you only need one view, `&Path` is often the cleaner API.
+
+## Plain References Are Often Better
+
+```rust
+use std::path::{Path, PathBuf};
+
+fn file_name(path: &Path) -> Option<&str> {
+    path.file_name()?.to_str()
+}
+
+fn main() {
+    let path = PathBuf::from("dir/file.txt");
+    assert_eq!(file_name(&path), Some("file.txt"));
+    // `path` is still owned by the caller.
+    assert_eq!(path.components().count(), 2);
+}
+```
+
+Deref coercions already make common owned/smart-pointer types ergonomic to borrow. Use `AsRef` when the additional accepted representations are part of the intended API, not merely to avoid writing `&value`.
+
+## `AsRef` Is a Cheap Reference-to-Reference Conversion
+
+A custom wrapper can expose one of its fields as a borrowed view:
 
 ```rust
 struct Name(String);
@@ -82,62 +61,110 @@ impl AsRef<str> for Name {
     }
 }
 
-impl AsRef<[u8]> for Name {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_bytes()
+fn starts_with_a(name: impl AsRef<str>) -> bool {
+    name.as_ref().starts_with('A')
+}
+
+fn main() {
+    assert!(starts_with_a(Name("Ada".into())));
+    assert!(starts_with_a("Alice"));
+}
+```
+
+If producing the target would allocate, parse, validate, or otherwise do substantial work, `AsRef` is the wrong abstraction. Use `From`/`TryFrom` or a named method that makes the work/failure explicit.
+
+## `AsRef` Is Not Universally Reflexive
+
+There is no blanket `impl<T: ?Sized> AsRef<T> for T` for every type. The standard library documents historical overlap restrictions that prevent such a universal reflexive implementation.
+
+Many common standard types provide the specific implementations users expect—such as `String: AsRef<str>`—but generic code should not assume every `T` automatically implements `AsRef<T>`.
+
+For a local type where a reflexive view is useful, you may implement it explicitly:
+
+```rust
+struct Token(u64);
+
+impl AsRef<Token> for Token {
+    fn as_ref(&self) -> &Token {
+        self
     }
 }
 
-// Now Name works with functions expecting AsRef<str>
-fn greet(name: impl AsRef<str>) {
-    println!("Hello, {}!", name.as_ref());
+fn main() {
+    let token = Token(7);
+    assert_eq!(token.as_ref().0, 7);
 }
-
-greet(Name("Alice".into()));
 ```
 
-## Common AsRef Implementations
+## `Borrow` Has a Stronger Semantic Contract
+
+`Borrow<T>` has a similar method signature, but for key-like borrowing it requires borrowed and owned forms to behave equivalently for `Eq`, `Ord`, and `Hash` where those traits are implemented. That is why collections such as `HashMap<String, V>` can be queried with `&str`.
 
 ```rust
-// Standard library provides many
-impl AsRef<str> for String { ... }
-impl AsRef<str> for str { ... }
-impl AsRef<[u8]> for str { ... }
-impl AsRef<[u8]> for String { ... }
-impl AsRef<[u8]> for Vec<u8> { ... }
-impl AsRef<Path> for str { ... }
-impl AsRef<Path> for String { ... }
-impl AsRef<Path> for PathBuf { ... }
-impl AsRef<Path> for OsStr { ... }
-impl AsRef<OsStr> for str { ... }
+use std::borrow::Borrow;
+use std::collections::HashMap;
+use std::hash::Hash;
+
+fn lookup<'a, Q: ?Sized>(
+    map: &'a HashMap<String, u32>,
+    key: &Q,
+) -> Option<&'a u32>
+where
+    String: Borrow<Q>,
+    Q: Eq + Hash,
+{
+    map.get(key)
+}
+
+fn main() {
+    let map = HashMap::from([(String::from("answer"), 42)]);
+    assert_eq!(lookup(&map, "answer"), Some(&42));
+}
 ```
 
-## When to Use Which
+Use `AsRef` when you want a cheap view without that equality/hash consistency promise; use `Borrow` when that promise is part of the abstraction.
 
-| Trait | Use When |
-|-------|----------|
-| `&T` | Single type, simple API |
-| `AsRef<T>` | Read-only access, multiple input types |
-| `Into<T>` | Need to store/own the value |
-| `Borrow<T>` | HashMap/HashSet keys, Eq/Hash needed |
-| `Deref<Target=T>` | Smart pointer semantics |
+## `AsRef` Is Not a Deref Spelling
 
-## Pattern: Optional AsRef Bound
+For ordinary smart-pointer dereferencing, prefer deref coercion rather than calling `as_ref()` solely to obtain `&T`.
 
 ```rust
-// When T itself might be passed
-fn process<T: AsRef<U>, U>(value: T) {
-    let inner: &U = value.as_ref();
+fn increment(value: &i32) -> i32 {
+    value + 1
 }
 
-// More flexible: accept T or &T
-fn process<T: AsRef<U> + ?Sized, U: ?Sized>(value: &T) {
-    let inner: &U = value.as_ref();
+fn main() {
+    let boxed = Box::new(41);
+    assert_eq!(increment(&boxed), 42);
 }
 ```
+
+A smart pointer may also implement `AsRef`, but `Deref` and `AsRef` communicate different API relationships.
+
+## Choosing the Parameter Shape
+
+| Need | Typical parameter |
+|---|---|
+| Exactly a borrowed `T` | `&T` |
+| Several cheap borrowed representations | `impl AsRef<T>` or `P: AsRef<T>` |
+| Consume/own a converted value | `impl Into<T>` |
+| Fallible consuming conversion | `TryInto<T>` / named constructor |
+| Key-like equivalent borrowed representation | `Borrow<Q>` bounds |
+| Smart-pointer dereferencing | ordinary `&value` / deref coercion |
+
+Generic convenience has costs: more monomorphizations, more complicated signatures, and sometimes worse type inference. Prefer it when callers actually benefit.
+
+## Practical Guidance
+
+- Use `AsRef<T>` only for cheap, infallible borrowed views.
+- Remember that a by-value `impl AsRef<T>` parameter still moves owned arguments.
+- Prefer `&T` when one borrowed target type already gives ergonomic call sites.
+- Do not assume `AsRef<T>` is blanket-reflexive for every `T`.
+- Use `Borrow` instead when equality/hash/order equivalence of owned and borrowed forms matters.
+- Use deref coercion, not `AsRef`, merely to dereference smart pointers.
 
 ## See Also
 
-- [api-impl-into](./api-impl-into.md) - When to use Into instead
-- [own-slice-over-vec](./own-slice-over-vec.md) - Using slices for flexibility
-- [own-borrow-over-clone](./own-borrow-over-clone.md) - Preferring borrows
+- [api-impl-into](./api-impl-into.md) - Ownership-taking generic conversions
+- [own-slice-over-vec](./own-slice-over-vec.md) - Prefer borrowed slice/string/path types
+- [own-borrow-over-clone](./own-borrow-over-clone.md) - Borrowing versus ownership

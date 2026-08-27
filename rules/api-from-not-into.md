@@ -1,146 +1,182 @@
 # api-from-not-into
 
-> Implement `From<T>`, not `Into<U>` - From gives you Into for free
+> Implement `From<Source> for Destination` for clear infallible conversions you own; use `Into<Destination>` primarily as a caller-side bound
 
 ## Why It Matters
 
-The standard library has a blanket implementation: `impl<T, U> Into<U> for T where U: From<T>`. This means implementing `From<T> for U` automatically gives you `Into<U> for T`. Implementing `Into` directly bypasses this and is considered non-idiomatic. Always implement `From`.
+The standard library provides a blanket implementation that makes `From<T> for U` imply `Into<U> for T`. Implementing `From` therefore gives callers both spellings:
 
-## Bad
+- `U::from(value)` when the destination type should be explicit;
+- `value.into()` when context already determines the destination.
 
-```rust
-struct UserId(u64);
+This is why the standard library recommends implementing `From` rather than `Into` directly in modern Rust.
 
-// Non-idiomatic: implementing Into directly
-impl Into<UserId> for u64 {
-    fn into(self) -> UserId {
-        UserId(self)
-    }
-}
-
-// Works, but now you can't use From syntax
-let id = UserId::from(42);  // Error: From not implemented
-let id: UserId = 42.into(); // Works, but limited
-```
-
-## Good
+## Good: Implement `From` Once
 
 ```rust
+#[derive(Debug, PartialEq, Eq)]
 struct UserId(u64);
 
-// Idiomatic: implement From
 impl From<u64> for UserId {
-    fn from(id: u64) -> Self {
-        UserId(id)
+    fn from(value: u64) -> Self {
+        Self(value)
     }
 }
 
-// Now both work automatically
-let id = UserId::from(42);   // From syntax
-let id: UserId = 42.into();  // Into syntax (via blanket impl)
+fn main() {
+    assert_eq!(UserId::from(7), UserId(7));
 
-// And Into bound works in generics
-fn process(id: impl Into<UserId>) {
-    let id: UserId = id.into();
+    let via_into: UserId = 9_u64.into();
+    assert_eq!(via_into, UserId(9));
 }
-process(42u64);  // Works!
 ```
 
-## Blanket Implementation
+There is no need to add a matching manual `Into<UserId> for u64`; doing so would overlap with the blanket `Into` implementation supplied because `UserId: From<u64>`.
+
+## Use `Into` as an Input Bound When Appropriate
+
+Although `From` is the implementation-side default, `Into<T>` is often the more flexible generic **bound** because it also accepts a source type that happens to implement `Into<T>` directly.
 
 ```rust
-// This is in std, you don't write it
-impl<T, U> Into<U> for T
-where
-    U: From<T>,
-{
-    fn into(self) -> U {
-        U::from(self)
+#[derive(Debug, PartialEq, Eq)]
+struct Label(String);
+
+impl From<&str> for Label {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
     }
 }
 
-// So when you implement From:
-impl From<String> for MyType { ... }
+fn make_label(value: impl Into<Label>) -> Label {
+    value.into()
+}
 
-// You automatically get:
-// impl Into<MyType> for String { ... }
+fn main() {
+    assert_eq!(make_label("ready"), Label("ready".into()));
+}
 ```
 
-## Multiple From Implementations
+Keep the generic bound only when accepting multiple converting source types actually improves the API.
+
+## `From` Is for Infallible, Non-Lossy, Obvious Conversions
+
+The standard docs describe `From` as a conversion that must not fail and should preserve the relevant information/meaning. Do not add `From` merely because a conversion can be written.
+
+For validation or other failure, use `TryFrom`:
 
 ```rust
-struct Email(String);
+use std::num::NonZeroU32;
 
-impl From<String> for Email {
-    fn from(s: String) -> Self {
-        Email(s)
-    }
+fn main() {
+    assert_eq!(NonZeroU32::try_from(5_u32).unwrap().get(), 5);
+    assert!(NonZeroU32::try_from(0_u32).is_err());
 }
-
-impl From<&str> for Email {
-    fn from(s: &str) -> Self {
-        Email(s.to_string())
-    }
-}
-
-// All of these work
-let e1 = Email::from("test@example.com");
-let e2 = Email::from(String::from("test@example.com"));
-let e3: Email = "test@example.com".into();
-let e4: Email = String::from("test@example.com").into();
 ```
 
-## TryFrom for Fallible Conversions
+For domain-dependent or intentionally lossy conversions, a named constructor/method can be clearer than either standard conversion trait.
+
+## The Blanket Relationship Is a Contract, Not Code You Reimplement
+
+Conceptually:
+
+`U: From<T>` → `T: Into<U>`
+
+That implementation lives in the standard library. Do not copy a generic `impl<T, U> Into<U> for T where U: From<T>` into examples or application code; `Into` is a foreign trait and the blanket implementation already exists.
+
+A compileable way to demonstrate the relationship is to use a generic bound:
 
 ```rust
-use std::convert::TryFrom;
+#[derive(Debug, PartialEq, Eq)]
+struct Wrapper(u32);
 
-struct PositiveInt(u32);
+impl From<u32> for Wrapper {
+    fn from(value: u32) -> Self {
+        Self(value)
+    }
+}
 
-// Fallible conversion
-impl TryFrom<i32> for PositiveInt {
+fn accepts_into<T: Into<Wrapper>>(value: T) -> Wrapper {
+    value.into()
+}
+
+fn main() {
+    assert_eq!(accepts_into(12_u32), Wrapper(12));
+}
+```
+
+## The Old Pre-1.41 Orphan-Rule Exception Is Historical
+
+Older Rust versions could have situations where converting into an external destination allowed a direct `Into` impl but not the corresponding `From` impl. Rust 1.41 relaxed the orphan rules, enabling the important local-type cases that motivated that workaround.
+
+For current Rust, do not teach “external destination type” as a normal reason to implement `Into` directly. Apply today's coherence rules to the concrete impl you want.
+
+For example, this modern `From` impl is legal because `Local<T>` is a local type participating in the foreign-trait impl:
+
+```rust
+struct Local<T>(Vec<T>);
+
+impl<T> From<Local<T>> for Vec<T> {
+    fn from(value: Local<T>) -> Self {
+        value.0
+    }
+}
+
+fn main() {
+    let values: Vec<_> = Local(vec![1, 2, 3]).into();
+    assert_eq!(values, vec![1, 2, 3]);
+}
+```
+
+Coherence depends on the actual local/foreign types and uncovered type parameters; a diagnostic attribute or style preference cannot override those rules.
+
+## Direct `Into` Implementations Are Rarely the Starting Point
+
+A manual `Into` impl can exist only when it is coherent and does not overlap another implementation. But it has two disadvantages compared with a corresponding legal `From` impl:
+
+- it does not automatically provide `From` in the reverse trait direction;
+- it is less idiomatic and can become incompatible if a `From` impl is later added (because that would generate a blanket `Into`).
+
+Start with `From` whenever the conversion meets `From`'s semantic contract and coherence permits it.
+
+## Fallible Counterpart
+
+`TryFrom<T> for U` similarly gives `TryInto<U> for T` through a standard blanket implementation.
+
+```rust
+#[derive(Debug, PartialEq, Eq)]
+struct Port(u16);
+
+impl TryFrom<u32> for Port {
     type Error = &'static str;
-    
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        if value > 0 {
-            Ok(PositiveInt(value as u32))
-        } else {
-            Err("value must be positive")
-        }
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        u16::try_from(value)
+            .map(Port)
+            .map_err(|_| "port is out of range")
     }
 }
 
-// Usage
-let pos = PositiveInt::try_from(42)?;   // From-style
-let pos: PositiveInt = 42.try_into()?;  // Into-style (via blanket)
-```
-
-## Clippy Lint
-
-```toml
-[lints.clippy]
-from_over_into = "warn"  # Warns when implementing Into instead of From
-```
-
-```rust
-// Clippy will warn:
-impl Into<Bar> for Foo {  // Warning: prefer From
-    fn into(self) -> Bar { ... }
+fn main() {
+    let port: Port = 443_u32.try_into().unwrap();
+    assert_eq!(port, Port(443));
+    assert!(Port::try_from(70_000_u32).is_err());
 }
 ```
 
-## When Into IS Needed (Rare)
+Use the same design discipline: conversion traits should represent stable, unsurprising relationships between types.
 
-```rust
-// Only when implementing for external types in specific trait bounds
-// This is very rare and usually indicates a design issue
+## Practical Guidance
 
-// Example: you can't implement From<ExternalA> for ExternalB
-// because of orphan rules. But you usually shouldn't need to.
-```
+- Implement `From<T> for U` rather than `Into<U> for T` when the `From` impl is legal and semantically appropriate.
+- Use `Into<U>` as a generic input bound when accepting all converting source types is useful.
+- Do not manually reproduce std's blanket `Into` implementation.
+- Treat pre-Rust-1.41 orphan-rule advice as history, not a current design pattern.
+- Use `TryFrom`/`TryInto` for conversions that can fail.
+- Prefer named methods for conversions whose lossiness or domain meaning deserves an explicit verb.
 
 ## See Also
 
-- [api-impl-into](./api-impl-into.md) - Using Into in function parameters
-- [err-from-impl](./err-from-impl.md) - From for error types
-- [api-newtype-safety](./api-newtype-safety.md) - Newtype conversions
+- [api-impl-into](./api-impl-into.md) - Generic ownership-taking parameters
+- [api-impl-asref](./api-impl-asref.md) - Cheap borrowed views
+- [err-from-impl](./err-from-impl.md) - Error conversion with `From`
+- [api-newtype-safety](./api-newtype-safety.md) - Newtype conversion design
