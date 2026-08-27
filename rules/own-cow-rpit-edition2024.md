@@ -2,13 +2,18 @@
 
 **Rule**: `own-cow-rpit-edition2024`
 
-> Edition 2024 RPIT lifetime capture makes `Cow<'_, T>` returns from methods borrowing `&self` dramatically more ergonomic
+> Edition 2024 simplifies RPIT returns whose hidden type borrows; it does not change ordinary `Cow<'_, T>` return elision
 
 ## Why It Matters
 
-Before Edition 2024, returning `Cow<'_, str>` (or any type containing a borrowed lifetime) from a method that takes `&self` required either explicit lifetime annotations or clone-for-lifetime workarounds. Edition 2024's automatic RPIT lifetime capture eliminates the friction, making `Cow` returns practical in many new contexts.
+Two independent mechanisms are easy to conflate:
 
-## Bad (Edition 2021 / pre-2024)
+- `fn value(&self) -> Cow<'_, str>` returns the concrete type `Cow`; ordinary lifetime elision/inference handles the placeholder lifetime.
+- `fn value(&self) -> impl Display` returns an opaque RPIT type. If the hidden concrete type borrows from `self`, the RPIT must capture that lifetime.
+
+Edition 2024 changed the second mechanism. In Rust 2024, return-position `impl Trait` implicitly captures all in-scope generic parameters, including lifetimes, unless a `use<...>` bound specifies a narrower capture set.
+
+## Direct `Cow` Returns Are Not RPIT
 
 ```rust
 use std::borrow::Cow;
@@ -19,125 +24,164 @@ struct NameFormatter {
 }
 
 impl NameFormatter {
-    // Must explicitly name the lifetime or use clone workarounds
     fn format(&self) -> Cow<'_, str> {
         if self.prefix.is_empty() {
-            Cow::Borrowed(&self.name)
-        } else {
-            Cow::Owned(format!("{} {}", self.prefix, self.name))
-        }
-    }
-
-    // With impl Trait return: explicit '_ required
-    fn display(&self) -> impl std::fmt::Display + '_ {
-        if self.prefix.is_empty() {
-            Cow::Borrowed(&self.name)
+            Cow::Borrowed(self.name.as_str())
         } else {
             Cow::Owned(format!("{} {}", self.prefix, self.name))
         }
     }
 }
+
+fn main() {
+    let formatter = NameFormatter {
+        prefix: "Dr.".into(),
+        name: "Ada".into(),
+    };
+    assert_eq!(formatter.format(), "Dr. Ada");
+}
 ```
 
-## Good (Edition 2024)
+There is no `impl Trait` in this method, so RPIT capture rules do not explain its lifetime. Treat this as ordinary `Cow`/lifetime-elision guidance.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Good: Edition 2024 RPIT Can Capture the Receiver Borrow
+
+When the same `Cow` is hidden behind `impl Display`, RPIT capture is relevant:
+
 ```rust
+use std::borrow::Cow;
+use std::fmt::Display;
+
+struct NameFormatter {
+    prefix: String,
+    name: String,
+}
+
 impl NameFormatter {
-    // Lifetime is automatically captured from &self
-    fn format(&self) -> Cow<'_, str> {
+    fn display(&self) -> impl Display {
         if self.prefix.is_empty() {
-            Cow::Borrowed(&self.name)
-        } else {
-            Cow::Owned(format!("{} {}", self.prefix, self.name))
-        }
-    }
-
-    // No need for + '_ — automatically captured
-    fn display(&self) -> impl std::fmt::Display {
-        if self.prefix.is_empty() {
-            Cow::Borrowed(&self.name)
+            Cow::Borrowed(self.name.as_str())
         } else {
             Cow::Owned(format!("{} {}", self.prefix, self.name))
         }
     }
 }
-```
 
-## Eliminates Clone-for-Lifetime Workarounds
-
-The most common workaround for lifetime issues with `Cow` was cloning data to escape the borrow:
-
-```rust
-// Edition 2021: must clone to satisfy lifetime requirements
-fn get_config_value_cow<'a>(&'a self, key: &'a str) -> Cow<'a, str> {
-    // Fine — lifetime explicitly connected
-}
-
-// But when collecting into a Vec<Cow<'_, str>>:
-fn get_config_keys(&self) -> Vec<Cow<'_, str>> {
-    self.config.keys().map(|k| Cow::Borrowed(k.as_str())).collect()
-    // Edition 2021: compiles, but the lifetime may be more restrictive
-    // than needed, forcing callers to clone
-}
-
-// Edition 2024: the lifetime is captured, and callers benefit from
-// the precise borrowing relationship
-fn get_config_keys(&self) -> Vec<Cow<'_, str>> {
-    self.config.keys().map(|k| Cow::Borrowed(k.as_str())).collect()
-    // Works naturally, lifetimes handled automatically
+fn main() {
+    let formatter = NameFormatter {
+        prefix: String::new(),
+        name: "Ada".into(),
+    };
+    assert_eq!(formatter.display().to_string(), "Ada");
 }
 ```
 
-## Impact on API Design
+In Edition 2024, the opaque return type may implicitly capture the lifetime of `&self`, so the hidden `Cow<'_, str>` can borrow from the formatter without adding `+ '_` merely to make that capture legal.
 
-With Edition 2024 RPIT capture, `Cow<'_, T>` becomes a more practical return type for methods that conditionally allocate:
+## Pre-2024 RPIT Often Needed an Explicit Capture Bound
+
+For a comparable inherent method in Rust 2021 and earlier, an RPIT lifetime that did not otherwise appear in the opaque bounds was not automatically captured. A common spelling was:
 
 ```rust
-struct Cache {
-    entries: HashMap<String, String>,
+use std::borrow::Cow;
+use std::fmt::Display;
+
+struct Formatter {
+    name: String,
 }
 
-impl Cache {
-    // Returns borrowed if found, owned if created
-    fn get_or_create(&self, key: &str) -> Cow<'_, str> {
-        if let Some(v) = self.entries.get(key) {
-            Cow::Borrowed(v)
-        } else {
-            Cow::Owned(compute_default(key))
-        }
+impl Formatter {
+    fn display_legacy(&self) -> impl Display + '_ {
+        Cow::Borrowed::<str>(self.name.as_str())
     }
 }
+
+fn main() {
+    let formatter = Formatter { name: "Ada".into() };
+    assert_eq!(formatter.display_legacy().to_string(), "Ada");
+}
 ```
 
-Previously, this pattern either:
-1. Required explicit lifetime annotations everywhere.
-2. Forced callers to clone unnecessarily.
-3. Required `Arc` or `Rc` sharing to avoid lifetime issues.
+The `+ '_` outlives/capture spelling is still legal in Edition 2024; it is simply often unnecessary when default capture already expresses the intended relationship. Precise `use<...>` capture is the modern tool when an explicit capture set is needed.
 
-## When Not to Use Cow with RPIT
+## Capture Is Not Lifetime Extension
 
-| Situation | Alternative |
-|-----------|-------------|
-| Always returns owned | Just return `String` |
-| Always returns borrowed | Just return `&str` |
-| Hot path micro-optimization | Profile both approaches |
-| Multi-threaded with borrowing | Consider `Arc<str>` |
+Automatic capture lets the hidden type **use** the receiver lifetime. It does not make that borrow `'static` or independent of the source object.
 
-## Cross-Reference
+```rust
+use std::fmt::Display;
 
-- [own-lifetime-elision](own-lifetime-elision.md) — Full lifetime elision guide including Edition 2024
-- [own-cow-conditional](own-cow-conditional.md) — General Cow usage patterns
-- [own-borrow-over-clone](own-borrow-over-clone.md) — Avoiding unnecessary clones
+struct Label(String);
+
+impl Label {
+    fn borrowed_display(&self) -> impl Display {
+        self.0.as_str()
+    }
+
+    fn owned_static_display(&self) -> impl Display + 'static {
+        self.0.clone()
+    }
+}
+
+fn main() {
+    let label = Label("hello".into());
+    assert_eq!(label.borrowed_display().to_string(), "hello");
+    assert_eq!(label.owned_static_display().to_string(), "hello");
+}
+```
+
+The second method genuinely promises `'static`, so it must return owned data (or otherwise satisfy that lifetime independently). Edition 2024 does not remove clones required by a real `'static` API contract.
+
+## Do Not Attribute Ordinary Collections of `Cow` to RPIT
+
+A concrete return such as `Vec<Cow<'_, str>>` also does not use RPIT:
+
+```rust
+use std::borrow::Cow;
+
+fn words(input: &str) -> Vec<Cow<'_, str>> {
+    input.split_whitespace().map(Cow::Borrowed).collect()
+}
+
+fn main() {
+    assert_eq!(words("one two"), ["one", "two"]);
+}
+```
+
+Edition-2024 RPIT capture matters only when `impl Trait` (or another opaque type governed by those capture rules) is involved.
+
+## Overcapture Can Matter Too
+
+Rust 2024's default is broader: all in-scope lifetimes are captured by RPIT unless a precise-capture `use<...>` bound says otherwise. That can occasionally keep a borrow relationship alive even when the hidden type does not use it.
+
+Use `use<...>` when you need a narrower capture set, especially during edition migration. Do not assume “more automatic capture” is always semantically invisible.
+
+See `own-lifetime-elision` for the full capture/overcapture discussion.
+
+## When `Cow` Is Actually Useful
+
+RPIT and `Cow` solve different problems:
+
+- `Cow` chooses between borrowed and owned representations of the same logical data.
+- RPIT hides the concrete return type while exposing trait bounds.
+
+Use both together only when you genuinely need both properties. If callers can reasonably know the return type, returning `Cow<'_, str>` directly is often clearer than hiding it behind `impl Display` or another trait.
+
+## Practical Guidance
+
+- Do not say Edition 2024 made direct `Cow<'_, T>` method returns possible; those are not RPIT.
+- Use Edition-2024 automatic capture when an RPIT hidden type really borrows an in-scope lifetime.
+- Keep `+ '_` or use precise `use<...>` when an explicit capture relationship improves compatibility or clarity.
+- Do not claim capture satisfies a genuine `'static` requirement.
+- Prefer direct `Cow` returns when hiding the concrete type adds no API value.
 
 ## See Also
 
-- [own-cow-conditional](./own-cow-conditional.md) — General Cow usage patterns
-- [own-lifetime-elision](./own-lifetime-elision.md) — Lifetime elision rules
-- [doc-test-edition-2024](./doc-test-edition-2024.md) — Edition 2024 doc test changes
+- [own-cow-conditional](./own-cow-conditional.md) - General conditional ownership with Cow
+- [own-lifetime-elision](./own-lifetime-elision.md) - Ordinary elision, RPIT capture, and `use<...>`
+- [own-borrow-over-clone](./own-borrow-over-clone.md) - Avoid unnecessary ownership
 
 ## References
 
 - [Edition 2024 RPIT lifetime capture guide](https://doc.rust-lang.org/edition-guide/rust-2024/rpit-lifetime-capture.html)
-- [Rust 1.85.0 release notes](https://blog.rust-lang.org/2025/02/20/Rust-1.85.0/)
-- [Rust 2024 Annotated](https://bertptrs.nl/2025/02/23/rust-edition-2024-annotated.html)
+- [Rust Reference: impl Trait capture](https://doc.rust-lang.org/reference/types/impl-trait.html#capturing)
