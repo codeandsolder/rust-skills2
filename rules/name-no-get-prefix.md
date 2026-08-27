@@ -1,14 +1,20 @@
 # name-no-get-prefix
 
-> Omit get_ prefix for simple getters
+> Omit `get_` for ordinary named getters; reserve `get` for APIs where “get the one obvious value” or validated/indexed access is the established operation
 
 ## Why It Matters
 
-Rust convention omits the `get_` prefix for simple field access. Methods like `len()`, `name()`, `value()` are cleaner than `get_len()`, `get_name()`, `get_value()`. This follows the principle of making the common case concise.
+Rust's API Guidelines normally name a getter after the thing it returns:
 
-The `get` prefix is reserved for methods that DO something beyond simple field access.
+- `first()` rather than `get_first()`;
+- `first_mut()` rather than `get_first_mut()`;
+- `name()` rather than `get_name()`.
 
-## Bad
+But `get` is not reserved for “methods that do extra work.” The standard convention also uses plain `get()` when there is one obvious thing to retrieve, such as `Cell::get`, and uses the `get` family for checked/indexed lookup such as slice or map access.
+
+Choose names from the semantic shape of the API, not from a simplistic “Option means get” rule.
+
+## Ordinary Named Getters
 
 ```rust
 struct User {
@@ -17,156 +23,204 @@ struct User {
 }
 
 impl User {
-    fn get_name(&self) -> &str {      // Verbose
+    fn name(&self) -> &str {
         &self.name
     }
-    
-    fn get_age(&self) -> u32 {         // Verbose
+
+    fn age(&self) -> u32 {
         self.age
     }
-    
-    fn get_is_adult(&self) -> bool {   // Doubly verbose
+
+    fn is_adult(&self) -> bool {
         self.age >= 18
     }
 }
 
-let name = user.get_name();
-let age = user.get_age();
+fn main() {
+    let user = User { name: "Ada".to_owned(), age: 37 };
+    assert_eq!(user.name(), "Ada");
+    assert_eq!(user.age(), 37);
+    assert!(user.is_adult());
+}
 ```
 
-## Good
+`get_name()` and `get_age()` would add a word without clarifying the contract.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Mutable Getter: Put `_mut` Last
+
 ```rust
-struct User {
-    name: String,
-    age: u32,
+struct Buffer {
+    bytes: Vec<u8>,
 }
 
-impl User {
-    fn name(&self) -> &str {           // Clean
-        &self.name
+impl Buffer {
+    fn bytes(&self) -> &[u8] {
+        &self.bytes
     }
-    
-    fn age(&self) -> u32 {             // Clean
-        self.age
-    }
-    
-    fn is_adult(&self) -> bool {       // Boolean uses is_ prefix
-        self.age >= 18
+
+    fn bytes_mut(&mut self) -> &mut [u8] {
+        &mut self.bytes
     }
 }
 
-let name = user.name();
-let age = user.age();
+fn main() {
+    let mut buffer = Buffer { bytes: vec![1, 2] };
+    buffer.bytes_mut()[0] = 9;
+    assert_eq!(buffer.bytes(), &[9, 2]);
+}
 ```
 
-## When get_ IS Appropriate
+The mutability qualifier belongs at the end of the full getter name: `bytes_mut`, `first_mut`, `value_mut`.
 
-Use `get` when the method does more than simple access — typically returning `Option` or performing indexing:
+## `get()` for One Obvious Contained Value
+
+The API Guidelines call out `Cell::get` as a canonical case: the type contains one obvious value, so there is no useful noun to put before or after `get`.
 
 ```rust
-impl HashMap<K, V> {
-    // Returns Option - not just field access
-    fn get(&self, key: &K) -> Option<&V> { }
-    
-    // Mutable variant
-    fn get_mut(&mut self, key: &K) -> Option<&mut V> { }
-}
+use std::cell::Cell;
 
-impl Vec<T> {
-    // Returns Option - bounds checked
-    fn get(&self, index: usize) -> Option<&T> { }
+fn main() {
+    let value = Cell::new(42_u32);
+    assert_eq!(value.get(), 42);
+}
+```
+
+This is a simple getter despite using the word `get`, so “never use get for field-like access” would also be wrong.
+
+## `get` Family for Checked or Keyed Access
+
+Slices and maps use `get` when the caller supplies an index/key and the operation may fail to find an element:
+
+```rust
+use std::collections::HashMap;
+
+fn main() {
+    let values = [10, 20, 30];
+    assert_eq!(values.get(1), Some(&20));
+    assert_eq!(values.get(99), None);
+
+    let map = HashMap::from([("port", 8080)]);
+    assert_eq!(map.get("port"), Some(&8080));
+    assert_eq!(map.get("missing"), None);
+}
+```
+
+Common related names are:
+
+```text
+get(...)
+get_mut(...)
+get_unchecked(...)
+get_unchecked_mut(...)
+```
+
+An unsafe `_unchecked` form is appropriate only when the abstraction genuinely supports a safe checked operation plus a caller-verified unchecked counterpart. Do not add one merely to complete a naming table.
+
+## Name Computations and Lookups by What They Mean
+
+A method that selects configuration for an environment need not be called `get_config` merely because it performs a lookup:
+
+```rust
+use std::collections::HashMap;
+
+struct Context {
+    current_env: String,
+    configs: HashMap<String, String>,
 }
 
 impl Context {
-    // Does computation/lookup, not just field access
-    fn get_config(&self) -> Config {
-        self.configs.get(&self.current_env).cloned().unwrap_or_default()
+    fn current_config(&self) -> Option<&str> {
+        self.configs.get(&self.current_env).map(String::as_str)
     }
+}
+
+fn main() {
+    let context = Context {
+        current_env: "prod".to_owned(),
+        configs: HashMap::from([("prod".to_owned(), "safe".to_owned())]),
+    };
+    assert_eq!(context.current_config(), Some("safe"));
 }
 ```
 
-## Canonical `get` Pattern
+`current_config()` communicates the domain meaning better than a generic `get_config()`.
 
-For index-based data structures, the canonical `get` family follows this pattern:
+## Getter Versus Conversion
 
-| Method | Signature |
-|--------|-----------|
-| `get()` | `fn get(&self, index: K) -> Option<&V>` |
-| `get_mut()` | `fn get_mut(&mut self, index: K) -> Option<&mut V>` |
-| `get_unchecked()` | `unsafe fn get_unchecked(&self, index: K) -> &V` |
-| `get_unchecked_mut()` | `unsafe fn get_unchecked_mut(&mut self, index: K) -> &mut V` |
-
-Note that `_mut` suffix comes **last**, after the full verb: `first_mut`, not `get_first_mut`.
-
-## No Clippy Enforcement
-
-There is no clippy lint for `get_` prefix (proposed PR #3616 was never merged). This convention is purely community-enforced.
-
-## Standard Library Examples
+A borrowed view is not always a getter. Conversion naming (`as_`, `to_`, `into_`) communicates a representation change:
 
 ```rust
-// No get_ prefix
-String::len()
-Vec::len()
-Vec::capacity()
-Vec::is_empty()
-Path::file_name()
-Option::is_some()
-Result::is_ok()
+use std::path::{Path, PathBuf};
 
-// With get - returns Option or does lookup
-Vec::get(index)
-HashMap::get(key)
-BTreeMap::get(key)
+struct TempLike {
+    path: PathBuf,
+}
+
+impl TempLike {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn into_path(self) -> PathBuf {
+        self.path
+    }
+}
+
+fn main() {
+    let value = TempLike { path: PathBuf::from("tmp") };
+    assert_eq!(value.path(), Path::new("tmp"));
+    assert_eq!(value.into_path(), PathBuf::from("tmp"));
+}
 ```
 
-## Pattern: Getter/Setter Pairs
+The noun getter describes a property; the `into_` conversion describes ownership transfer.
+
+## Setters and Builders
+
+Setter methods conventionally use `set_`:
 
 ```rust
+use std::time::Duration;
+
+struct Config {
+    timeout: Duration,
+}
+
 impl Config {
-    // Getter: no prefix
     fn timeout(&self) -> Duration {
         self.timeout
     }
-    
-    // Setter: use set_ prefix
+
     fn set_timeout(&mut self, timeout: Duration) {
         self.timeout = timeout;
     }
 }
-```
 
-## Pattern: Builder Methods
-
-```rust
-impl ConfigBuilder {
-    // Builder methods: no get_, no set_
-    fn timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
-        self
-    }
-    
-    fn retries(mut self, retries: u32) -> Self {
-        self.retries = retries;
-        self
-    }
+fn main() {
+    let mut config = Config { timeout: Duration::from_secs(1) };
+    config.set_timeout(Duration::from_secs(5));
+    assert_eq!(config.timeout(), Duration::from_secs(5));
 }
 ```
 
-## Decision Guide
+Consuming builder methods commonly use the bare property name (`timeout(...)`) because they are configuration operations rather than setters on an already-built value.
 
-| Pattern | Naming |
-|---------|--------|
-| Simple field access | `name()`, `value()`, `len()` |
-| Boolean property | `is_valid()`, `has_items()` |
-| Fallible access | `get()`, `get_mut()` |
-| Setter | `set_name()`, `set_value()` |
-| Builder | `name()`, `value()` (consuming self) |
+## Clippy
+
+Clippy has lints such as `misnamed_getters` that can catch a getter returning the wrong field, but it does not generally enforce the API Guidelines' “omit `get_`” naming convention for you. This remains primarily an API-review convention.
+
+## Practical Guidance
+
+- Name ordinary property getters `name()`, `value()`, `first()`, etc.
+- Name mutable counterparts `name_mut()`, `value_mut()`, `first_mut()`.
+- Use plain `get()` when there is one obvious contained value or when the abstraction has an established checked/keyed access operation.
+- Use `get_mut` / `_unchecked` families only when those operation families actually exist semantically.
+- Name domain lookups for what they select (`current_config`, `user_by_id`) instead of blindly prefixing `get_`.
+- Distinguish getters from representation conversions such as `as_` / `into_`.
 
 ## See Also
 
-- [name-is-has-bool](./name-is-has-bool.md) - Boolean naming
+- [name-is-has-bool](./name-is-has-bool.md) - Predicate naming
 - [name-funcs-snake](./name-funcs-snake.md) - Function naming
 - [api-builder-pattern](./api-builder-pattern.md) - Builder pattern
+- [name-into-ownership](./name-into-ownership.md) - Consuming conversions

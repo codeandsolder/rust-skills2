@@ -1,140 +1,180 @@
 # name-into-ownership
 
-> Use `into_` prefix for ownership-consuming conversions
+> Use `into_` for ad-hoc conversions that consume an owned value and produce another owned representation
 
 ## Why It Matters
 
-The `into_` prefix signals "this method consumes self and returns something else." The original value is moved and no longer usable. This ownership transfer cost is **variable** (the API Guidelines label it as "Variable" cost — e.g., `BufWriter::into_inner()` may flush), but the caller loses access to the original. Clear naming prevents "use after move" confusion.
+Rust's API Guidelines use `as_`, `to_`, and `into_` to communicate both ownership and approximate cost shape:
 
-## Bad
+| Prefix | Typical ownership | Cost |
+|---|---|---|
+| `as_` | borrowed → borrowed | free / trivial view |
+| `to_` | borrowed → owned, or a nontrivial borrowed conversion | potentially expensive |
+| `into_` | owned → owned for non-`Copy` values | variable |
+
+The defining signal of `into_` is that the receiver is consumed. It does **not** promise that the conversion is free, infallible, or non-panicking.
+
+## Wrapper Extraction
+
+When a wrapper owns one underlying value, `into_inner()` is the conventional consuming accessor:
 
 ```rust
-impl Wrapper {
-    // Misleading: doesn't indicate ownership transfer
-    fn get_inner(self) -> Inner {  
+struct Wrapper<T> {
+    inner: T,
+}
+
+impl<T> Wrapper<T> {
+    fn new(inner: T) -> Self {
+        Self { inner }
+    }
+
+    fn into_inner(self) -> T {
         self.inner
     }
-    
-    // Misleading: suggests borrowing
-    fn as_inner(self) -> Inner {  // Takes self by value!
-        self.inner
-    }
+}
+
+fn main() {
+    let wrapper = Wrapper::new(String::from("hello"));
+    let inner = wrapper.into_inner();
+    assert_eq!(inner, "hello");
 }
 ```
 
-## Good
+The original `wrapper` is moved by the call and cannot be used afterward.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Standard-Library Examples
+
+These calls consume their owner and expose another owned representation:
+
 ```rust
-impl Wrapper {
-    // into_ clearly shows ownership transfer
-    fn into_inner(self) -> Inner {
-        self.inner
-    }
-}
+use std::ffi::OsString;
+use std::path::PathBuf;
 
-// Usage is clear
-let wrapper = Wrapper::new(inner);
-let inner = wrapper.into_inner();  // wrapper is consumed
-// wrapper.foo();  // Error: use of moved value
+fn main() {
+    let string = String::from("hello");
+    let bytes: Vec<u8> = string.into_bytes();
+    assert_eq!(bytes, b"hello");
+
+    let path = PathBuf::from("example");
+    let os_string: OsString = path.into_os_string();
+    assert_eq!(os_string, OsString::from("example"));
+
+    let boxed: Box<[i32]> = vec![1, 2, 3].into_boxed_slice();
+    let values: Vec<i32> = boxed.into_vec();
+    assert_eq!(values, vec![1, 2, 3]);
+}
 ```
 
-## Standard Library Examples
+## `into_` Does Not Mean “Free”
+
+Some consuming conversions can perform significant work. `BufWriter::into_inner`, for example, attempts to flush buffered data before returning the underlying writer and can fail.
+
+Likewise, a consuming conversion can validate or transform data and return a `Result`. The prefix communicates ownership transfer, not an infallibility guarantee.
 
 ```rust
-// All consume self and return owned data
-let string: String = "hello".to_string();
-let bytes: Vec<u8> = string.into_bytes();  // String consumed
+use std::ffi::CString;
 
-let path = PathBuf::from("/foo");
-let os_string: OsString = path.into_os_string();  // PathBuf consumed
-
-let boxed: Box<[i32]> = vec![1, 2, 3].into_boxed_slice();  // Vec consumed
-
-let vec: Vec<u8> = boxed.into_vec();  // Box consumed
+fn main() {
+    let c = CString::new("hello").unwrap();
+    let string = c.into_string().unwrap();
+    assert_eq!(string, "hello");
+}
 ```
 
-## into_iter() Pattern
+Do not replace every fallible consuming method with a generic name like `try_into()`. `TryInto`/`TryFrom` are standard conversion traits when the source and target types naturally define the conversion; an ad-hoc method may still appropriately be named `into_string`, `into_inner`, or `try_into_parts` depending on its semantics and surrounding API.
+
+## `IntoIterator` Is the Collection Convention
+
+For collection-like types, consuming iteration is expressed through `IntoIterator` and commonly surfaced as `into_iter()`:
 
 ```rust
-let vec = vec![1, 2, 3];
-
-// into_iter consumes the collection
-for item in vec.into_iter() {  // or just: for item in vec
-    // item is i32, not &i32
+fn main() {
+    let values = vec![1, 2, 3];
+    let collected: Vec<_> = values.into_iter().map(|x| x * 2).collect();
+    assert_eq!(collected, vec![2, 4, 6]);
 }
-// vec is consumed, can't use anymore
-
-// Contrast with iter() which borrows
-let vec = vec![1, 2, 3];
-for item in vec.iter() {
-    // item is &i32
-}
-// vec still usable
 ```
 
-## IntoIterator Trait
+Contrast this with `iter()` and `iter_mut()`, which borrow the collection.
+
+## Implement `IntoIterator`, Not Merely an Inherent Lookalike
 
 ```rust
-impl IntoIterator for MyCollection {
-    type Item = Element;
-    type IntoIter = std::vec::IntoIter<Element>;
-    
+struct Bag<T> {
+    items: Vec<T>,
+}
+
+impl<T> IntoIterator for Bag<T> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<T>;
+
     fn into_iter(self) -> Self::IntoIter {
-        self.elements.into_iter()  // Consumes self
+        self.items.into_iter()
     }
+}
+
+fn main() {
+    let bag = Bag { items: vec![1, 2, 3] };
+    assert_eq!(bag.into_iter().sum::<i32>(), 6);
 }
 ```
 
-## Conversion Prefix Summary
+This also makes `for item in bag` work naturally.
+
+## Conversion Prefixes Describe Different Contracts
 
 ```rust
 struct Buffer {
     data: Vec<u8>,
-    name: String,
 }
 
 impl Buffer {
-    // as_ : free borrow, returns reference
     fn as_slice(&self) -> &[u8] {
         &self.data
     }
-    
-    // to_ : allocates, creates new value
+
     fn to_vec(&self) -> Vec<u8> {
         self.data.clone()
     }
-    
-    // into_ : consumes self, cost varies (not "usually free")
-    // e.g., BufWriter::into_inner() may flush pending data
-    fn into_inner(self) -> Vec<u8> {
+
+    fn into_vec(self) -> Vec<u8> {
         self.data
     }
-    
-    // into_ : can destructure into parts
-    fn into_parts(self) -> (Vec<u8>, String) {
-        (self.data, self.name)
-    }
+}
+
+fn main() {
+    let buffer = Buffer { data: vec![1, 2, 3] };
+    assert_eq!(buffer.as_slice(), &[1, 2, 3]);
+    assert_eq!(buffer.to_vec(), vec![1, 2, 3]);
+    assert_eq!(buffer.into_vec(), vec![1, 2, 3]);
 }
 ```
 
-## Convention: `into_` Should Not Panic
-
-`into_` methods should not panic in normal usage. If the conversion can always succeed, `into_` is appropriate. If it can fail, prefer `try_into()` returning `Result`.
+The `into_` form is appropriate because it consumes the non-`Copy` owner and transfers its owned representation.
 
 ## Clippy Enforcement
 
-`clippy::wrong_self_convention` (style group) enforces that `into_*` methods take `self` by value:
+`clippy::wrong_self_convention` checks that an `into_*` method takes `self` by value. It also checks the conventional receiver shapes of `as_*`, `is_*`, and `to_*` methods.
 
-```rust
-impl MyType {
-    // Clippy will warn: into_ methods should take self by value
-    pub fn into_inner(&self) -> Inner { ... }  // Should take self!
-}
+```toml
+[lints.clippy]
+wrong_self_convention = "warn"
 ```
+
+This is a naming/receiver convention lint, not proof that a conversion has a particular performance or failure behavior.
+
+## Practical Guidance
+
+- Use `into_foo(self)` when consuming a non-`Copy` owner to produce owned `foo` data.
+- Do not read `into_` as “free”; the cost is intentionally variable.
+- Do not read `into_` as “infallible”; consuming conversions may return `Result`.
+- Use `From`/`TryFrom` when the conversion naturally belongs in the standard conversion trait ecosystem.
+- Implement `IntoIterator` for consuming collection iteration rather than only inventing an inherent method.
+- Let the method name describe the semantic target (`into_inner`, `into_bytes`, `into_parts`) rather than only the fact that failure is possible.
 
 ## See Also
 
-- [name-as-free](./name-as-free.md) - Borrowing conversions
-- [name-to-expensive](./name-to-expensive.md) - Allocating conversions
-- [api-from-not-into](./api-from-not-into.md) - From trait implementation
+- [name-as-free](./name-as-free.md) - Borrowed conversions
+- [name-to-expensive](./name-to-expensive.md) - `to_` conversions
+- [api-from-not-into](./api-from-not-into.md) - `From`/`Into` trait guidance
+- [name-iter-convention](./name-iter-convention.md) - Iterator ownership conventions
