@@ -1,12 +1,3 @@
 # Exact known failures of examples whose expectation is `compile`.
 # Format: file :: section :: block N :: sorted(error-tokens) || reason
 # Migration debt only; new signatures fail and stale entries must be removed.
-
-lint-unsafe-doc.md :: Good :: block 3 :: E0106,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
-macro-proc-error-spans.md :: Good :: block 2 :: E0432,P:the `#[proc_macro_derive]` attribute is only || legacy compile failure: repair example or add explicit rust-check metadata
-macro-proc-syn-quote.md :: Good :: block 2 :: E0432,P:the `#[proc_macro_derive]` attribute is only || legacy compile failure: repair example or add explicit rust-check metadata
-proj-feature-additive.md :: Good :: block 2 :: E0433,P:`#[panic_handler]` function required, but not,P:unwinding panics are not supported || legacy compile failure: repair example or add explicit rust-check metadata
-proj-pub-super-parent.md :: Good :: block 2 :: E0308,E0425,E0433,E0583 || legacy compile failure: repair example or add explicit rust-check metadata
-test-fixture-raii.md :: Good :: block 4 :: E0133 || legacy compile failure: repair example or add explicit rust-check metadata
-test-mock-traits.md :: Good :: block 2 :: E0046,E0425,E0433 || legacy compile failure: repair example or add explicit rust-check metadata
-type-generic-bounds.md :: Good :: block 2 :: E0404,E0405,E0586,P:unexpected token: `...` || legacy compile failure: repair example or add explicit rust-check metadata

@@ -1,212 +1,164 @@
 # test-mock-traits
 
-> Use traits for dependencies to enable mocking in tests
+> Put meaningful external dependencies behind replaceable boundaries when that improves testing
 
 ## Why It Matters
 
-Concrete dependencies make testing hard—you can't easily test error paths, timeouts, or edge cases without real external systems. Extracting dependencies behind traits lets you inject test doubles (mocks, fakes, stubs), enabling isolated unit tests that run fast and cover edge cases.
+A service that directly constructs and calls a database, clock, HTTP client, filesystem wrapper, or other external dependency is harder to exercise deterministically. A trait can define the small capability the service actually needs, allowing production and test implementations to be injected separately.
+
+Do not introduce a trait solely because “tests need mocks.” Prefer the narrowest useful seam: a plain function parameter, generic closure, concrete in-memory implementation, or trait depending on the shape and reuse of the dependency.
 
 ## Bad
 
 ```rust
-struct UserService {
-    db: PostgresConnection,  // Concrete type - hard to test
-}
+struct UserService;
 
 impl UserService {
-    async fn get_user(&self, id: u64) -> Result<User, Error> {
-        // Directly calls Postgres - needs real database to test
-        self.db.query("SELECT * FROM users WHERE id = $1", &[&id]).await
+    fn display_name(&self, id: u64) -> String {
+        // Imagine this constructs a real database connection internally.
+        real_database_lookup(id).unwrap_or_else(|| "missing".to_string())
     }
 }
 
-// Test requires real Postgres instance
-#[tokio::test]
-async fn test_get_user() {
-    let db = PostgresConnection::connect("postgres://...").await?;
-    let service = UserService { db };
-    // Slow, flaky, can't test error paths
+fn real_database_lookup(_id: u64) -> Option<String> {
+    None
 }
+
+fn main() {}
 ```
+
+The behavior under “found”, “missing”, or dependency failure is coupled to the real dependency.
 
 ## Good
 
 ```rust
-// Define trait for dependency
-// Edition 2024: native async fn in traits — no #[async_trait] needed!
-trait UserRepository: Send + Sync {
-    async fn find_by_id(&self, id: u64) -> Result<Option<User>, DbError>;
-    async fn save(&self, user: &User) -> Result<(), DbError>;
+use std::collections::HashMap;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct User {
+    id: u64,
+    name: String,
 }
 
-// Production implementation
-struct PostgresUserRepo {
-    pool: PgPool,
+trait UserRepository {
+    fn find_by_id(&self, id: u64) -> Option<User>;
 }
 
-impl UserRepository for PostgresUserRepo {
-    async fn find_by_id(&self, id: u64) -> Result<Option<User>, DbError> {
-        sqlx::query_as("SELECT * FROM users WHERE id = $1")
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await
-    }
-    // ...
-}
-
-// Service depends on trait, not concrete type
-struct UserService<R: UserRepository> {
+struct UserService<R> {
     repo: R,
 }
 
 impl<R: UserRepository> UserService<R> {
-    async fn get_user(&self, id: u64) -> Result<User, Error> {
-        self.repo.find_by_id(id).await?
-            .ok_or(Error::NotFound)
+    fn get_user(&self, id: u64) -> Result<User, ServiceError> {
+        self.repo.find_by_id(id).ok_or(ServiceError::NotFound)
     }
 }
 
-// Test with mock
-#[cfg(test)]
-mod tests {
-    struct MockUserRepo {
-        users: HashMap<u64, User>,
+#[derive(Debug, PartialEq, Eq)]
+enum ServiceError {
+    NotFound,
+}
+
+#[derive(Default)]
+struct FakeRepository {
+    users: HashMap<u64, User>,
+}
+
+impl UserRepository for FakeRepository {
+    fn find_by_id(&self, id: u64) -> Option<User> {
+        self.users.get(&id).cloned()
     }
-    
-    impl UserRepository for MockUserRepo {
-        async fn find_by_id(&self, id: u64) -> Result<Option<User>, DbError> {
-            Ok(self.users.get(&id).cloned())
-        }
-        // ...
-    }
-    
-    #[tokio::test]
-    async fn test_get_user_found() {
-        let mut mock = MockUserRepo { users: HashMap::new() };
-        mock.users.insert(1, User { id: 1, name: "Alice".into() });
-        
-        let service = UserService { repo: mock };
-        let user = service.get_user(1).await.unwrap();
-        
-        assert_eq!(user.name, "Alice");
-    }
-    
-    #[tokio::test]
-    async fn test_get_user_not_found() {
-        let mock = MockUserRepo { users: HashMap::new() };
-        let service = UserService { repo: mock };
-        
-        let result = service.get_user(999).await;
-        assert!(matches!(result, Err(Error::NotFound)));
-    }
+}
+
+fn main() {
+    let mut repo = FakeRepository::default();
+    repo.users.insert(1, User { id: 1, name: "Alice".into() });
+
+    let service = UserService { repo };
+    assert_eq!(service.get_user(1).unwrap().name, "Alice");
+    assert_eq!(service.get_user(99), Err(ServiceError::NotFound));
 }
 ```
 
-## mockall Crate
+A small fake is often clearer than a programmable mocking framework when the test cares about state/results rather than exact interaction ordering.
 
+## Native Async Trait Methods
+
+Native `async fn` in traits stabilized in Rust 1.75; it is not an Edition 2024 feature. It works well with static/generic dispatch:
+
+<!-- rust-check: compile -->
 ```rust
-use mockall::*;
-use mockall::predicate::*;
+#[derive(Clone)]
+struct User;
 
-#[automock]
-trait Database: Send + Sync {
-    // Edition 2024: no #[async_trait] needed for async fn in traits
-    async fn query(&self, sql: &str) -> Result<Vec<Row>, Error>;
+#[derive(Debug)]
+struct RepoError;
+
+trait AsyncRepository {
+    async fn find_by_id(&self, id: u64) -> Result<Option<User>, RepoError>;
 }
 
-#[tokio::test]
-async fn test_with_mockall() {
-    let mut mock = MockDatabase::new();
-    
-    mock.expect_query()
-        .with(eq("SELECT 1"))
-        .times(1)
-        .returning(|_| Ok(vec![Row::new()]));
-    
-    let result = mock.query("SELECT 1").await;
-    assert!(result.is_ok());
-}
-```
+struct FakeRepository;
 
-## wiremock-rs (HTTP Mocking)
-
-```rust
-use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::{method, path};
-
-#[tokio::test]
-async fn test_http_client() {
-    // Start a mock HTTP server
-    let mock_server = MockServer::start().await;
-    
-    // Set up expected request and response
-    Mock::given(method("GET"))
-        .and(path("/api/users/1"))
-        .respond_with(ResponseTemplate::new(200)
-            .set_body_json(serde_json::json!({
-                "id": 1,
-                "name": "Alice"
-            })))
-        .mount(&mock_server)
-        .await;
-    
-    // Client uses the mock server URL
-    let client = ApiClient::new(&mock_server.uri());
-    let user = client.get_user(1).await.unwrap();
-    
-    assert_eq!(user.name, "Alice");
-}
-```
-
-## Testing Error Paths
-
-```rust
-trait HttpClient: Send + Sync {
-    async fn get(&self, url: &str) -> Result<Response, HttpError>;
-}
-
-struct FailingClient;
-
-impl HttpClient for FailingClient {
-    async fn get(&self, _url: &str) -> Result<Response, HttpError> {
-        Err(HttpError::Timeout)  // Always fails
+impl AsyncRepository for FakeRepository {
+    async fn find_by_id(&self, _id: u64) -> Result<Option<User>, RepoError> {
+        Ok(Some(User))
     }
 }
 
-#[tokio::test]
-async fn test_handles_timeout() {
-    let client = FailingClient;
-    let service = ApiService { client };
-    
-    let result = service.fetch_data().await;
-    assert!(matches!(result, Err(Error::NetworkError(_))));
+async fn lookup<R: AsyncRepository>(repo: &R, id: u64) -> Result<Option<User>, RepoError> {
+    repo.find_by_id(id).await
 }
+
+fn main() {}
 ```
 
-## Dynamic Dispatch Alternative
+A trait containing native `async fn` is not dyn-compatible in the form above, because the method's hidden future type cannot be dispatched through a vtable. Therefore `Box<dyn AsyncRepository>` is **not** a drop-in alternative to generic dispatch.
 
+## Dynamic Dispatch for Async Boundaries
+
+If dynamic dispatch is required, expose an object-safe method whose return type is itself erased, or use a well-understood helper crate that performs equivalent boxing.
+
+<!-- rust-check: compile -->
 ```rust
-// When you don't want generics everywhere
+use std::{future::Future, pin::Pin};
+
+type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+#[derive(Clone)]
+struct User;
+
+#[derive(Debug)]
+struct RepoError;
+
+trait DynRepository: Send + Sync {
+    fn find_by_id(&self, id: u64) -> BoxFuture<'_, Result<Option<User>, RepoError>>;
+}
+
+struct FakeRepository;
+
+impl DynRepository for FakeRepository {
+    fn find_by_id(&self, _id: u64) -> BoxFuture<'_, Result<Option<User>, RepoError>> {
+        Box::pin(async { Ok(Some(User)) })
+    }
+}
+
 struct UserService {
-    repo: Box<dyn UserRepository>,
+    repo: Box<dyn DynRepository>,
 }
 
-impl UserService {
-    fn new(repo: impl UserRepository + 'static) -> Self {
-        Self { repo: Box::new(repo) }
-    }
+fn main() {
+    let _service = UserService { repo: Box::new(FakeRepository) };
 }
-
-// Slight runtime cost but cleaner API
 ```
 
-## Cargo.toml
+This buys dyn dispatch at the cost of type erasure and, in this common representation, a boxed future allocation. Choose it because the architecture needs heterogeneous runtime implementations, not merely to avoid generic syntax.
 
-```toml
-[dev-dependencies]
-mockall = "0.14"
-wiremock = "0.7"  # HTTP mocking
-```
+## Mocks, Fakes, and Interaction Tests
+
+Use a hand-written fake when stateful behavior is simple. A mocking crate such as `mockall` is useful when tests need to assert calls, arguments, ordering, or configured failures. HTTP-level tools such as `wiremock` test a different boundary: the serialized protocol behavior rather than a Rust trait.
+
+Keep unit tests and integration tests complementary. Replacing every external system with a mock can make tests fast while missing schema, protocol, configuration, or deployment failures that only an integration test can catch.
 
 ## See Also
 

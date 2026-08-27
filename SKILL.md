@@ -235,7 +235,7 @@ Reference these guidelines when:
 - [`type-result-fallible`](rules/type-result-fallible.md) - Use `Result<T, E>` for fallible operations
 - [`type-phantom-marker`](rules/type-phantom-marker.md) - Use `PhantomData` for zero-cost type markers
 - [`type-never-diverge`](rules/type-never-diverge.md) - Use the never type `!` for functions that never return
-- [`type-generic-bounds`](rules/type-generic-bounds.md) - Add trait bounds only where needed
+- [`type-generic-bounds`](rules/type-generic-bounds.md) - Put each trait bound on the API surface that actually requires it
 - [`type-no-stringly`](rules/type-no-stringly.md) - Avoid stringly-typed APIs
 - [`type-repr-transparent`](rules/type-repr-transparent.md) - Use `#[repr(transparent)]` when a wrapper intentionally needs the wrapped field's layout and ABI
 - [`type-deref-coercion`](rules/type-deref-coercion.md) - Implement `Deref`/`DerefMut` only for smart-pointer and transparent wrapper types
@@ -296,8 +296,8 @@ Reference these guidelines when:
 - [`macro-export-crate-path`](rules/macro-export-crate-path.md) - Export declarative macros with `#[macro_export]` and a clean import path
 - [`macro-private-helpers`](rules/macro-private-helpers.md) - Hide macro-generated helper items behind a `#[doc(hidden)] pub mod __private`
 - [`macro-proc-two-crate`](rules/macro-proc-two-crate.md) - Put procedural macros in a dedicated `proc-macro = true` crate and re-export from the facade
-- [`macro-proc-syn-quote`](rules/macro-proc-syn-quote.md) - Build procedural macros with `syn`, `quote`, and `proc-macro2`
-- [`macro-proc-error-spans`](rules/macro-proc-error-spans.md) - Report proc-macro errors as spanned compile errors, never by panicking
+- [`macro-proc-syn-quote`](rules/macro-proc-syn-quote.md) - Put proc-macro parsing and generation in testable `syn`/`quote` helpers
+- [`macro-proc-error-spans`](rules/macro-proc-error-spans.md) - Turn expected proc-macro input errors into spanned compile errors instead of panics
 
 ### 17. Closures (MEDIUM)
 
@@ -345,8 +345,8 @@ Reference these guidelines when:
 - [`test-arrange-act-assert`](rules/test-arrange-act-assert.md) - Structure tests with clear Arrange, Act, Assert sections
 - [`test-proptest-properties`](rules/test-proptest-properties.md) - Use proptest for property-based testing
 - [`test-mockall-mocking`](rules/test-mockall-mocking.md) - Use mockall for trait mocking
-- [`test-mock-traits`](rules/test-mock-traits.md) - Use traits for dependencies to enable mocking in tests
-- [`test-fixture-raii`](rules/test-fixture-raii.md) - Use RAII pattern (Drop trait) for automatic test cleanup, or `rstest::#[fixture]` for declarative setup
+- [`test-mock-traits`](rules/test-mock-traits.md) - Put meaningful external dependencies behind replaceable boundaries when that improves testing
+- [`test-fixture-raii`](rules/test-fixture-raii.md) - Use RAII for owned test resources; do not confuse cleanup with safe mutation of process-global state
 - [`test-tokio-async`](rules/test-tokio-async.md) - Use `#[tokio::test]` for async tests
 - [`test-should-panic`](rules/test-should-panic.md) - Use `#[should_panic]` to test that code panics as expected
 - [`test-criterion-bench`](rules/test-criterion-bench.md) - Use `criterion` for benchmarking (or `divan` for simpler workflows)
@@ -417,13 +417,13 @@ Reference these guidelines when:
 - [`proj-flat-small`](rules/proj-flat-small.md) - Keep small projects flat
 - [`proj-mod-rs-dir`](rules/proj-mod-rs-dir.md) - Use mod.rs for multi-file modules
 - [`proj-pub-crate-internal`](rules/proj-pub-crate-internal.md) - Use pub(crate) for internal APIs
-- [`proj-pub-super-parent`](rules/proj-pub-super-parent.md) - Use pub(super) for parent-only visibility
+- [`proj-pub-super-parent`](rules/proj-pub-super-parent.md) - Use `pub(super)` when an item declared in a child module must be visible in its parent module scope
 - [`proj-pub-use-reexport`](rules/proj-pub-use-reexport.md) - Use pub use for clean public API
 - [`proj-prelude-module`](rules/proj-prelude-module.md) - Create prelude module for common imports
 - [`proj-bin-dir`](rules/proj-bin-dir.md) - Put multiple binaries in src/bin/
 - [`proj-workspace-large`](rules/proj-workspace-large.md) - Use workspaces for large projects
 - [`proj-workspace-deps`](rules/proj-workspace-deps.md) - Use workspace dependency inheritance for consistent versions across crates
-- [`proj-feature-additive`](rules/proj-feature-additive.md) - Design Cargo features to be strictly additive
+- [`proj-feature-additive`](rules/proj-feature-additive.md) - Design Cargo features to be additive whenever feature unification can combine them
 - [`proj-msrv-declare`](rules/proj-msrv-declare.md) - Declare `rust-version` (MSRV) in Cargo.toml and test it in CI
 - [`proj-build-rs-minimal`](rules/proj-build-rs-minimal.md) - Keep `build.rs` minimal, deterministic, and idempotent
 - [`proj-lints-table`](rules/proj-lints-table.md) - Use `[lints]` / `[workspace.lints]` for centralized lint configuration
@@ -439,7 +439,7 @@ Reference these guidelines when:
 - [`lint-warn-perf`](rules/lint-warn-perf.md) - Enable clippy::perf for performance improvements
 - [`lint-pedantic-selective`](rules/lint-pedantic-selective.md) - Enable clippy::pedantic selectively
 - [`lint-missing-docs`](rules/lint-missing-docs.md) - Warn on missing documentation for public items
-- [`lint-unsafe-doc`](rules/lint-unsafe-doc.md) - Require documentation for unsafe blocks
+- [`lint-unsafe-doc`](rules/lint-unsafe-doc.md) - Document every unsafe operation with the invariant that makes it sound
 - [`lint-cargo-metadata`](rules/lint-cargo-metadata.md) - Enable clippy::cargo for published crates
 - [`lint-rustfmt-check`](rules/lint-rustfmt-check.md) - Run cargo fmt --check in CI
 - [`lint-workspace-lints`](rules/lint-workspace-lints.md) - Configure lints at workspace level for consistent enforcement

@@ -1,45 +1,51 @@
 # type-generic-bounds
 
-> Add trait bounds only where needed
+> Put each trait bound on the API surface that actually requires it
 
 **Rule**: `type-generic-bounds`
 
 ## Why It Matters
 
-Trait bounds constrain what types can be used with generic code. Adding unnecessary bounds limits flexibility. Adding bounds in the right place (impl vs function vs where clause) affects usability and readability. Well-placed bounds keep APIs flexible while ensuring type safety.
+A trait bound is part of an API's contract. Putting a bound on a generic type definition constrains every use of that type; putting it on one `impl` or method constrains only that functionality. Unnecessary bounds reject otherwise-valid callers and can make downstream trait implementations harder to compose.
+
+Start from the operations and invariants the API needs, then place the corresponding bounds at the narrowest useful level. A bound on the type itself is appropriate when the type's definition or invariant genuinely requires it; it is not merely a style preference to avoid all type-level bounds.
 
 ## Bad
 
 ```rust
-// Bounds on struct definition — limits all uses
-struct Container<T: Clone + Debug> {  // Even storage requires Clone?
+use std::fmt::Debug;
+
+// Storage itself does not require Clone or Debug, but every Container<T>
+// is forced to satisfy both bounds.
+struct Container<T: Clone + Debug> {
     items: Vec<T>,
 }
 
-// Inline bounds make signature hard to read
-fn process<T: Clone + Debug + Send + Sync + 'static, E: Error + Send + Clone>(
-    value: T,
-) -> Result<T, E> { ... }
-
-// Redundant bounds
-fn print_twice<T: Clone + Debug>(value: T)
-where
-    T: Clone,  // Already specified above
-{ ... }
+fn main() {}
 ```
 
 ## Good
 
 ```rust
-// No bounds on struct — store anything
+use std::fmt::Debug;
+
 struct Container<T> {
     items: Vec<T>,
 }
 
-// Bounds only on impls that need them
+impl<T> Container<T> {
+    fn new(items: Vec<T>) -> Self {
+        Self { items }
+    }
+
+    fn len(&self) -> usize {
+        self.items.len()
+    }
+}
+
 impl<T: Clone> Container<T> {
     fn duplicate(&self) -> Self {
-        Container { items: self.items.clone() }
+        Self { items: self.items.clone() }
     }
 }
 
@@ -49,187 +55,209 @@ impl<T: Debug> Container<T> {
     }
 }
 
-// Where clause for readability
-fn process<T, E>(value: T) -> Result<T, E>
-where
-    T: Clone + Debug + Send + Sync + 'static,
-    E: Error + Send + Clone,
-{ ... }
-```
-
-## Bound Placement
-
-```rust
-// On struct: affects all uses of the type
-struct MustBeClone<T: Clone> { data: T }  // Rarely needed
-
-// On impl: affects specific functionality
-impl<T: Clone> Container<T> { ... }  // Common pattern
-
-// On function: affects that function only
-fn requires_send<T: Send>(value: T) { ... }
-
-// Recommendation: start with no bounds, add as needed
-```
-
-## Where Clause Benefits
-
-```rust
-// Inline: hard to read
-fn complex<T: Clone + Debug + Send, U: AsRef<str> + Into<String>>(t: T, u: U) {}
-
-// Where clause: clear and scannable
-fn complex<T, U>(t: T, u: U)
-where
-    T: Clone + Debug + Send,
-    U: AsRef<str> + Into<String>,
-{ }
-
-// Essential for complex bounds
-fn foo<T, U>(t: T, u: U)
-where
-    T: Iterator<Item = U>,
-    U: Clone + Into<String>,
-    Vec<U>: Debug,  // Bounds on expressions
-{ }
-```
-
-## Implied Bounds
-
-```rust
-// Supertrait bounds are implied
-trait Foo: Clone + Debug {}
-
-fn process<T: Foo>(value: T) {
-    // T: Clone and T: Debug are implied by T: Foo
-    let cloned = value.clone();
-    println!("{:?}", cloned);
-}
-
-// Associated type bounds
-fn process<I>(iter: I)
-where
-    I: Iterator,
-    I::Item: Clone,  // Bound on associated type
-{ }
-```
-
-## Inline Associated Type Bounds (Edition 2024, Rust 1.85+)
-
-Use the shorter inline syntax for bounds on associated types, stabilized in Edition 2024:
-
-```rust
-// Before Edition 2024: separate bound on the associated type
-fn copyable<I: Iterator>(iter: I)
-where
-    I::Item: Copy,
-{ }
-
-// After Edition 2024: inline the bound directly
-fn copyable<I: Iterator<Item: Copy>>(iter: I) { }
-
-// Multiple bounds on associated types
-fn debuggable<I: Iterator<Item: Debug + Display>>(iter: I) { }
-
-// Works with trait objects too
-fn process(iter: &dyn Iterator<Item: Clone + 'static>) { }
-```
-
-The inline syntax is particularly useful for reducing verbosity in function signatures with single-use associated type bounds. For complex bounds involving multiple associated types, the `where` clause style (shown in the previous section) remains clearer.
-
-## Precise Capturing with `use<...>` (Rust 1.87+)
-
-In Edition 2024, `impl Trait` in return position has stricter capturing rules. Use `use<...>` to precisely specify which generic parameters are captured:
-
-```rust
-// Without precise capturing: compiler may infer too many captures
-fn make_debug<T: Debug>(t: T) -> impl Debug { t }  // Captures T
-
-// With precise capturing (Rust 1.87+): explicit about what's captured
-fn make_debug<T: Debug>(t: T) -> impl Debug + use<T> { t }
-
-// Trait definitions with precise captures
-trait Factory {
-    // The precise captures in the return type are explicit
-    fn build(&self) -> impl Debug + use<'_>;
-}
-
-// Prevents accidentally capturing unrelated type parameters
-fn with_static<T: Debug>(t: T) -> impl Debug + use<T> {
-    // Only T is captured — no unintended lifetime captures
-    t
+fn main() {
+    let values = Container::new(vec![1, 2, 3]);
+    assert_eq!(values.len(), 3);
+    let _copy = values.duplicate();
+    values.debug_print();
 }
 ```
 
-## Const Generic `_` Inference (Rust 1.89+)
+`Container<T>` can store any `T`; only operations that clone or format elements require those capabilities.
 
-Let the compiler infer const generic values where the context makes them obvious:
+## Type-Level Bounds Are Sometimes Real Requirements
 
-```rust
-// Before: must specify the const generic explicitly
-fn identity<const N: usize>(arr: [u8; N]) -> [u8; N] { arr }
-let result = identity::<3>([1, 2, 3]);
-
-// After (Rust 1.89+): let the compiler infer N from the input
-fn identity<const N: usize>(arr: [u8; N]) -> [u8; N] { arr }
-let result = identity([1, 2, 3]);  // N inferred as 3
-
-// Use _ when the value doesn't matter for the API
-struct Buffer<const N: usize>;
-fn process(buf: Buffer<512>) {}
-// _ is inferred at call site
-```
-
-## `cfg_select!` for Bound-Aware Conditional Compilation (Rust 1.95+)
+A definition can itself require a bound because one of its fields or invariants requires the associated type relationship:
 
 ```rust
-use core::cfg_select;
-
-// Platform-dependent bounds without cfg attributes everywhere
-trait PlatformTrait {
-    fn platform_op(&self);
+struct IterState<I: Iterator> {
+    iter: I,
+    current: Option<I::Item>,
 }
 
-// cfg_select! chooses the bound at compile time
-fn platform_fn()
-where
-    // Platform-dependent bounds evaluated at compile time
-    Self: cfg_select! {
-        target_os = "linux" => PlatformTrait,
-        target_os = "windows" => PlatformTrait,
-        _ => Sized,  // Fallback — no extra bound
-    },
-{ ... }
+fn main() {
+    let state = IterState {
+        iter: [1, 2].into_iter(),
+        current: Some(1),
+    };
+    assert_eq!(state.current, Some(1));
+}
 ```
 
-## Conditional Trait Implementation
+Here `I::Item` cannot even be named without knowing that `I: Iterator`, so the bound belongs on the type.
+
+## Method and `impl` Bounds
+
+Choose between an `impl`-level bound and a method-level bound based on how much functionality shares the requirement:
 
 ```rust
 struct Wrapper<T>(T);
 
-// Implement Clone only when T: Clone
-impl<T: Clone> Clone for Wrapper<T> {
-    fn clone(&self) -> Self {
-        Wrapper(self.0.clone())
+impl<T> Wrapper<T> {
+    fn into_inner(self) -> T {
+        self.0
+    }
+
+    fn cloned_inner(&self) -> T
+    where
+        T: Clone,
+    {
+        self.0.clone()
     }
 }
 
-// Implement Debug only when T: Debug
+fn main() {
+    let value = Wrapper(String::from("hello"));
+    assert_eq!(value.cloned_inner(), "hello");
+}
+```
+
+If several related methods all require the same bound, a separate `impl<T: Bound>` block is often clearer. If only one method needs it, a method `where` clause avoids constraining unrelated methods.
+
+## Readability: Inline vs `where`
+
+Inline bounds are concise for short signatures. `where` clauses are useful when several parameters, associated types, or higher-order relationships are involved.
+
+```rust
+use std::fmt::Debug;
+
+fn summarize<I>(iter: I) -> usize
+where
+    I: IntoIterator,
+    I::Item: Debug,
+{
+    iter.into_iter().inspect(|item| println!("{item:?}")).count()
+}
+
+fn main() {
+    assert_eq!(summarize([1, 2, 3]), 3);
+}
+```
+
+Do not duplicate the same bound both inline and in a `where` clause unless a macro or generated API has a specific reason to do so.
+
+## Associated Type Bounds (Rust 1.79+)
+
+Rust 1.79 stabilized bounds in associated-type position. This:
+
+```rust
+fn copy_items<I>(iter: I) -> Vec<I::Item>
+where
+    I: Iterator<Item: Copy>,
+{
+    iter.collect()
+}
+
+fn main() {
+    assert_eq!(copy_items([1, 2, 3].into_iter()), vec![1, 2, 3]);
+}
+```
+
+is equivalent, for this use, to separating the constraints:
+
+```rust
+fn copy_items<I>(iter: I) -> Vec<I::Item>
+where
+    I: Iterator,
+    I::Item: Copy,
+{
+    iter.collect()
+}
+
+fn main() {
+    let _ = copy_items([1, 2, 3].into_iter());
+}
+```
+
+Use the inline associated-type form when it makes the relationship easier to scan; use separate `where` predicates when the associated type participates in several constraints.
+
+## Supertraits and Implied Trait Bounds
+
+If a trait declares a supertrait, users of that trait may rely on the supertrait requirement without repeating it:
+
+```rust
+use std::fmt::Debug;
+
+trait Record: Clone + Debug {}
+
+#[derive(Clone, Debug)]
+struct Entry;
+impl Record for Entry {}
+
+fn duplicate_and_print<T: Record>(value: T) {
+    let cloned = value.clone();
+    println!("{cloned:?}");
+}
+
+fn main() {
+    duplicate_and_print(Entry);
+}
+```
+
+Do not confuse these declared trait relationships with arbitrary bounds from a caller: Rust only implies specific categories of bounds, such as supertraits and certain lifetime/well-formedness requirements.
+
+## Precise `impl Trait` Captures (Rust 1.82+)
+
+Rust 1.82 stabilized `use<...>` precise capture syntax for supported return-position `impl Trait` uses. Edition 2024 **broadens** the default capture rules so in-scope lifetime parameters are automatically captured; `use<...>` lets an API make a narrower capture set explicit when needed.
+
+```rust
+use std::fmt::Debug;
+
+fn as_debug<T: Debug>(value: T) -> impl Debug + use<T> {
+    value
+}
+
+fn borrow<'a, T>(value: &'a T) -> impl Copy + use<'a, T> {
+    value
+}
+
+fn main() {
+    let value = 5;
+    let _ = as_debug(value);
+    let _ = borrow(&value);
+}
+```
+
+This is a capture rule for an opaque return type, not another reason to add semantic trait bounds to `T`. In current stable Rust, precise capture syntax also has placement/rule details that should be checked in the Reference when designing a public opaque-return API.
+
+## Conditional Trait Implementations
+
+Trait implementations themselves are a natural place for capability bounds:
+
+```rust
+use std::fmt::{self, Debug, Formatter};
+
+struct Wrapper<T>(T);
+
+impl<T: Clone> Clone for Wrapper<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
 impl<T: Debug> Debug for Wrapper<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Wrapper").field(&self.0).finish()
     }
 }
 
-// Wrapper<i32> is Clone + Debug
-// Wrapper<NonCloneable> is neither
+fn main() {
+    let value = Wrapper(7);
+    println!("{:?}", value.clone());
+}
 ```
+
+`Wrapper<T>` exists for any `T`, while `Wrapper<T>: Clone` or `Debug` only when the wrapped value supports the corresponding operation.
+
+## Keep Unrelated Language Features Out of Bound Advice
+
+Ordinary const-generic inference has existed independently of newer `_` generic-argument syntax, and `cfg_select!` selects code based on configuration rather than manufacturing a trait bound inside a `where` clause. Do not use either as generic-bound guidance unless the actual API specifically requires those features.
 
 ## See Also
 
 - [Rust Reference: Trait Bounds](https://doc.rust-lang.org/reference/trait-bounds.html)
-- [Rust 1.87: Precise capturing](https://blog.rust-lang.org/2025/05/15/Rust-1.87.0/)
-- [Rust 1.89: Const generic inference](https://blog.rust-lang.org/2025/08/07/Rust-1.89.0/)
+- [Rust 1.79: Associated item bounds](https://blog.rust-lang.org/2024/06/13/Rust-1.79.0/)
+- [Rust 1.82: Precise capturing](https://blog.rust-lang.org/2024/10/17/Rust-1.82.0/)
 - [api-impl-into](./api-impl-into.md) — Using `Into` bounds
 - [api-impl-asref](./api-impl-asref.md) — Using `AsRef` bounds
 - [name-type-param-single](./name-type-param-single.md) — Type parameter naming
