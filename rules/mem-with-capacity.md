@@ -1,140 +1,151 @@
 # mem-with-capacity
 
-> Use `with_capacity()` when size is known
+> Pre-allocate when you have a useful size bound
 
 ## Why It Matters
 
-When you know (or can estimate) the final size of a collection, pre-allocating avoids multiple reallocations as it grows. Each reallocation copies all existing elements, so avoiding them can dramatically improve performance.
+Growing a `Vec`, `String`, or hash table may require allocating a larger backing store and moving existing contents. When you know a useful lower bound for the final size, reserving it up front can avoid repeated growth work.
 
-**Rust 1.87+** guarantees that `Vec::with_capacity(N).capacity() == N` exactly. This makes pre-allocation contracts stricter and `reserve_exact()` less critical — you can rely on exact capacity without an extra call.
+Do not confuse **requested allocation size** with **reported capacity**. Rust guarantees that `Vec::with_capacity(n)` asks the allocator for exactly enough bytes for `n` elements, but the allocator may return a larger allocation. Consequently, `Vec::capacity()` is guaranteed to be **at least** `n`, not equal to `n`. Zero-sized element types are another obvious exception to byte-oriented intuition.
 
 ## Bad
 
-<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding item types and input -->
+<!-- rust-check: compile -->
 ```rust
-// Vec starts at capacity 0, reallocates at 4, 8, 16, 32...
+use std::collections::HashMap;
+
+fn process(i: usize) -> usize { i * 2 }
+
 let mut results = Vec::new();
 for i in 0..1000 {
-    results.push(process(i));  // ~10 reallocations!
+    results.push(process(i));
 }
 
-// String grows similarly
+let words = ["alpha", "beta", "gamma"];
 let mut output = String::new();
 for word in words {
     output.push_str(word);
     output.push(' ');
 }
 
-// HashMap default capacity is small
+let pairs = [("a", 1), ("b", 2), ("c", 3)];
 let mut map = HashMap::new();
-for (k, v) in pairs {  // Many reallocations
-    map.insert(k, v);
-}
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-// Pre-allocate exact size
-let mut results = Vec::with_capacity(1000);
-for i in 0..1000 {
-    results.push(process(i));  // Zero reallocations!
-}
-
-// Or use collect with size hint (iterator provides capacity)
-let results: Vec<_> = (0..1000).map(process).collect();
-
-// Pre-allocate string
-let estimated_len = words.iter().map(|w| w.len() + 1).sum();
-let mut output = String::with_capacity(estimated_len);
-for word in words {
-    output.push_str(word);
-    output.push(' ');
-}
-
-// Pre-allocate HashMap
-let mut map = HashMap::with_capacity(pairs.len());
 for (k, v) in pairs {
     map.insert(k, v);
 }
 ```
 
-## Collection Capacity Methods
+These are all correct. They are only candidates for pre-allocation when growth cost matters and a useful size estimate is available.
+
+## Good
+
+<!-- rust-check: compile -->
+```rust
+use std::collections::HashMap;
+
+fn process(i: usize) -> usize { i * 2 }
+
+let mut results = Vec::with_capacity(1000);
+for i in 0..1000 {
+    results.push(process(i));
+}
+assert!(results.capacity() >= 1000);
+
+let words = ["alpha", "beta", "gamma"];
+let estimated_len: usize = words.iter().map(|w| w.len() + 1).sum();
+let mut output = String::with_capacity(estimated_len);
+for word in words {
+    output.push_str(word);
+    output.push(' ');
+}
+assert_eq!(output.len(), estimated_len);
+
+let pairs = [("a", 1), ("b", 2), ("c", 3)];
+let mut map = HashMap::with_capacity(pairs.len());
+for (k, v) in pairs {
+    map.insert(k, v);
+}
+assert!(map.capacity() >= 3);
+```
+
+## `Vec` Capacity Guarantees
 
 ```rust
-// Vec
-let mut v = Vec::with_capacity(100);
-v.reserve(50);        // Ensure at least 50 more slots
-v.reserve_exact(50);  // Ensure exactly 50 more (less critical with 1.87+)
-v.shrink_to_fit();    // Release unused capacity
+let v: Vec<u64> = Vec::with_capacity(100);
+assert!(v.capacity() >= 100);
 
-// String
-let mut s = String::with_capacity(100);
-s.reserve(50);
-
-// HashMap / HashSet
-let mut m = HashMap::with_capacity(100);
-m.reserve(50);
-
-// VecDeque
-let mut d = VecDeque::with_capacity(100);
+let units: Vec<()> = Vec::with_capacity(100);
+assert_eq!(units.capacity(), usize::MAX);
 ```
+
+`Vec::with_capacity(n)` requests storage for exactly `n` elements from the allocator, but the allocator is permitted to provide more. If the actual capacity matters, query `capacity()`.
+
+## Reserve Methods
+
+```rust
+let mut v = Vec::with_capacity(8);
+v.extend(0..8);
+
+// Ensure room for at least 16 additional elements beyond the current length.
+v.reserve(16);
+assert!(v.capacity() >= v.len() + 16);
+
+// reserve_exact avoids Vec's deliberate growth heuristic, but the allocator
+// may still provide more memory than requested.
+v.reserve_exact(4);
+assert!(v.capacity() >= v.len() + 4);
+```
+
+Use `reserve` for normal amortized-growth behavior. Reach for `reserve_exact` only when avoiding deliberate over-reservation matters enough to justify potentially more frequent reallocations.
 
 ## Estimating Capacity
 
 ```rust
-// From iterator length
-fn collect_results(items: &[Item]) -> Vec<Output> {
+#[derive(Clone, Copy)]
+struct Item(i32);
+
+fn process_item(item: &Item) -> i32 { item.0 * 2 }
+
+fn collect_results(items: &[Item]) -> Vec<i32> {
     let mut results = Vec::with_capacity(items.len());
     for item in items {
-        results.push(process(item));
+        results.push(process_item(item));
     }
     results
 }
 
-// From filter estimate (if ~10% pass filter)
-fn filter_valid(items: &[Item]) -> Vec<&Item> {
-    let mut valid = Vec::with_capacity(items.len() / 10);
+fn filter_positive(items: &[Item]) -> Vec<&Item> {
+    // This estimate is workload-specific; it is not a correctness requirement.
+    let mut valid = Vec::with_capacity(items.len() / 4);
     for item in items {
-        if item.is_valid() {
+        if item.0 > 0 {
             valid.push(item);
         }
     }
     valid
 }
-
-// String from parts
-fn join_with_sep(parts: &[&str], sep: &str) -> String {
-    let total_len: usize = parts.iter().map(|p| p.len()).sum();
-    let sep_len = if parts.is_empty() { 0 } else { sep.len() * (parts.len() - 1) };
-    
-    let mut result = String::with_capacity(total_len + sep_len);
-    for (i, part) in parts.iter().enumerate() {
-        if i > 0 {
-            result.push_str(sep);
-        }
-        result.push_str(part);
-    }
-    result
-}
 ```
 
-## When to Skip
+An underestimate may cause later growth; an overestimate may retain unused memory. Capacity tuning is therefore a performance choice, not a correctness contract unless the program separately enforces a bound.
+
+## Iterators and `collect`
 
 ```rust
-// Unknown size, small expected
-let mut small: Vec<i32> = Vec::new();  // OK for small collections
-
-// Using collect() with good size_hint
-let v: Vec<_> = iter.collect();  // collect() uses size_hint
-
-// Capacity overhead exceeds benefit
-let mut rarely_used = Vec::new();  // OK if rarely grown
+let squares: Vec<_> = (0..100).map(|x| x * x).collect();
+assert_eq!(squares.len(), 100);
 ```
+
+Collection implementations may use an iterator's size hints to reserve efficiently, but do not turn that implementation detail into a fixed allocation-count promise. Prefer the clear iterator expression first and manually reserve when measurement or domain knowledge justifies it.
+
+## When to Skip Pre-allocation
+
+- the collection usually stays tiny;
+- the final size is highly uncertain and over-reservation would waste meaningful memory;
+- construction is cold and simplicity matters more;
+- `collect` or another API already expresses the operation clearly enough and profiling shows no problem.
 
 ## See Also
 
-- [mem-reuse-collections](mem-reuse-collections.md) - Reuse collections with clear()
-- [mem-smallvec](mem-smallvec.md) - Use SmallVec for usually-small collections
-- [perf-extend-batch](perf-extend-batch.md) - Use extend() for batch insertions
+- [mem-reuse-collections](mem-reuse-collections.md) - Reuse collections with `clear()`
+- [mem-smallvec](mem-smallvec.md) - Inline storage for usually-small collections
+- [perf-extend-batch](perf-extend-batch.md) - Use `extend()` for batch insertions
