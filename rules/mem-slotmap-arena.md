@@ -1,174 +1,222 @@
 # mem-slotmap-arena
 
-> Use `SlotMap<K, V>` for stable handles with contiguous storage
+> Use `SlotMap` for generation-checked stable keys; use `DenseSlotMap` when densely stored values and fast iteration are important
 
 **Rule**: `mem-slotmap-arena`
 
 ## Why It Matters
 
-When you need to store and reference many objects (ECS, graph nodes, self-referencing structs), `Vec<T>` with indices is fast but indices become stale if elements are removed. `Rc<T>` / `Arc<T>` have pointer overhead and refcount cycles. `SlotMap` (1.1.1, actively maintained) provides the best of both: stable, type-safe handles (generation-counted keys) backed by contiguous storage — O(1) access, O(1) insert, O(1) remove without invalidating existing handles.
+When values need long-lived handles across insertion and removal, raw `usize` indices into a `Vec<T>` are easy to misuse. `swap_remove` can make an old index refer to a different value, while shifting removal invalidates later indices.
 
-## Bad
+The `slotmap` crate solves that problem with generation/version-checked keys. Removing one entry invalidates that key while keys to other live entries continue to identify their original values.
 
-```rust
-// Vec with indices — fast, but removal shifts everything
-struct EntitySystem {
-    entities: Vec<Entity>,  // Removing an entity invalidates all subsequent indices
-}
+Do not describe every slot map as “contiguous storage.” The standard `SlotMap` stores slots and can accumulate holes, so iteration scans empty slots as well as occupied ones. `DenseSlotMap` specifically keeps values in dense contiguous storage and trades an extra level of indirection on keyed lookup for fast iteration.
 
-fn remove_entity(system: &mut EntitySystem, idx: usize) {
-    system.entities.swap_remove(idx);  // O(1) but last element moves here
-    // Other systems still hold idx → now points to wrong entity!
-}
-
-// Rc-based — pointer chasing, no locality
-struct Entity {
-    components: Vec<Rc<dyn Component>>,
-}
-// Each Rc traversal is a pointer chase; bad cache behavior
-```
-
-## Good
+## Bad: Raw Indices Can Become Stale
 
 ```rust
-use slotmap::{SlotMap, Key};
+#[derive(Debug, PartialEq, Eq)]
+struct Entity(&'static str);
 
-// SlotMap with generation-counted stable keys
-let mut world: SlotMap<Key, Entity> = SlotMap::new();
+fn main() {
+    let mut entities = vec![Entity("hero"), Entity("monster")];
+    let monster_index = 1usize;
 
-// Insert returns a stable handle
-let hero: Key = world.insert(Entity::new("hero"));
-let monster: Key = world.insert(Entity::new("monster"));
+    entities.swap_remove(0);
 
-// Access via handle — O(1), generation-checked
-assert_eq!(world[hero].name, "hero");
-
-// Remove without invalidating other handles
-world.remove(monster);
-assert!(world.contains_key(hero));  // hero handle still valid
-assert!(!world.contains_key(monster));
-```
-
-## SlotMap Variants
-
-```rust
-use slotmap::{
-    SlotMap,       // Standard: keys can be reused
-    HopSlotMap,    // Iteration faster, removal slightly slower
-    DenseSlotMap,  // Contiguous storage, stable keys, fast iteration
-};
-
-// HopSlotMap: best iteration performance
-let mut hop: HopSlotMap<Key, Entity> = HopSlotMap::new();
-let k = hop.insert(Entity::new("fast-iter"));
-
-// DenseSlotMap: contiguous storage, stable keys
-let mut dense: DenseSlotMap<Key, Entity> = DenseSlotMap::new();
-let k = dense.insert(Entity::new("dense"));
-for entity in dense.iter() {  // Cache-friendly iteration
-    process(entity);
+    // The old index is now out of bounds; with a different removal pattern an
+    // old index can instead refer to the wrong value.
+    assert!(entities.get(monster_index).is_none());
 }
 ```
 
-## Graph Nodes Example
+The type system cannot distinguish an index captured before the collection was mutated from a fresh valid index.
+
+## Good: `SlotMap` With a Concrete Key Type
 
 ```rust
-use slotmap::{SlotMap, Key};
+use slotmap::{DefaultKey, SlotMap};
 
-// Node with edges stored as stable handles
+#[derive(Debug, PartialEq, Eq)]
+struct Entity(&'static str);
+
+fn main() {
+    let mut world: SlotMap<DefaultKey, Entity> = SlotMap::new();
+
+    let hero = world.insert(Entity("hero"));
+    let monster = world.insert(Entity("monster"));
+
+    assert_eq!(world[hero], Entity("hero"));
+
+    assert_eq!(world.remove(monster), Some(Entity("monster")));
+    assert!(world.contains_key(hero));
+    assert!(!world.contains_key(monster));
+}
+```
+
+`slotmap::Key` is a **trait**, not the concrete key type to put in `SlotMap<Key, V>`. Use `DefaultKey` for simple cases or define a custom key type.
+
+## Prefer Custom Key Types for Distinct Domains
+
+```rust
+use slotmap::{new_key_type, SlotMap};
+
+new_key_type! {
+    struct NodeKey;
+    struct TextureKey;
+}
+
+#[derive(Debug)]
+struct Node {
+    edges: Vec<NodeKey>,
+}
+
+fn main() {
+    let mut nodes: SlotMap<NodeKey, Node> = SlotMap::with_key();
+    let a = nodes.insert(Node { edges: Vec::new() });
+    let b = nodes.insert(Node { edges: Vec::new() });
+    nodes[a].edges.push(b);
+
+    let mut textures: SlotMap<TextureKey, &'static str> = SlotMap::with_key();
+    let texture = textures.insert("albedo");
+
+    assert_eq!(nodes[a].edges, [b]);
+    assert_eq!(textures[texture], "albedo");
+    // nodes.get(texture); // does not compile: TextureKey is not NodeKey
+}
+```
+
+The custom key types prevent accidentally using a handle from one slot map with another slot map whose values happen to have a compatible shape.
+
+## `SlotMap` vs `DenseSlotMap`
+
+Use ordinary `SlotMap` when keyed operations dominate and sparse slots are acceptable:
+
+```rust
+use slotmap::{DefaultKey, SlotMap};
+
+fn main() {
+    let mut values: SlotMap<DefaultKey, i32> = SlotMap::new();
+    let a = values.insert(10);
+    let b = values.insert(20);
+    values.remove(a);
+
+    assert_eq!(values[b], 20);
+}
+```
+
+Use `DenseSlotMap` when iterating all live values frequently is important:
+
+```rust
+use slotmap::{DefaultKey, DenseSlotMap};
+
+fn main() {
+    let mut values: DenseSlotMap<DefaultKey, i32> = DenseSlotMap::new();
+    let a = values.insert(10);
+    let b = values.insert(20);
+    values.remove(a);
+
+    let live: Vec<_> = values.values().copied().collect();
+    assert_eq!(live, [20]);
+    assert_eq!(values[b], 20);
+}
+```
+
+`DenseSlotMap` keeps the values densely packed while maintaining stable generation-checked keys through internal indirection. Do not claim the standard `SlotMap` has the same dense-value layout.
+
+## Graphs and Trees
+
+Keys are useful for graph-like relationships because the nodes can move internally without invalidating logical references:
+
+```rust
+use slotmap::{new_key_type, SlotMap};
+
+new_key_type! { struct NodeKey; }
+
+#[derive(Debug)]
 struct Node {
     name: String,
-    edges: Vec<Key>,  // Stable handles to other nodes
+    edges: Vec<NodeKey>,
 }
 
+#[derive(Default)]
 struct Graph {
-    nodes: SlotMap<Key, Node>,
+    nodes: SlotMap<NodeKey, Node>,
 }
 
 impl Graph {
-    fn add_node(&mut self, name: &str) -> Key {
+    fn add_node(&mut self, name: &str) -> NodeKey {
         self.nodes.insert(Node {
-            name: name.into(),
+            name: name.to_owned(),
             edges: Vec::new(),
         })
     }
-    
-    fn add_edge(&mut self, from: Key, to: Key) {
-        // Both keys are generation-checked at lookup
-        if let Some(node) = self.nodes.get_mut(from) {
-            node.edges.push(to);
+
+    fn add_edge(&mut self, from: NodeKey, to: NodeKey) {
+        if self.nodes.contains_key(to) {
+            if let Some(node) = self.nodes.get_mut(from) {
+                node.edges.push(to);
+            }
         }
     }
-    
-    fn remove_node(&mut self, key: Key) -> bool {
-        // Removing a node doesn't invalidate any other key
-        self.nodes.remove(key).is_some()
-    }
+}
+
+fn main() {
+    let mut graph = Graph::default();
+    let root = graph.add_node("root");
+    let child = graph.add_node("child");
+    graph.add_edge(root, child);
+
+    assert_eq!(graph.nodes[root].name, "root");
+    assert_eq!(graph.nodes[root].edges, [child]);
 }
 ```
 
-## Self-Referencing Structs
+This is safer than storing raw pointers into a growable collection and more robust than naked integer indices across removal.
 
-```rust
-use slotmap::{SlotMap, Key};
+## Keys Are Handles, Not Rust References
 
-struct AstNode {
-    kind: AstKind,
-    parent: Option<Key>,       // Stable handle, not raw pointer
-    children: Vec<Key>,        // Stable handles survive moves
-}
+A slot-map key does not create a self-referential Rust struct in the borrow-checker sense. It is an opaque handle used to look the value up later. That distinction is valuable: moving/reallocating the collection does not leave an actual `&T` pointing into old storage.
 
-// Self-referencing with SlotMap keys is safe
-// because keys are generation-counted and remain valid
-// even when the SlotMap reallocates
-```
+A key can still become invalid when its entry is removed. Always decide how your domain handles dangling logical edges—ignore them, clean them eagerly, validate on lookup, or maintain secondary structures.
 
-## SlotMap vs Alternatives
+## Performance Tradeoffs
 
-| Feature | `Vec<(usize, T)>` | `SlotMap<K, V>` | `Rc<T>` |
-|---------|-------------------|-----------------|---------|
-| Access | O(1) | O(1) | O(1) |
-| Insert | O(1) | O(1) | O(1) |
-| Remove | O(1) swap + stale index | O(1), handles stable | O(1), refcount |
-| Handle safety | None (raw usize) | Generation-counted | Type-safe |
-| Cache locality | Good (contiguous) | Good (contiguous) | Poor (pointer chase) |
-| Memory overhead | 0 bytes per handle | 8 bytes per entry | 16 bytes per Rc |
+Do not attach fixed byte-overhead or cache-locality tables to all slot-map variants. The representation is crate-version- and target-dependent, and the variants make different tradeoffs:
 
-## When to Use
+- standard `SlotMap`: direct slot lookup; iteration scans holes;
+- `DenseSlotMap`: dense live values and fast iteration; keyed lookup performs additional indirection;
+- secondary maps: associate data with keys from a primary slot map without making the key itself an owning reference.
 
-```rust
-// ✅ Good: ECS / entity systems
-let mut ecs: SlotMap<Key, Component> = SlotMap::new();
+Use `Vec<T>` when stable handles/removal safety are unnecessary. A slot map pays for handle validation and metadata to provide semantics a plain vector does not.
 
-// ✅ Good: Graph / tree with cross-references
-struct Tree {
-    nodes: SlotMap<Key, TreeNode>,
-}
+## When It Fits
 
-// ✅ Good: Arena with stable handles instead of raw pointers
-// (See also mem-arena-allocator.md for bump allocation)
+Good candidates include:
 
-// ✅ Good: Self-referencing types (where &self references would dangle)
-struct SelfRef {
-    handle_self: Key,  // Points back into parent SlotMap
-}
+- entity/scene registries with insertion and removal;
+- graph/tree nodes with cross-links;
+- resource tables exposed through opaque handles;
+- arenas where values need stable logical identities but not stable memory addresses.
 
-// ❌ Avoid: Simple sequential data (use Vec)
-let mut simple: Vec<i32> = vec![1, 2, 3];  // No removal needed
-
-// ❌ Avoid: Hot-path iteration where Key overhead matters
-// (but DenseSlotMap minimizes this)
-```
+Prefer a `Vec`, `VecDeque`, map, slab, arena, or direct ownership when those semantics fit better. “Stable handle” alone does not imply `SlotMap` is automatically the fastest structure.
 
 ## Cargo.toml
 
 ```toml
 [dependencies]
-slotmap = "1.1.1"
+slotmap = "1"
 ```
+
+Pin a tighter version only when your application's dependency policy calls for it; this rule should not hard-code a patch release as a semantic requirement.
 
 ## See Also
 
-- [mem-arena-allocator](mem-arena-allocator.md) — Bump allocators for batch allocations
-- [mem-thinvec](mem-thinvec.md) — `DenseSlotMap` alternative for sparse data
-- [mem-box-large-variant](mem-box-large-variant.md) — Boxing large enum variants
+- [mem-arena-allocator](./mem-arena-allocator.md) — bump arenas with different lifetime/removal semantics
+- [mem-box-large-variant](./mem-box-large-variant.md) — indirection for representation size
+
+## References
+
+- [slotmap crate documentation](https://docs.rs/slotmap/latest/slotmap/)
+- [DenseSlotMap](https://docs.rs/slotmap/latest/slotmap/struct.DenseSlotMap.html)
+- [new_key_type!](https://docs.rs/slotmap/latest/slotmap/macro.new_key_type.html)

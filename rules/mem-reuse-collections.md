@@ -1,174 +1,188 @@
 # mem-reuse-collections
 
-> Clear and reuse collections instead of creating new ones in loops
+> Reuse collection capacity across repeated temporary workloads when allocation behavior or profiling shows it is worthwhile
 
 ## Why It Matters
 
-Creating new `Vec`, `String`, or `HashMap` instances in hot loops generates significant allocator pressure. Clearing a collection and reusing it keeps the existing capacity, avoiding repeated allocation/deallocation cycles. This is especially impactful for frequently-executed code paths.
+`Vec::clear`, `String::clear`, and `HashMap::clear` remove their current contents while retaining allocated capacity. In a loop whose temporary working set is repeatedly rebuilt to a similar size, that can avoid allocator churn and make capacity growth happen once instead of over and over.
 
-## Bad
+This is a performance technique, not a universal style rule. `Vec::new()` itself does not allocate, small allocations may be cheap, and retaining the largest capacity ever seen can waste memory. Prefer the clearest ownership shape first, then reuse buffers where the allocation pattern matters.
+
+## Bad: Repeatedly Rebuild a Temporary Destination
 
 ```rust
-fn process_batches(batches: &[Batch]) -> Vec<Result> {
-    let mut results = Vec::new();
-    
+fn positive_squares(batches: &[Vec<i32>]) -> Vec<i32> {
+    let mut total = Vec::new();
+
     for batch in batches {
-        let mut temp = Vec::new();  // Allocates every iteration
-        
-        for item in &batch.items {
-            temp.push(transform(item));
-        }
-        
-        results.push(aggregate(&temp));
-        // temp dropped here, deallocation
+        let temporary: Vec<i32> = batch
+            .iter()
+            .copied()
+            .filter(|x| *x > 0)
+            .map(|x| x * x)
+            .collect();
+
+        total.extend(temporary);
     }
-    
-    results
+
+    total
 }
 
-fn format_lines(items: &[Item]) -> String {
-    let mut output = String::new();
-    
-    for item in items {
-        let line = format!("{}: {}", item.name, item.value);  // Allocates
-        output.push_str(&line);
-        output.push('\n');
+fn main() {
+    let batches = vec![vec![-1, 2, 3], vec![4, -5]];
+    assert_eq!(positive_squares(&batches), vec![4, 9, 16]);
+}
+```
+
+If this loop is hot and batches repeatedly reach similar sizes, each fresh temporary destination must acquire its own backing storage.
+
+## Good: Reuse a Scratch `Vec`
+
+```rust
+fn positive_squares(batches: &[Vec<i32>]) -> Vec<i32> {
+    let mut total = Vec::new();
+    let mut scratch = Vec::new();
+
+    for batch in batches {
+        scratch.clear();
+        scratch.extend(
+            batch
+                .iter()
+                .copied()
+                .filter(|x| *x > 0)
+                .map(|x| x * x),
+        );
+
+        total.extend_from_slice(&scratch);
     }
-    
+
+    total
+}
+
+fn main() {
+    let batches = vec![vec![-1, 2, 3], vec![4, -5]];
+    assert_eq!(positive_squares(&batches), vec![4, 9, 16]);
+}
+```
+
+`clear()` drops/removes the current elements and sets the length to zero, but the `Vec` keeps its allocation for the next iteration.
+
+If the scratch values do not need to exist as a separate collection at all, extending `total` directly from the iterator is simpler and may be faster. Reuse is useful when a downstream operation genuinely needs the temporary slice/container.
+
+## Strings: Often Write Directly Into the Final Buffer
+
+Do not introduce a reusable per-line `String` automatically. If the result is one accumulated string, writing directly to it avoids both a temporary allocation and a copy:
+
+```rust
+use std::fmt::Write;
+
+fn format_rows(rows: &[(&str, i32)]) -> String {
+    let mut output = String::new();
+
+    for (name, value) in rows {
+        writeln!(&mut output, "{name}: {value}").unwrap();
+    }
+
     output
 }
-```
 
-## Good
-
-```rust
-fn process_batches(batches: &[Batch]) -> Vec<Result> {
-    let mut results = Vec::with_capacity(batches.len());
-    let mut temp = Vec::new();  // Allocate once outside loop
-    
-    for batch in batches {
-        temp.clear();  // Reuse allocation, just reset length
-        
-        for item in &batch.items {
-            temp.push(transform(item));
-        }
-        
-        results.push(aggregate(&temp));
-        // temp keeps its capacity for next iteration
-    }
-    
-    results
-}
-
-fn format_lines(items: &[Item]) -> String {
-    use std::fmt::Write;
-    
-    let mut output = String::new();
-    let mut line = String::new();  // Reusable buffer
-    
-    for item in items {
-        line.clear();
-        write!(&mut line, "{}: {}", item.name, item.value).unwrap();
-        output.push_str(&line);
-        output.push('\n');
-    }
-    
-    output
+fn main() {
+    assert_eq!(format_rows(&[("a", 1), ("b", 2)]), "a: 1\nb: 2\n");
 }
 ```
 
-## Clear vs Drain vs New
+A separate reusable line buffer makes sense when another API needs each formatted record independently before it is reused—for example a parser, encoder, or I/O routine with a scratch-buffer interface.
+
+## `clear`, `truncate`, `drain`, and Fresh Allocation
 
 ```rust
-let mut vec = vec![1, 2, 3, 4, 5];
+fn main() {
+    let mut values = Vec::with_capacity(16);
+    values.extend([1, 2, 3, 4, 5]);
+    let capacity = values.capacity();
 
-// clear(): keeps capacity, O(n) for Drop types
-vec.clear();
-assert_eq!(vec.len(), 0);
-assert!(vec.capacity() >= 5);
+    values.clear();
+    assert!(values.is_empty());
+    assert_eq!(values.capacity(), capacity);
 
-// drain(): returns iterator, clears after iteration
-let drained: Vec<_> = vec.drain(..).collect();
+    values.extend([10, 20, 30, 40]);
+    values.truncate(2);
+    assert_eq!(values, [10, 20]);
+    assert_eq!(values.capacity(), capacity);
 
-// truncate(): keeps first n elements
-vec.truncate(2);
-
-// Creating new: loses all capacity
-vec = Vec::new();  // Capacity gone
+    let drained: Vec<_> = values.drain(..).collect();
+    assert_eq!(drained, [10, 20]);
+    assert_eq!(values.capacity(), capacity);
+}
 ```
+
+Use `drain` when you need to consume/move out removed elements. Use `truncate` when keeping a prefix. Use `clear` when no element should remain.
+
+Assigning `Vec::new()` or `String::new()` drops the previous allocation; that can be exactly what you want when retaining a large scratch buffer would be undesirable.
+
+## Retained Capacity Can Become a Memory Problem
+
+A reusable buffer tends to remember its high-water mark. One exceptional 100 MiB input can leave a long-lived scratch `Vec` holding that capacity after subsequent inputs shrink back to kilobytes.
+
+Possible responses include:
+
+- keep reuse only while capacity stays below a chosen workload-specific limit;
+- replace an oversized scratch buffer with a fresh one;
+- call `shrink_to` / `shrink_to_fit` when reclaiming memory is worth the allocator work;
+- scope the scratch buffer more narrowly so it is naturally dropped.
+
+Do not call `shrink_to_fit()` every iteration; that defeats the point of capacity reuse.
 
 ## HashMap Reuse
 
 ```rust
 use std::collections::HashMap;
 
-fn count_words_per_line(lines: &[&str]) -> Vec<HashMap<String, usize>> {
-    let mut results = Vec::with_capacity(lines.len());
-    let mut counts = HashMap::new();  // Reuse across iterations
-    
+fn count_words(lines: &[&str]) -> Vec<Vec<(String, usize)>> {
+    let mut output = Vec::with_capacity(lines.len());
+    let mut counts = HashMap::<String, usize>::new();
+
     for line in lines {
-        counts.clear();  // Keeps bucket allocation
-        
+        counts.clear();
+
         for word in line.split_whitespace() {
-            *counts.entry(word.to_string()).or_insert(0) += 1;
+            *counts.entry(word.to_owned()).or_insert(0) += 1;
         }
-        
-        results.push(counts.clone());
+
+        let mut row: Vec<_> = counts
+            .iter()
+            .map(|(word, count)| (word.clone(), *count))
+            .collect();
+        row.sort_unstable();
+        output.push(row);
     }
-    
-    results
+
+    output
+}
+
+fn main() {
+    let result = count_words(&["a b a", "b c"]);
+    assert_eq!(result[0], vec![("a".into(), 2), ("b".into(), 1)]);
 }
 ```
 
-## BufWriter Pattern
+The map's bucket allocation can be reused across lines, but output that must own each line's result still needs independent storage. Reusing one container does not eliminate allocations required by the program's ownership requirements.
 
-```rust
-use std::io::{BufWriter, Write};
+## When Fresh Collections Are Better
 
-fn write_many_records(records: &[Record], mut output: impl Write) -> std::io::Result<()> {
-    // BufWriter reuses its internal buffer
-    let mut writer = BufWriter::with_capacity(8192, &mut output);
-    let mut line = String::with_capacity(256);  // Reusable formatting buffer
-    
-    for record in records {
-        line.clear();
-        format_record(record, &mut line);
-        writer.write_all(line.as_bytes())?;
-        writer.write_all(b"\n")?;
-    }
-    
-    writer.flush()
-}
-```
+Fresh containers are often clearer when:
 
-## When to Create Fresh
+- each iteration transfers ownership of its collection into a result;
+- different iterations run concurrently and need independent mutation;
+- working-set sizes vary wildly and high-water capacity retention is costly;
+- the loop is cold or profiling shows allocator work is irrelevant;
+- the optimizer/library already provides a more direct no-temporary path.
 
-```rust
-// When ownership transfer is needed
-fn produce_results() -> Vec<Vec<Item>> {
-    let mut results = Vec::new();
-    
-    for batch in batches {
-        let processed: Vec<Item> = batch.process();  // Ownership transferred
-        results.push(processed);  // Moved into results
-    }
-    
-    results  // Each inner Vec is independent
-}
-
-// When thread safety requires it
-std::thread::scope(|s| {
-    for _ in 0..4 {
-        s.spawn(|| {
-            let local_buffer = Vec::new();  // Thread-local, can't share
-            // ...
-        });
-    }
-});
-```
+Do not twist APIs around scratch-buffer reuse unless the saved work matters.
 
 ## See Also
 
-- [mem-with-capacity](./mem-with-capacity.md) - Pre-allocating capacity
-- [mem-clone-from](./mem-clone-from.md) - Reusing allocations when cloning
-- [mem-write-over-format](./mem-write-over-format.md) - Avoiding format! allocations
+- [mem-with-capacity](./mem-with-capacity.md) — reserve when size is predictable
+- [mem-clone-from](./mem-clone-from.md) — reuse allocations during cloning
+- [mem-write-over-format](./mem-write-over-format.md) — write into existing strings/buffers
+- [perf-collect-into](./perf-collect-into.md) — iterator collection into an existing destination

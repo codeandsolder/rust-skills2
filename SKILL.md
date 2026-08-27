@@ -84,7 +84,7 @@ Reference these guidelines when:
 - [`own-rwlock-readers`](rules/own-rwlock-readers.md) - Use the right `RwLock<T>` when reads significantly outnumber writes
 - [`own-copy-small`](rules/own-copy-small.md) - Implement `Copy` for small, simple types
 - [`own-clone-explicit`](rules/own-clone-explicit.md) - Use explicit `Clone` for types where copying has meaningful cost
-- [`own-move-large`](rules/own-move-large.md) - Move large types instead of copying; use `Box` if moves are expensive
+- [`own-move-large`](rules/own-move-large.md) - Borrow large values when ownership transfer is unnecessary; use indirection when it solves a real layout, location, or ownership problem—not from a fixed byte threshold
 - [`own-lifetime-elision`](rules/own-lifetime-elision.md) - Rely on lifetime elision rules; add explicit lifetimes only when required
 - [`own-cell-update`](rules/own-cell-update.md) - Use `Cell::update` (Rust 1.88+) for concise single-threaded read-transform-write updates on `Copy` values
 - [`own-cow-rpit-edition2024`](rules/own-cow-rpit-edition2024.md) - Edition 2024 RPIT lifetime capture makes `Cow<'_, T>` returns from methods borrowing `&self` dramatically more ergonomic
@@ -120,21 +120,21 @@ Reference these guidelines when:
 - [`mem-boxed-slice`](rules/mem-boxed-slice.md) - Use `Box<[T]>` instead of `Vec<T>` for fixed-size heap data
 - [`mem-thinvec`](rules/mem-thinvec.md) - Use `ThinVec<T>` for nullable collections with minimal overhead
 - [`mem-clone-from`](rules/mem-clone-from.md) - Use `clone_from()` to reuse allocations when repeatedly cloning
-- [`mem-reuse-collections`](rules/mem-reuse-collections.md) - Clear and reuse collections instead of creating new ones in loops
+- [`mem-reuse-collections`](rules/mem-reuse-collections.md) - Reuse collection capacity across repeated temporary workloads when allocation behavior or profiling shows it is worthwhile
 - [`mem-avoid-format`](rules/mem-avoid-format.md) - Avoid `format!()` when string literals work
 - [`mem-write-over-format`](rules/mem-write-over-format.md) - Use `write!()` into existing buffers instead of `format!()` allocations
 - [`mem-arena-allocator`](rules/mem-arena-allocator.md) - Use arena allocators for batch allocations
 - [`mem-zero-copy`](rules/mem-zero-copy.md) - Use zero-copy patterns with slices and `Bytes`
 - [`mem-compact-string`](rules/mem-compact-string.md) - Use compact string types for memory-constrained string storage
 - [`mem-smaller-integers`](rules/mem-smaller-integers.md) - Use appropriately-sized integers to reduce memory footprint
-- [`mem-assert-type-size`](rules/mem-assert-type-size.md) - Use static assertions to guard against accidental type size growth
+- [`mem-assert-type-size`](rules/mem-assert-type-size.md) - Assert type size when it is a real ABI, memory-budget, or measured performance constraint; prefer upper bounds when exact layout is not required
 - [`mem-take-replace`](rules/mem-take-replace.md) - Use `mem::take` / `mem::replace` to move a value out of a `&mut` without cloning
 - [`mem-drop-order`](rules/mem-drop-order.md) - Know and control drop order: struct fields drop top-to-bottom, locals in reverse
 - [`mem-arc-str`](rules/mem-arc-str.md) - Prefer `Arc<str>` over `Arc<String>` for thread-shared immutable strings
 - [`mem-box-new-uninit`](rules/mem-box-new-uninit.md) - Use `Box::new_uninit()` when you genuinely need deferred or in-place heap initialization; call `assume_init()` only after the allocation contains a valid `T`
 - [`mem-ecow-clone-heavy`](rules/mem-ecow-clone-heavy.md) - Use `EcoString` for clone-heavy string workloads
 - [`mem-hotpath-profile`](rules/mem-hotpath-profile.md) - Profile memory before optimizing
-- [`mem-slotmap-arena`](rules/mem-slotmap-arena.md) - Use `SlotMap<K, V>` for stable handles with contiguous storage
+- [`mem-slotmap-arena`](rules/mem-slotmap-arena.md) - Use `SlotMap` for generation-checked stable keys; use `DenseSlotMap` when densely stored values and fast iteration are important
 
 ### 4. Unsafe Code (CRITICAL)
 
@@ -317,7 +317,7 @@ Reference these guidelines when:
 
 ### 19. Naming Conventions (MEDIUM)
 
-- [`name-types-camel`](rules/name-types-camel.md) - Use `UpperCamelCase` for types, traits, and enum names
+- [`name-types-camel`](rules/name-types-camel.md) - Use `UpperCamelCase` for structs, enums, traits, type aliases, and other type-level names
 - [`name-variants-camel`](rules/name-variants-camel.md) - Use `UpperCamelCase` for enum variants
 - [`name-funcs-snake`](rules/name-funcs-snake.md) - Use `snake_case` for functions, methods, variables, and modules
 - [`name-consts-screaming`](rules/name-consts-screaming.md) - Use `SCREAMING_SNAKE_CASE` for constants and statics
@@ -396,9 +396,9 @@ Reference these guidelines when:
 - [`perf-collect-once`](rules/perf-collect-once.md) - Don't collect intermediate iterators
 - [`perf-entry-api`](rules/perf-entry-api.md) - Use entry API for map insert-or-update
 - [`perf-drain-reuse`](rules/perf-drain-reuse.md) - Use drain and extract_if to reuse allocations
-- [`perf-extend-batch`](rules/perf-extend-batch.md) - Use extend for batch insertions
+- [`perf-extend-batch`](rules/perf-extend-batch.md) - Use `extend`, `extend_from_slice`, or `append` when adding a batch expresses the ownership you want; reserve explicitly when the final size is cheaply known
 - [`perf-chain-avoid`](rules/perf-chain-avoid.md) - Avoid chain in hot loops
-- [`perf-collect-into`](rules/perf-collect-into.md) - Use `extend()` for reusing containers; `collect_into` (nightly) for future ergonomics
+- [`perf-collect-into`](rules/perf-collect-into.md) - Reuse an existing destination with `clear()` + `extend()` on stable Rust; nightly `Iterator::collect_into` appends like `Extend::extend` and does not clear for you
 - [`perf-black-box-bench`](rules/perf-black-box-bench.md) - Use black_box in benchmarks
 - [`perf-release-profile`](rules/perf-release-profile.md) - Optimize release profile settings
 - [`perf-profile-first`](rules/perf-profile-first.md) - Profile before optimizing
