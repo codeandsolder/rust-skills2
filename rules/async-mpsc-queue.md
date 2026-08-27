@@ -1,195 +1,245 @@
 # async-mpsc-queue
 
-> Use `mpsc` channels for async message queues between tasks
+> Use `tokio::sync::mpsc` when an async task needs a single-consumer message queue with Tokio-aware waiting or backpressure
 
 ## Why It Matters
 
-`tokio::sync::mpsc` (multi-producer, single-consumer) is the workhorse channel for async Rust. It provides async send/receive, backpressure via bounded capacity, and efficient cloning of senders. It's the default choice for task-to-task communication.
+`tokio::sync::mpsc` is a multi-producer, single-consumer channel designed to integrate with async tasks. Its bounded form provides async backpressure: `Sender::send(...).await` waits for capacity instead of blocking the executor thread.
 
-## Bad
+Do not turn this into “all channels in async code must be Tokio channels.” A synchronous channel can be appropriate at a sync/async boundary, and Tokio also has an unbounded channel whose `send` is synchronous. Choose based on where waiting happens, whether capacity must be bounded, and which side owns the runtime context.
+
+## Bad: Blocking Receive on an Async Worker Thread
 
 ```rust
-use std::sync::mpsc;  // Wrong! Blocks the async runtime
+use std::sync::mpsc;
 
-let (tx, rx) = std::sync::mpsc::channel();
+async fn bad_receive() {
+    let (_tx, rx) = mpsc::channel::<String>();
 
-tokio::spawn(async move {
-    tx.send("hello").unwrap();  // Might block
-});
+    // `recv()` blocks the OS thread. If called directly from an async task,
+    // it can prevent unrelated futures on that runtime worker from running.
+    let _message = rx.recv().unwrap();
+}
 
-tokio::spawn(async move {
-    let msg = rx.recv().unwrap();  // BLOCKS the executor thread!
-});
+fn main() {}
 ```
 
-## Good
+The problem is the blocking operation inside async execution, not the mere existence of `std::sync::mpsc`.
+
+## Good: Bounded Tokio MPSC
 
 ```rust
 use tokio::sync::mpsc;
 
-let (tx, mut rx) = mpsc::channel::<String>(100);
+#[tokio::main]
+async fn main() {
+    let (tx, mut rx) = mpsc::channel::<String>(8);
 
-tokio::spawn(async move {
-    tx.send("hello".to_string()).await.unwrap();
-});
-
-tokio::spawn(async move {
-    while let Some(msg) = rx.recv().await {
-        println!("Received: {}", msg);
-    }
-});
-```
-
-## Sender Cloning
-
-```rust
-use tokio::sync::mpsc;
-
-let (tx, mut rx) = mpsc::channel::<Event>(100);
-
-// Multiple producers
-for i in 0..10 {
-    let tx = tx.clone();  // Cheap clone
-    tokio::spawn(async move {
-        tx.send(Event { source: i }).await.unwrap();
+    let producer = tokio::spawn(async move {
+        tx.send("hello".to_owned()).await.unwrap();
     });
-}
 
-// Drop original sender so channel closes when all clones dropped
-drop(tx);
-
-// Consumer
-while let Some(event) = rx.recv().await {
-    process(event);
+    assert_eq!(rx.recv().await.as_deref(), Some("hello"));
+    producer.await.unwrap();
 }
-// Loop exits when all senders dropped
 ```
 
-## Message Handler Pattern
+When the bounded channel is full, `send().await` yields until capacity becomes available or the channel closes.
+
+## Multiple Producers, One Consumer
 
 ```rust
 use tokio::sync::mpsc;
+
+#[tokio::main]
+async fn main() {
+    let (tx, mut rx) = mpsc::channel::<u32>(8);
+
+    let tx2 = tx.clone();
+    let a = tokio::spawn(async move {
+        tx.send(1).await.unwrap();
+    });
+    let b = tokio::spawn(async move {
+        tx2.send(2).await.unwrap();
+    });
+
+    a.await.unwrap();
+    b.await.unwrap();
+
+    let mut values = vec![rx.recv().await.unwrap(), rx.recv().await.unwrap()];
+    values.sort_unstable();
+    assert_eq!(values, vec![1, 2]);
+}
+```
+
+A receiver observes channel closure after all strong senders are dropped (or after the receiver is explicitly closed and the buffered messages are drained).
+
+## Request/Response with `oneshot`
+
+```rust
+use tokio::sync::{mpsc, oneshot};
 
 enum Command {
-    Get { key: String, reply: oneshot::Sender<Option<Value>> },
-    Set { key: String, value: Value },
-    Delete { key: String },
+    Double {
+        value: u32,
+        reply: oneshot::Sender<u32>,
+    },
 }
 
-async fn run_store(mut commands: mpsc::Receiver<Command>) {
-    let mut store = HashMap::new();
-    
-    while let Some(cmd) = commands.recv().await {
-        match cmd {
-            Command::Get { key, reply } => {
-                let _ = reply.send(store.get(&key).cloned());
-            }
-            Command::Set { key, value } => {
-                store.insert(key, value);
-            }
-            Command::Delete { key } => {
-                store.remove(&key);
+async fn actor(mut rx: mpsc::Receiver<Command>) {
+    while let Some(command) = rx.recv().await {
+        match command {
+            Command::Double { value, reply } => {
+                let _ = reply.send(value * 2);
             }
         }
     }
 }
 
-// Usage
-async fn client(tx: mpsc::Sender<Command>) -> Option<Value> {
+#[tokio::main]
+async fn main() {
+    let (tx, rx) = mpsc::channel(8);
+    let task = tokio::spawn(actor(rx));
+
     let (reply_tx, reply_rx) = oneshot::channel();
-    
-    tx.send(Command::Get { 
-        key: "foo".to_string(), 
-        reply: reply_tx 
-    }).await.unwrap();
-    
-    reply_rx.await.unwrap()
+    tx.send(Command::Double {
+        value: 21,
+        reply: reply_tx,
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(reply_rx.await.unwrap(), 42);
+    drop(tx);
+    task.await.unwrap();
 }
 ```
 
-## Graceful Shutdown
+This is a useful actor-style pattern when one task should own mutable state and callers need individual replies.
+
+## Graceful Receiver Shutdown: Close, Then Drain
 
 ```rust
-async fn worker(mut rx: mpsc::Receiver<Task>, shutdown: CancellationToken) {
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
+
+async fn consume(mut rx: mpsc::Receiver<u32>, shutdown: CancellationToken) -> Vec<u32> {
+    let mut processed = Vec::new();
+
     loop {
         tokio::select! {
             _ = shutdown.cancelled() => {
-                // Drain remaining messages
-                while let Ok(task) = rx.try_recv() {
-                    process(task).await;
+                // Prevent future sends, then drain values already reserved/buffered.
+                rx.close();
+                while let Some(value) = rx.recv().await {
+                    processed.push(value);
                 }
                 break;
             }
-            Some(task) = rx.recv() => {
-                process(task).await;
+            value = rx.recv() => {
+                match value {
+                    Some(value) => processed.push(value),
+                    None => break,
+                }
             }
-            else => break,  // Channel closed
         }
     }
+
+    processed
+}
+
+#[tokio::main]
+async fn main() {
+    let (tx, rx) = mpsc::channel(4);
+    let shutdown = CancellationToken::new();
+    tx.send(1).await.unwrap();
+    shutdown.cancel();
+
+    let values = consume(rx, shutdown).await;
+    assert_eq!(values, vec![1]);
 }
 ```
 
-## WeakSender for Optional Producers
+`Receiver::close()` prevents additional sends while still allowing buffered/reserved values to be received. A loop of `try_recv()` alone only drains what happens to be available at that instant and does not establish the same producer boundary.
+
+## Reserve Capacity Before Expensive Construction
 
 ```rust
 use tokio::sync::mpsc;
 
-let (tx, mut rx) = mpsc::channel::<Message>(100);
-let weak = tx.downgrade();  // Doesn't keep channel alive
+#[tokio::main]
+async fn main() {
+    let (tx, mut rx) = mpsc::channel(1);
 
-tokio::spawn(async move {
-    // Strong sender - keeps channel alive
-    tx.send("from strong".into()).await.unwrap();
-});
+    let permit = tx.reserve().await.unwrap();
+    let message = String::from("constructed after capacity was reserved");
+    permit.send(message);
 
-tokio::spawn(async move {
-    // Weak sender - may fail if strong senders dropped
-    if let Some(tx) = weak.upgrade() {
-        tx.send("from weak".into()).await.unwrap();
-    }
-});
+    assert_eq!(rx.recv().await.as_deref(), Some("constructed after capacity was reserved"));
+}
 ```
 
-## Permit Pattern
+`reserve()` is useful when constructing a message is expensive and should happen only after bounded-channel capacity has been obtained. The permit represents reserved capacity; sending through it is synchronous.
+
+## `WeakSender` Does Not Keep the Channel Alive
 
 ```rust
-// Reserve slot before preparing message
-let permit = tx.reserve().await?;
+use tokio::sync::mpsc;
 
-// Now we have guaranteed capacity
-let message = expensive_to_create_message();
-permit.send(message);  // Never fails
+#[tokio::main]
+async fn main() {
+    let (tx, mut rx) = mpsc::channel::<u32>(4);
+    let weak = tx.downgrade();
 
-// Useful when message creation is expensive
-// and you don't want to create it if channel is full
+    assert!(weak.upgrade().is_some());
+    drop(tx);
+
+    assert!(weak.upgrade().is_none());
+    assert_eq!(rx.recv().await, None);
+}
 ```
 
-## PollSender for Stream Integration
+Use a weak sender for references that should not extend the producer lifetime of the channel.
 
-Use `PollSender` from `tokio-util` to bridge mpsc channels with the `Sink` trait for stream combinators:
+## `PollSender` Is a `Sink` Adapter
+
+`tokio_util::sync::PollSender` wraps a Tokio `mpsc::Sender` with polling methods and implements `futures::Sink<T>`. Use the `Sink` protocol (`poll_ready` before `start_send`) or higher-level `SinkExt` helpers rather than calling `start_send` as if it were an ordinary unpinned method.
 
 ```rust
+use futures::SinkExt;
+use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
-use futures::stream::{Stream, StreamExt};
 
-let (tx, rx) = mpsc::channel::<Message>(100);
-let mut poll_sender = PollSender::new(tx);
+#[tokio::main]
+async fn main() {
+    let (tx, mut rx) = mpsc::channel::<u32>(4);
+    let mut sink = PollSender::new(tx);
 
-// poll_sender implements Sink for seamless Stream integration
-let results: Vec<Message> = some_stream()
-    .map(Ok::<_, Error>)
-    .map(|item| poll_sender.start_send(item))
-    .collect()
-    .await;
+    sink.send(42).await.unwrap();
+    drop(sink);
+
+    assert_eq!(rx.recv().await, Some(42));
+}
 ```
 
-`PollSender` is useful when:
-- Bridging sync and async code through a `Sink` interface
-- Integrating with stream combinators like `map`, `filter`, `forward`
-- You need non-async send capability to a bounded channel
+Use `PollSender` when an API specifically expects a `Sink`/poll-based sender. Ordinary Tokio code should usually call `mpsc::Sender::send().await` directly.
+
+## Bounded Versus Unbounded
+
+A bounded queue makes overload visible by applying backpressure. An unbounded queue avoids waiting for capacity but can grow until memory pressure becomes the failure mode. Prefer bounded capacity when the producer can reasonably slow down or shed work, and size it from workload behavior rather than a magic constant.
+
+## Practical Guidance
+
+- Do not call blocking receive APIs directly on async runtime workers.
+- Prefer bounded `mpsc` when queue growth must be controlled.
+- Drop/close senders deliberately so consumers can observe shutdown.
+- Use `Receiver::close()` followed by `recv().await` to close producer admission and drain queued work.
+- Use `reserve()` when capacity should be secured before expensive message creation.
+- Reach for `PollSender` only when integrating with `Sink`/poll-based APIs.
 
 ## See Also
 
-- [async-bounded-channel](./async-bounded-channel.md) - Why bounded channels
-- [async-oneshot-response](./async-oneshot-response.md) - Request-response with oneshot
-- [async-broadcast-pubsub](./async-broadcast-pubsub.md) - Multiple consumers
+- [async-bounded-channel](./async-bounded-channel.md) — Backpressure and queue capacity
+- [async-oneshot-response](./async-oneshot-response.md) — Request/response channels
+- [async-broadcast-pubsub](./async-broadcast-pubsub.md) — Multiple receivers
+- [async-cancellation-token](./async-cancellation-token.md) — Cooperative shutdown
