@@ -8,20 +8,19 @@ The `#[cfg(test)]` attribute ensures test code is only compiled during `cargo te
 
 ## Bad
 
-<!-- rust-check: fragment; reason=test-layout pseudocode intentionally omits surrounding definitions -->
+<!-- rust-check: compile -->
 ```rust
-// Tests without cfg(test) - compiled into release binary
+// Tests without cfg(test) - the module itself is part of normal builds.
 mod tests {
     #[test]
-    fn test_something() { ... }  // Included in release build!
+    fn test_something() {
+        assert_eq!(2 + 2, 4);
+    }
 }
 
-// Tests in separate file without access to private items
-// src/my_module.rs
-fn private_helper() { ... }
-
-// tests/my_module_test.rs
-// Can't access private_helper!
+// A private helper in a library module is not accessible from an external
+// integration-test crate merely because the test lives under tests/.
+fn private_helper() -> i32 { 42 }
 ```
 
 ## Good

@@ -44,7 +44,7 @@ On an ordinary stable build where `docsrs` is not set, the unstable documentatio
 
 Because `doc_cfg` remains unstable, enable it only for the docs.rs build:
 
-<!-- rust-check: fragment; reason=crate-root inner attribute intended for a docs.rs nightly rustdoc build -->
+<!-- rust-check: compile -->
 ```rust
 #![cfg_attr(docsrs, feature(doc_cfg))]
 ```

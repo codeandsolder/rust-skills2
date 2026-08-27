@@ -140,7 +140,7 @@ Do not infer from this assertion that arbitrary transmutation or FFI interchange
 
 When serialization should use the wrapped representation, serde can support transparent newtypes. Keep optional serialization dependencies feature-gated in general-purpose libraries.
 
-<!-- rust-check: fragment; reason=requires serde derive dependency/features in the consuming crate -->
+<!-- rust-check: compile -->
 ```rust
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]

@@ -39,7 +39,7 @@ let config = Config { name: "test".into(), value: 42 };
 
 ## Good
 
-<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
+<!-- rust-check: compile -->
 ```rust
 // Can add variants in minor versions
 #[non_exhaustive]
@@ -50,12 +50,15 @@ pub enum ErrorKind {
     // Future: can add Interrupted here without breaking changes
 }
 
-// Downstream code MUST have wildcard
-match error.kind() {
-    ErrorKind::NotFound => ...,
-    ErrorKind::PermissionDenied => ...,
-    ErrorKind::TimedOut => ...,
-    _ => ...,  // Required by non_exhaustive
+// Downstream code must leave room for future variants. A wildcard is
+// accepted here too, even though this standalone example defines the enum locally.
+fn describe_external(kind: ErrorKind) -> &'static str {
+    match kind {
+        ErrorKind::NotFound => "not found",
+        ErrorKind::PermissionDenied => "permission denied",
+        ErrorKind::TimedOut => "timed out",
+        _ => "other",
+    }
 }
 
 // Can add fields in minor versions

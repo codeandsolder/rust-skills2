@@ -27,7 +27,7 @@ struct StoredHandle<T> {
 
 ## Good
 
-<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
+<!-- rust-check: compile -->
 ```rust
 use std::marker::PhantomData;
 
@@ -46,7 +46,7 @@ impl<T> Handle<T> {
 struct User;
 struct Order;
 
-fn process_user(h: Handle<User>) { ... }
+fn process_user(h: Handle<User>) { let _ = h; }
 
 let user_handle = Handle::<User>::new(1);
 let order_handle = Handle::<Order>::new(2);

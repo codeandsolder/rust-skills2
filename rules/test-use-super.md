@@ -19,21 +19,24 @@ mod tests {
     #[test]
     fn test_function() {
         let result = public_function();
-        // ...
+        let _ = result; // assertion omitted; import style is the point here
     }
 }
 ```
 
 ## Good
 
-<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
+<!-- rust-check: compile -->
 ```rust
 // src/my_module.rs
-pub struct PublicStruct { ... }
-struct PrivateStruct { ... }  // Private
+pub struct PublicStruct;
+impl PublicStruct { fn new() -> Self { Self } }
 
-pub fn public_function() -> i32 { ... }
-fn private_helper() -> i32 { ... }  // Private
+struct PrivateStruct;  // Private
+impl PrivateStruct { fn new() -> Self { Self } }
+
+pub fn public_function() -> i32 { 42 }
+fn private_helper() -> i32 { 42 }  // Private
 
 #[cfg(test)]
 mod tests {
@@ -42,13 +45,13 @@ mod tests {
     #[test]
     fn test_public_struct() {
         let s = PublicStruct::new();
-        // ...
+        assert_eq!(std::mem::size_of_val(&s), 0);
     }
     
     #[test]
     fn test_private_struct() {
         let s = PrivateStruct::new();  // Can access private!
-        // ...
+        assert_eq!(std::mem::size_of_val(&s), 0);
     }
     
     #[test]

@@ -142,7 +142,7 @@ assert_eq!(handle_request("completed"), Ok(OrderStatus::Completed));
 
 Serde can perform the boundary conversion directly:
 
-<!-- rust-check: fragment; reason=requires serde derive dependency/features in the consuming crate -->
+<!-- rust-check: compile -->
 ```rust
 use serde::{Deserialize, Serialize};
 
