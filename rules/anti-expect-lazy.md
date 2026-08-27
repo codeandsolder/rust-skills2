@@ -1,97 +1,165 @@
 # anti-expect-lazy
 
-> Don't use expect for recoverable errors
+> Do not use `expect()` for ordinary runtime failures; use it to document deliberate panic invariants
 
 ## Why It Matters
 
-`.expect()` panics with a custom message, but it's still a panic. Using it for errors that could reasonably occur in production (network failures, file not found, invalid input) crashes the program instead of handling the error gracefully.
+`.expect(message)` is still a panic. The message improves diagnostics, but it does not make a file, network, parsing, lookup, or resource failure recoverable.
 
-Reserve `.expect()` for programming errors where panic is appropriate.
+Use ordinary error handling for failures callers are expected to encounter. Use `expect()` when the failure would mean an internal invariant or deliberately fatal process policy has been violated, and make the message describe that invariant.
 
 ## Bad
 
-<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding application types and functions -->
+<!-- rust-check: compile -->
 ```rust
-// Network failures are expected - don't panic
-let response = client.get(url).await.expect("failed to fetch");
+use std::fs;
 
-// Files might not exist
-let config = fs::read_to_string("config.toml").expect("config not found");
+fn load_port(input: &str) -> u16 {
+    // User/configuration input can be invalid.
+    input.parse().expect("invalid port")
+}
 
-// User input can be invalid
-let age: u32 = input.parse().expect("invalid age");
+fn read_config() -> String {
+    // Missing files and I/O errors are environmental failures.
+    fs::read_to_string("config.toml").expect("config not found")
+}
 
-// Database queries can fail
-let user = db.find_user(id).await.expect("user not found");
+fn lookup_user(users: &[u64], id: u64) -> u64 {
+    // A normal lookup miss becomes a panic for no semantic reason.
+    *users.iter().find(|&&user| user == id).expect("user not found")
+}
 ```
+
+The messages are better than `unwrap()` diagnostics, but these functions still choose panic as their API response to expected runtime states.
 
 ## Good
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+<!-- rust-check: compile -->
 ```rust
-// Handle recoverable errors properly
-let response = client.get(url).await
-    .context("failed to fetch URL")?;
+use std::fs;
+use std::io;
+use std::num::ParseIntError;
 
-// Return error if file doesn't exist
-let config = fs::read_to_string("config.toml")
-    .context("failed to read config file")?;
+fn load_port(input: &str) -> Result<u16, ParseIntError> {
+    input.parse()
+}
 
-// Validate and return error
-let age: u32 = input.parse()
-    .map_err(|_| Error::InvalidInput("age must be a number"))?;
+fn read_config() -> Result<String, io::Error> {
+    fs::read_to_string("config.toml")
+}
 
-// Handle missing data
-let user = db.find_user(id).await?
-    .ok_or(Error::NotFound("user"))?;
+fn lookup_user(users: &[u64], id: u64) -> Option<u64> {
+    users.iter().copied().find(|&user| user == id)
+}
 ```
 
-## When expect() Is Appropriate
+The caller now chooses whether to retry, display an error, use a default, translate the failure into another error type, or terminate the program.
 
-Use `.expect()` for invariants that indicate bugs:
-
-```rust
-// Mutex poisoning indicates a bug elsewhere
-let guard = mutex.lock().expect("mutex poisoned");
-
-// Regex is known valid at compile time
-let re = Regex::new(r"^\d{4}$").expect("invalid regex");
-
-// Thread spawn failure is unrecoverable
-let handle = thread::spawn(|| work()).expect("failed to spawn thread");
-
-// Static data that must be valid
-let config: Config = toml::from_str(EMBEDDED_CONFIG)
-    .expect("embedded config is invalid");
-```
-
-## Pattern: expect() vs unwrap()
+## `expect()` Is Appropriate for Deliberate Invariants
 
 ```rust
-// unwrap: no context, hard to debug
-let x = option.unwrap();
+use std::collections::HashMap;
+use std::num::NonZeroUsize;
 
-// expect: gives context, still panics
-let x = option.expect("value should exist after validation");
+struct ValidatedConfig {
+    values: HashMap<String, String>,
+}
 
-// ?: proper error handling
-let x = option.ok_or(Error::MissingValue)?;
+impl ValidatedConfig {
+    fn port(&self) -> &str {
+        self.values
+            .get("port")
+            .expect("validated configuration must contain a port")
+    }
+}
+
+fn fixed_buffer_size() -> NonZeroUsize {
+    NonZeroUsize::new(4096).expect("4096 is nonzero")
+}
 ```
+
+The useful message states what must be true and therefore what invariant failed, rather than merely restating the lower-level error.
+
+## Thread Creation: `spawn` Versus `Builder::spawn`
+
+The free `std::thread::spawn` function returns a `JoinHandle<T>` directly. It does **not** return a `Result`, so this is invalid Rust:
+
+```text
+thread::spawn(|| work()).expect("failed to spawn thread")
+```
+
+The free function internally uses a default `Builder` and panics if OS thread creation fails. If creation failure should be recoverable, use `thread::Builder::spawn`, which returns `io::Result<JoinHandle<T>>`:
+
+```rust
+use std::io;
+use std::thread;
+
+fn start_worker() -> io::Result<thread::JoinHandle<u32>> {
+    thread::Builder::new()
+        .name("worker".into())
+        .spawn(|| 42)
+}
+```
+
+If a particular binary deliberately treats thread-creation failure as fatal, `expect()` can document that policy:
+
+```rust
+use std::thread;
+
+fn start_required_worker() -> thread::JoinHandle<()> {
+    thread::Builder::new()
+        .name("required-worker".into())
+        .spawn(|| {})
+        .expect("required worker thread must be creatable")
+}
+```
+
+That is an application policy choice, not a universal statement that thread-spawn failures are unrecoverable.
+
+## Joining a Thread Is a Different Failure
+
+`JoinHandle::join()` returns a `Result` because the worker may have panicked. Calling `expect()` on `join()` means the caller deliberately propagates worker panic as a panic in the joining thread:
+
+```rust
+use std::thread;
+
+fn run_worker() -> u32 {
+    let handle = thread::spawn(|| 42);
+    handle.join().expect("worker thread must not panic")
+}
+```
+
+Sometimes that is exactly the desired invariant. In other systems, the join error should be logged, translated, or isolated instead.
+
+## Mutex Poisoning Is Also a Policy Choice
+
+```rust
+use std::sync::Mutex;
+
+fn increment(counter: &Mutex<u64>) {
+    // Panic-on-poison is coherent when a panic while holding the lock may have
+    // invalidated the protected invariant.
+    let mut guard = counter.lock().expect("counter state poisoned");
+    *guard += 1;
+}
+```
+
+Do not generalize this into “mutex poisoning always means a bug” or “poison can always be ignored.” The correct response depends on what invariants the protected state has.
 
 ## Decision Guide
 
-| Situation | Use |
-|-----------|-----|
-| User input | `?` with error |
-| File/network I/O | `?` with error |
-| Database operations | `?` with error |
-| Parsed constants | `.expect()` |
-| Thread/mutex operations | `.expect()` |
-| After validation check | `.expect()` with explanation |
-| Never expected to fail | `.expect()` documenting invariant |
+| Situation | Typical choice |
+|-----------|----------------|
+| Invalid user/config input | Return/propagate an error |
+| File/network/database failure | Return/propagate or recover |
+| Optional lookup miss | `Option` or domain error |
+| Internal invariant after validation | `expect()` can be appropriate |
+| Fixed literal known valid by construction | `expect()` can document the assumption |
+| OS thread creation | `Builder::spawn` if recoverable; `expect()` only for deliberate fatal policy |
+| Worker panic at `join()` | Handle or `expect()` according to supervision policy |
 
 ## See Also
 
-- [err-expect-bugs-only](./err-expect-bugs-only.md) - When to use expect
-- [err-no-unwrap-prod](./err-no-unwrap-prod.md) - Avoiding unwrap
-- [anti-unwrap-abuse](./anti-unwrap-abuse.md) - Unwrap anti-pattern
+- [err-expect-bugs-only](./err-expect-bugs-only.md) — Bug-class invariants
+- [err-no-unwrap-prod](./err-no-unwrap-prod.md) — Expected failure versus panic policy
+- [anti-unwrap-abuse](./anti-unwrap-abuse.md) — Panic-style extraction anti-patterns
