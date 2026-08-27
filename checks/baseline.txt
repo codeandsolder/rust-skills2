@@ -14,13 +14,6 @@ anti-over-abstraction.md :: Special Case: Deref Overuse :: block 5 :: E0308
 anti-type-erasure.md :: impl Trait Positions :: block 4 :: E0107
 anti-unsafe-send-sync.md :: Pattern: Use Existing Safe Types :: block 6 :: E0428
 anti-vec-for-slice.md :: Mutable Slices :: block 4 :: E0428
-lint-edition-2024.md :: `strict_module_headers` :: block 4 :: P:couldn't read `examples/other.rs`: no such
-lint-edition-2024.md :: `unsafe_op_in_unsafe_fn` Detail :: block 1 :: E0428
-lint-warn-complexity.md :: Examples :: block 5 :: E0428
-lint-warn-complexity.md :: Overly Verbose Code :: block 4 :: P:expected `;`, found keyword `let`
-lint-warn-complexity.md :: Unnecessary Complexity :: block 2 :: E0308
-lint-warn-style.md :: Examples :: block 8 :: E0428
-lint-warn-style.md :: Redundant Code :: block 2 :: P:expected `;`, found keyword `match`
 mem-arena-allocator.md :: Alternative: slotmap for Stable Handles :: block 8 :: E0782
 mem-avoid-format.md :: Pre-allocate for Multiple Appends :: block 4 :: E0428
 mem-box-large-variant.md :: Recursive Types Require Boxing :: block 5 :: E0072,E0428

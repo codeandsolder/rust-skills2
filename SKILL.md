@@ -434,8 +434,8 @@ Reference these guidelines when:
 
 - [`lint-deny-correctness`](rules/lint-deny-correctness.md) - Deny clippy::correctness and equivalent rustc lints
 - [`lint-warn-suspicious`](rules/lint-warn-suspicious.md) - Enable clippy::suspicious for likely bugs
-- [`lint-warn-style`](rules/lint-warn-style.md) - Enable clippy::style for idiomatic code
-- [`lint-warn-complexity`](rules/lint-warn-complexity.md) - Enable clippy::complexity for simpler code
+- [`lint-warn-style`](rules/lint-warn-style.md) - Enable `clippy::style` for established Rust idioms, while treating its suggestions as reviewable guidance rather than formatting law
+- [`lint-warn-complexity`](rules/lint-warn-complexity.md) - Enable `clippy::complexity` to catch needlessly complicated expressions and operations
 - [`lint-warn-perf`](rules/lint-warn-perf.md) - Enable `clippy::perf` for established performance anti-patterns; measure before adding optimizer hints
 - [`lint-pedantic-selective`](rules/lint-pedantic-selective.md) - Enable clippy::pedantic selectively
 - [`lint-missing-docs`](rules/lint-missing-docs.md) - Warn on missing documentation for public items
@@ -447,7 +447,7 @@ Reference these guidelines when:
 - [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Enable high-value `clippy::nursery` lints selectively, not the whole group
 - [`lint-cargo-unused-features`](rules/lint-cargo-unused-features.md) - Detect unused feature flags declared in Cargo.toml (`[lints.cargo]`, nightly-only)
 - [`lint-dylint-custom`](rules/lint-dylint-custom.md) - Use Dylint for project-specific custom lints without forking clippy
-- [`lint-edition-2024`](rules/lint-edition-2024.md) - Track Edition 2024 lints (`unsafe_op_in_unsafe_fn`, `keyword_idents`, etc.)
+- [`lint-edition-2024`](rules/lint-edition-2024.md) - Use the `rust_2024_compatibility` lint group and `cargo fix --edition` to audit edition-sensitive code before switching to Rust 2024
 - [`lint-lints-table`](rules/lint-lints-table.md) - Use the `[lints]` table in `Cargo.toml` for canonical lint configuration (Rust 1.74+)
 - [`lint-uplifted`](rules/lint-uplifted.md) - Track clippy lints uplifted into rustc (Rust 1.86-1.96)
 
