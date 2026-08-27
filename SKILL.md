@@ -149,11 +149,11 @@ Reference these guidelines when:
 
 ### 5. API Design (HIGH)
 
-- [`api-builder-pattern`](rules/api-builder-pattern.md) - Use Builder pattern for complex construction
+- [`api-builder-pattern`](rules/api-builder-pattern.md) - Use a builder when construction has several optional settings, validation, or staged configuration
 - [`api-builder-must-use`](rules/api-builder-must-use.md) - Mark consuming builder methods or the builder type `#[must_use]` when ignoring the returned builder is likely a bug
 - [`api-newtype-safety`](rules/api-newtype-safety.md) - Use newtypes when identical representation hides meaning the compiler should distinguish
-- [`api-typestate`](rules/api-typestate.md) - Use typestate pattern to encode state machine invariants in the type system
-- [`api-sealed-trait`](rules/api-sealed-trait.md) - Use sealed traits to prevent external implementations while allowing use
+- [`api-typestate`](rules/api-typestate.md) - Use typestate when compile-time state transitions materially simplify or strengthen an API
+- [`api-sealed-trait`](rules/api-sealed-trait.md) - Seal a public trait when downstream crates should be able to use it but not implement it
 - [`api-extension-trait`](rules/api-extension-trait.md) - Use a local extension trait when method-call syntax on an external type materially improves an API
 - [`api-parse-dont-validate`](rules/api-parse-dont-validate.md) - Parse weakly typed input into invariant-bearing domain types at system boundaries instead of repeatedly validating primitives downstream
 - [`api-impl-into`](rules/api-impl-into.md) - Accept `Into<T>` when the API intentionally takes ownership and useful caller types can convert into `T`
@@ -161,8 +161,8 @@ Reference these guidelines when:
 - [`api-must-use`](rules/api-must-use.md) - Add `#[must_use]` when silently discarding a value is plausibly a bug; rely on the built-in `unused_must_use` semantics instead of treating every return value alike
 - [`api-non-exhaustive`](rules/api-non-exhaustive.md) - Use `#[non_exhaustive]` on public enums and structs for forward compatibility
 - [`api-from-not-into`](rules/api-from-not-into.md) - Implement `From<Source> for Destination` for clear infallible conversions you own; use `Into<Destination>` primarily as a caller-side bound
-- [`api-default-impl`](rules/api-default-impl.md) - Implement `Default` for types with sensible default values
-- [`api-common-traits`](rules/api-common-traits.md) - Implement standard traits (Debug, Clone, PartialEq, etc.) for public types
+- [`api-default-impl`](rules/api-default-impl.md) - Implement `Default` only when the type has a sensible canonical default value
+- [`api-common-traits`](rules/api-common-traits.md) - Implement standard traits when their semantics are useful and appropriate for the public type
 - [`api-serde-optional`](rules/api-serde-optional.md) - Make serde optional in general-purpose libraries when serialization is not part of the core API
 - [`api-impl-fromiterator`](rules/api-impl-fromiterator.md) - Implement `FromIterator` and `Extend` for collection types, and `IntoIterator` for all three reference forms
 - [`api-operator-overload`](rules/api-operator-overload.md) - Overload operators only when the semantics are natural and unsurprising

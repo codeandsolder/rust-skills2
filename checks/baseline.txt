@@ -15,12 +15,6 @@ anti-over-abstraction.md :: Special Case: Deref Overuse :: block 5 :: E0308
 anti-type-erasure.md :: impl Trait Positions :: block 4 :: E0107
 anti-unsafe-send-sync.md :: Pattern: Use Existing Safe Types :: block 6 :: E0428
 anti-vec-for-slice.md :: Mutable Slices :: block 4 :: E0428
-api-builder-pattern.md :: Builder Variations :: block 3 :: E0428
-api-common-traits.md :: Manual Implementations :: block 4 :: E0404
-api-default-impl.md :: Builder with Default :: block 4 :: E0599
-api-sealed-trait.md :: Full Pattern :: block 3 :: P:missing `fn` or `struct` for,P:non-item in item list
-api-typestate.md :: Anti-pattern: Hand-rolling Typestate for Simple Builders :: block 7 :: E0392,E0658
-api-typestate.md :: Builder Typestate :: block 3 :: E0599
 async-cancellation-token.md :: CancellationToken API :: block 3 :: E0069
 async-cancellation-token.md :: Graceful Shutdown Pattern :: block 5 :: E0107,E0752
 async-cancellation-token.md :: Hierarchical Cancellation :: block 4 :: E0277
