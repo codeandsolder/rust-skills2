@@ -91,7 +91,10 @@ A public API can always add named constructors/conversions where the domain has 
 ```rust
 use std::num::NonZeroU32;
 
-fn require_nonzero(value: impl TryInto<NonZeroU32>) -> Result<NonZeroU32, impl std::fmt::Debug> {
+fn require_nonzero<T>(value: T) -> Result<NonZeroU32, T::Error>
+where
+    T: TryInto<NonZeroU32>,
+{
     value.try_into()
 }
 
