@@ -1,128 +1,155 @@
 # type-enum-states
 
-> Use enums for mutually exclusive states
+> Use enums when a value is in exactly one of several mutually exclusive states
 
 **Rule**: `type-enum-states`
 
 ## Why It Matters
 
-When a value can be in exactly one of several states, an enum makes invalid states unrepresentable. The compiler ensures all states are handled. Contrast with boolean flags or optional fields that can represent impossible combinations.
+Several booleans or loosely related `Option` fields can encode combinations that the domain says are impossible. An enum gives each state one variant, lets each variant carry only the data valid in that state, and makes pattern matches exhaustiveness-checked.
 
-## Bad
+## Bad: Independent Flags for One State Machine
 
 ```rust
+#[derive(Debug)]
 struct Connection {
     is_connected: bool,
     is_authenticated: bool,
-    is_disconnected: bool,  // Can all three be true? False?
-    socket: Option<TcpStream>,
-    credentials: Option<Credentials>,
+    is_disconnected: bool,
 }
 
-// Possible invalid states:
-// - is_connected && is_disconnected (contradiction)
-// - is_authenticated && !is_connected (impossible)
-// - socket is None but is_connected is true (inconsistent)
+fn main() {
+    let impossible = Connection {
+        is_connected: true,
+        is_authenticated: true,
+        is_disconnected: true,
+    };
+
+    assert!(impossible.is_connected && impossible.is_disconnected);
+}
 ```
 
-## Good
+The type permits contradictory states, so every consumer has to recover the missing invariant with runtime checks.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Good: One Variant per State
+
 ```rust
+#[derive(Debug, PartialEq, Eq)]
 enum ConnectionState {
     Disconnected,
-    Connecting { address: SocketAddr },
-    Connected { socket: TcpStream },
-    Authenticated { socket: TcpStream, session: Session },
-    Failed { error: ConnectionError },
+    Connecting { address: String },
+    Connected,
+    Authenticated { user: String },
+    Failed { message: String },
 }
 
-struct Connection {
-    state: ConnectionState,
+fn describe(state: &ConnectionState) -> &'static str {
+    match state {
+        ConnectionState::Disconnected => "disconnected",
+        ConnectionState::Connecting { .. } => "connecting",
+        ConnectionState::Connected => "connected",
+        ConnectionState::Authenticated { .. } => "authenticated",
+        ConnectionState::Failed { .. } => "failed",
+    }
 }
 
-// Impossible states are unrepresentable
-// Each state has exactly the data it needs
+fn main() {
+    let state = ConnectionState::Authenticated { user: "alice".into() };
+    assert_eq!(describe(&state), "authenticated");
+}
 ```
 
-## Pattern Matching Ensures Completeness
+Adding a new variant makes non-wildcard matches fail to compile until they handle it. That is usually exactly what state-machine code wants.
+
+## Put State-Specific Data in the Variant
 
 ```rust
-fn handle_connection(conn: &Connection) {
-    match &conn.state {
-        ConnectionState::Disconnected => println!("Not connected"),
-        ConnectionState::Connecting { address } => println!("Connecting to {}", address),
-        ConnectionState::Connected { socket } => println!("Connected, not authenticated"),
-        ConnectionState::Authenticated { socket, session } => {
-            println!("Authenticated as {}", session.user);
-        }
-        ConnectionState::Failed { error } => println!("Failed: {}", error),
+#[derive(Debug)]
+enum JobState {
+    Queued,
+    Running { started_ms: u64 },
+    Completed { output: String },
+    Failed { error: String },
+}
+
+fn output(state: &JobState) -> Option<&str> {
+    match state {
+        JobState::Completed { output } => Some(output),
+        _ => None,
     }
-    // Compiler error if any state is missing
 }
 ```
 
-## State Transitions
+This is stronger than a `status` enum plus independent optional `started`, `output`, and `error` fields: values that do not belong to a state cannot be present in that variant.
+
+## State Transitions Can Consume the Old State
+
+When a transition logically replaces one state with another, taking `self` can make the transition explicit and avoid a temporary invalid value.
 
 ```rust
-impl Connection {
-    fn connect(&mut self, addr: SocketAddr) -> Result<(), Error> {
-        match &self.state {
-            ConnectionState::Disconnected => {
-                self.state = ConnectionState::Connecting { address: addr };
-                Ok(())
-            }
-            _ => Err(Error::AlreadyConnected),
-        }
-    }
+#[derive(Debug, PartialEq, Eq)]
+enum Upload {
+    Pending { bytes: Vec<u8> },
+    Sent { id: u64 },
+}
 
-    fn authenticate(&mut self, creds: Credentials) -> Result<(), Error> {
-        match std::mem::replace(&mut self.state, ConnectionState::Disconnected) {
-            ConnectionState::Connected { socket } => {
-                let session = perform_auth(&socket, creds)?;
-                self.state = ConnectionState::Authenticated { socket, session };
-                Ok(())
-            }
-            other => {
-                self.state = other;
-                Err(Error::NotConnected)
-            }
+impl Upload {
+    fn send(self, id: u64) -> Self {
+        match self {
+            Upload::Pending { .. } => Upload::Sent { id },
+            sent @ Upload::Sent { .. } => sent,
         }
     }
 }
+
+fn main() {
+    let upload = Upload::Pending { bytes: vec![1, 2, 3] };
+    assert_eq!(upload.send(7), Upload::Sent { id: 7 });
+}
 ```
 
-## `let_chains` for Peeling Nested States (Edition 2024, Rust 1.85+)
+For in-place state machines, `mem::replace`, `Option::take`, or a dedicated transition API can be appropriate. Choose the ownership shape from the transition semantics rather than forcing every state through mutable flags.
 
-When enums are nested (e.g., `Option<Result<T, E>>` or multi-level enums), `let_chains` eliminates deep nesting:
+## `let` Chains for Related Pattern Checks (Rust 1.88+, Edition 2024)
+
+Rust 1.88 stabilized `let` chains in the 2024 edition. They are useful when several dependent optional/state checks must all succeed and you also have boolean conditions.
 
 ```rust
-// Before let_chains: deeply nested
-fn process(response: Option<Result<Data, Error>>) {
-    if let Some(result) = response {
-        if let Ok(data) = result {
-            handle_data(data);
-        }
+#[derive(Debug)]
+struct Address {
+    country: Option<String>,
+}
+
+#[derive(Debug)]
+struct User {
+    address: Option<Address>,
+}
+
+fn company_country(user: Option<User>) -> Option<String> {
+    if let Some(user) = user
+        && let Some(address) = user.address
+        && let Some(country) = address.country
+        && country.ends_with("land")
+    {
+        Some(country)
+    } else {
+        None
     }
 }
 
-// After let_chains (Edition 2024, Rust 1.85+): flat and readable
-fn process(response: Option<Result<Data, Error>>) {
-    if let Some(Ok(data)) = response {
-        handle_data(data);
-    }
-}
-
-// Multiple let patterns in a chain
-if let Some(user) = find_user(id)
-    && let Some(address) = user.address
-    && let Some(country) = address.country
-{
-    println!("User is in {}", country);
+fn main() {
+    let user = User {
+        address: Some(Address { country: Some("Finland".into()) }),
+    };
+    assert_eq!(company_country(Some(user)).as_deref(), Some("Finland"));
 }
 ```
 
-## `cfg_select!` for Compile-Time State Selection (Rust 1.95+)
+Do not call a single nested pattern such as `if let Some(Ok(value)) = result` a let-chain; that syntax has long been available. A let-chain specifically combines `let` expressions with `&&`.
+
+## `cfg_select!` for Compile-Time Selection (Rust 1.95+)
+
+`cfg_select!` selects the **first** matching `cfg` arm at compile time and does not emit the unselected arms. It can produce items or be used in expression position.
 
 ```rust
 use core::cfg_select;
@@ -135,65 +162,49 @@ enum Platform {
     Other,
 }
 
-// Select state based on target platform at compile time
 const CURRENT_PLATFORM: Platform = cfg_select! {
     target_os = "linux" => Platform::Linux,
     target_os = "macos" => Platform::MacOs,
     target_os = "windows" => Platform::Windows,
     _ => Platform::Other,
 };
-// CURRENT_PLATFORM is a compile-time constant — dead code
-// elimination removes unused platform branches.
 
-fn platform_specific_work() {
+fn platform_name() -> &'static str {
     match CURRENT_PLATFORM {
-        Platform::Linux => /* linux-specific */,
-        Platform::MacOs => /* macOS-specific */,
-        Platform::Windows => /* windows-specific */,
-        Platform::Other => /* fallback */,
+        Platform::Linux => "linux",
+        Platform::MacOs => "macos",
+        Platform::Windows => "windows",
+        Platform::Other => "other",
     }
 }
+
+fn main() {
+    assert!(!platform_name().is_empty());
+}
 ```
 
-## Result and Option as State Enums
+This is compile-time conditional compilation, not a runtime state-machine mechanism. Use an enum at runtime when the state can change while the program is running.
+
+## `Option` and `Result` Are Already State Enums
+
+Do not invent sentinel values when the standard enums already model the state.
 
 ```rust
-// Option<T> is an enum for "might not exist"
-// Result<T, E> is an enum for "might have failed"
-// Use these instead of nullable/sentinel values
-
-fn find_user(id: u64) -> Option<User> { todo!() }
-fn parse_config(s: &str) -> Result<Config, ParseError> { todo!() }
-```
-
-## Avoid Boolean Flags
-
-```rust
-// Bad: boolean flags can represent impossible combinations
-struct Task {
-    is_running: bool,
-    is_completed: bool,
-    is_failed: bool,
-    error: Option<Error>,
+fn find_name(names: &[&str], index: usize) -> Option<String> {
+    names.get(index).map(|name| (*name).to_owned())
 }
 
-// Good: enum — each state has exactly the data it needs
-enum TaskState {
-    Pending,
-    Running { started_at: Instant },
-    Completed { result: Output },
-    Failed { error: Error },
-}
-
-struct Task {
-    state: TaskState,
+fn parse_port(text: &str) -> Result<u16, std::num::ParseIntError> {
+    text.parse()
 }
 ```
+
+## When an Enum Is Not Enough
+
+A runtime enum ensures the value is in one valid state. It does **not** by itself prevent callers from requesting an invalid transition. If transition legality must be encoded in the type system, consider a typestate API; if external callers need forward-compatible matching, consider `#[non_exhaustive]`.
 
 ## See Also
 
-- [Rust Book: Enums](https://doc.rust-lang.org/book/ch06-00-enums.html)
-- [Making Impossible States Impossible](https://geeklaunch.io/blog/make-impossible-states-impossible/)
-- [api-typestate](./api-typestate.md) — Type-level state machines
-- [api-non-exhaustive](./api-non-exhaustive.md) — Forward-compatible enums
-- [type-option-nullable](./type-option-nullable.md) — `Option` for optional values
+- [api-typestate](./api-typestate.md) — type-level state transitions
+- [api-non-exhaustive](./api-non-exhaustive.md) — forward-compatible public enums
+- [type-option-nullable](./type-option-nullable.md) — optional values
