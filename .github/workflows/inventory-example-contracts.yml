@@ -1,14 +1,14 @@
-name: Inventory example contracts
+name: Migrate Bad example contracts
 
 on:
   push:
     branches: [fix/explicit-example-contracts-1]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  inventory:
+  migrate:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -19,48 +19,187 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.98.0
         with:
           targets: x86_64-unknown-linux-gnu
-      - name: Probe legacy Bad examples
+
+      - name: Apply strict Bad-section migration
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from collections import defaultdict
+
+          root = Path('.')
+
+          # Bad examples are examples of undesirable *style/semantics*, not an
+          # excuse to skip syntax/type checking. Exceptions must be explicit.
+          gen = root / 'checks/gen.py'
+          s = gen.read_text()
+          s = s.replace(
+              'Recommended examples are strict by default: blocks under a heading beginning\nwith "Good" get expectation `compile`. Other legacy snippets retain the older\nheuristics unless they opt in to explicit metadata.',
+              'Recommended and anti-pattern examples are strict by default: blocks under a\nheading beginning with "Good" or "Bad" get expectation `compile`. Other legacy\nsnippets retain the older heuristics unless they opt in to explicit metadata.'
+          )
+          s = s.replace(
+              '"""Preserve old auto-skips outside recommended/Good sections."""',
+              '"""Keep legacy classification outside strict Good/Bad sections."""'
+          )
+          old = '    if section.strip().lower().startswith("bad"):\n        return "ignore", "legacy Bad/anti-pattern section"'
+          new = '    if section.strip().lower().startswith("bad"):\n        return "compile", "Bad sections compile by default"'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one legacy Bad branch, found {s.count(old)}')
+          gen.write_text(s.replace(old, new))
+
+          markers = [
+              # Missing surrounding application/domain context: still compile-checked,
+              # but only resolution/extraction failures are accepted.
+              ('anti-empty-catch.md', 12, 'fragment', 'anti-pattern fragment uses surrounding application context'),
+              ('anti-expect-lazy.md', 14, 'fragment', 'anti-pattern fragment uses surrounding application types and functions'),
+              ('anti-lock-across-await.md', 14, 'fragment', 'anti-pattern fragment uses surrounding shared state'),
+              ('anti-panic-expected.md', 14, 'fragment', 'anti-pattern fragment uses surrounding application types and functions'),
+              ('anti-string-for-str.md', 12, 'fragment', 'anti-pattern fragment uses a caller-owned collection from surrounding context'),
+              ('async-bounded-channel.md', 12, 'fragment', 'anti-pattern fragment uses surrounding message handling context'),
+              ('async-clone-before-await.md', 12, 'fragment', 'anti-pattern fragment uses surrounding request and async operation context'),
+              ('async-no-lock-await.md', 14, 'fragment', 'anti-pattern fragment uses surrounding shared state and async work'),
+              ('async-no-lock-await.md', 28, 'fragment', 'anti-pattern fragment uses surrounding shared state and async work'),
+              ('async-oneshot-response.md', 12, 'fragment', 'anti-pattern fragment uses surrounding request and response types'),
+              ('doc-all-public.md', 14, 'fragment', 'documentation anti-pattern fragment omits the surrounding type'),
+              ('doc-errors-section.md', 14, 'fragment', 'documentation anti-pattern fragment omits surrounding error types'),
+              ('err-clippy-unwrap-types.md', 12, 'fragment', 'anti-pattern fragment uses surrounding input data'),
+              ('err-no-unwrap-prod.md', 12, 'fragment', 'anti-pattern fragment uses surrounding application APIs'),
+              ('err-source-chain.md', 12, 'fragment', 'anti-pattern fragment uses surrounding application error context'),
+              ('macro-export-crate-path.md', 23, 'fragment', 'macro anti-pattern references an external crate name by design'),
+              ('macro-rules-hygiene.md', 30, 'fragment', 'macro anti-pattern references surrounding module names'),
+              ('mem-ecow-clone-heavy.md', 14, 'fragment', 'anti-pattern fragment uses surrounding string collection context'),
+              ('mem-smallvec.md', 12, 'fragment', 'anti-pattern fragment uses surrounding data collection context'),
+              ('mem-thinvec.md', 12, 'fragment', 'anti-pattern fragment uses surrounding collection context'),
+              ('mem-with-capacity.md', 14, 'fragment', 'anti-pattern fragment uses surrounding item types and input'),
+              ('name-as-free.md', 67, 'fragment', 'naming anti-pattern fragment omits surrounding type definitions'),
+              ('name-consts-screaming.md', 12, 'fragment', 'naming anti-pattern fragment omits surrounding configuration types'),
+              ('name-to-expensive.md', 12, 'fragment', 'naming anti-pattern fragment omits surrounding type definitions'),
+              ('obs-library-facade.md', 23, 'fragment', 'observability anti-pattern references an application logging facade'),
+              ('opt-cold-unlikely.md', 12, 'fragment', 'optimization anti-pattern uses surrounding request and error types'),
+              ('opt-inline-always-rare.md', 12, 'fragment', 'method anti-pattern is extracted without its surrounding impl'),
+              ('opt-inline-small.md', 12, 'fragment', 'optimization anti-pattern uses surrounding helper functions'),
+              ('own-rwlock-readers.md', 17, 'fragment', 'anti-pattern fragment uses surrounding shared state and data types'),
+              ('perf-black-box-bench.md', 12, 'fragment', 'benchmark anti-pattern uses surrounding benchmark input'),
+              ('perf-entry-api.md', 12, 'fragment', 'anti-pattern fragment uses surrounding map and value context'),
+              ('perf-extract-if.md', 16, 'fragment', 'anti-pattern fragment uses surrounding task collection context'),
+              ('perf-profile-first.md', 12, 'fragment', 'anti-pattern fragment uses surrounding workload functions'),
+              ('proj-build-rs-minimal.md', 12, 'fragment', 'build-script anti-pattern references build-script-only crates and context'),
+              ('proj-lib-main-split.md', 12, 'fragment', 'project-layout anti-pattern references surrounding application functions'),
+              ('proj-prelude-module.md', 12, 'fragment', 'project-layout anti-pattern references surrounding crate modules'),
+              ('proj-pub-use-reexport.md', 12, 'fragment', 'project-layout anti-pattern references surrounding crate modules'),
+              ('test-cfg-test-module.md', 12, 'fragment', 'test-layout pseudocode intentionally omits surrounding definitions'),
+              ('test-descriptive-names.md', 12, 'fragment', 'test-name pseudocode intentionally omits surrounding definitions'),
+
+              # Intentionally rejected Rust. These examples teach the diagnostic.
+              ('async-broadcast-pubsub.md', 12, 'compile_fail', 'tokio mpsc receivers are single-consumer and cannot be cloned'),
+              ('conc-thread-local.md', 12, 'compile_fail', 'Rust 2024 rejects references to static mut via static_mut_refs'),
+              ('const-fn.md', 12, 'compile_fail', 'a non-const function cannot be used in an array length constant expression'),
+              ('macro-fragment-specifiers.md', 14, 'compile_fail', 'tt soup accepts a let statement that later fails in expression position'),
+              ('own-mutex-interior.md', 17, 'compile_fail', 'RefCell is not Sync and cannot be shared between threads through Arc'),
+              ('type-phantom-marker.md', 14, 'compile_fail', 'an unused generic type parameter is rejected without a marker field'),
+              ('unsafe-extern-block.md', 14, 'compile_fail', 'Edition 2024 requires extern blocks to be unsafe'),
+              ('unsafe-no-mangle-unsafe.md', 12, 'compile_fail', 'Edition 2024 requires unsafe attribute syntax for no_mangle'),
+
+              # These require a different crate shape than the ordinary example harness.
+              ('err-no-std-error.md', 12, 'ignore', 'requires a no_std library target with panic strategy configured'),
+              ('macro-proc-two-crate.md', 17, 'ignore', 'requires a proc-macro crate target to demonstrate proc-macro export restrictions'),
+          ]
+
+          by_file = defaultdict(list)
+          for file, line, kind, reason in markers:
+              by_file[file].append((line, kind, reason))
+
+          for file, entries in by_file.items():
+              p = root / 'rules' / file
+              lines = p.read_text().splitlines()
+              # Insert bottom-up so original inventory line numbers remain valid.
+              for line, kind, reason in sorted(entries, reverse=True):
+                  idx = line - 2  # inventory line is first code line; fence is one line earlier
+                  if idx < 0 or not lines[idx].strip().startswith('```rust'):
+                      got = lines[idx] if 0 <= idx < len(lines) else '<out of range>'
+                      raise SystemExit(f'{file}:{line}: expected rust fence, got {got!r}')
+                  if kind == 'compile_fail':
+                      marker = f'<!-- rust-check: compile_fail; reason={reason} -->'
+                  elif kind == 'fragment':
+                      marker = f'<!-- rust-check: fragment; reason={reason} -->'
+                  else:
+                      marker = f'<!-- rust-check: ignore; reason={reason} -->'
+                  lines.insert(idx, marker)
+              p.write_text('\n'.join(lines) + '\n')
+
+          def replace(path, old, new):
+              p = root / 'rules' / path
+              text = p.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected one replacement target, found {text.count(old)}')
+              p.write_text(text.replace(old, new))
+
+          # Replace literal pseudocode with a real compile-fail demonstration.
+          replace(
+              'async-broadcast-pubsub.md',
+              '// mpsc only delivers to ONE consumer\nlet (tx, mut rx) = mpsc::channel::<Event>(100);\n\n// Only one of these receives each message!\nlet mut rx2 = ???;  // Can\'t clone receiver',
+              '// mpsc has one receiving endpoint; it cannot be cloned into subscribers\nlet (_tx, rx) = mpsc::channel::<i32>(100);\n\n// Error: Receiver<T> does not implement Clone\nlet _rx2 = rx.clone();'
+          )
+
+          # The non_exhaustive anti-pattern should be valid current code: its problem is
+          # future semver compatibility, not syntax.
+          replace(
+              'api-non-exhaustive.md',
+              '// Downstream code\nmatch error.kind() {\n    ErrorKind::NotFound => ...,\n    ErrorKind::PermissionDenied => ...,\n    ErrorKind::TimedOut => ...,\n    // No wildcard - will break when you add ErrorKind::Interrupted\n}',
+              '// Downstream code can currently match exhaustively. Adding a variant later\n// would make this match non-exhaustive and break the downstream build.\nfn describe(kind: ErrorKind) -> &\'static str {\n    match kind {\n        ErrorKind::NotFound => "not found",\n        ErrorKind::PermissionDenied => "permission denied",\n        ErrorKind::TimedOut => "timed out",\n    }\n}'
+          )
+
+          # Make the undocumented-panic example self-contained rather than relying on
+          # extraction artifacts such as `self` and an undeclared `T`.
+          replace(
+              'doc-panics-section.md',
+              'pub fn get(index: usize) -> &T {\n    &self.data[index]  // Panics if out of bounds - not documented!\n}',
+              'pub fn get<T>(data: &[T], index: usize) -> &T {\n    &data[index]  // Panics if out of bounds - not documented!\n}'
+          )
+
+          # `#[instrument]` requires Debug for recorded arguments. The unsafe behavior
+          # being demonstrated is logging the secrets, not a missing Debug impl.
+          replace(
+              'obs-no-sensitive-data.md',
+              'struct Credentials {\n    username: String,',
+              '#[derive(Debug)]\nstruct Credentials {\n    username: String,'
+          )
+
+          # File::read needs &mut self. Keep the example slow but valid.
+          replace(
+              'perf-io-buffering.md',
+              '    let file = File::open(path)?;\n    let mut count = 0usize;',
+              '    let mut file = File::open(path)?;\n    let mut count = 0usize;'
+          )
+
+          # Avoid an incidental duplicate-name error and correct the representation claim.
+          replace(
+              'type-phantom-marker.md',
+              '// Workaround with unnecessary storage\nstruct Handle<T> {\n    id: u64,\n    _type: Option<T>,  // Wastes memory, requires T: Default\n}',
+              '// A storage field merely to mention T changes the representation and semantics.\nstruct StoredHandle<T> {\n    id: u64,\n    _type: Option<T>,\n}'
+          )
+          PY
+
+      - name: Verify full Rust 1.98 corpus
+        run: bash checks/check.sh
+
+      - name: Show contract counts
         run: |
           cd checks
           python3 - <<'PY'
-          from pathlib import Path
-          p=Path('gen.py')
-          s=p.read_text()
-          old='return "ignore", "legacy Bad/anti-pattern section"'
-          new='return "compile", "probe legacy Bad/anti-pattern section"'
-          if s.count(old) != 1:
-              raise SystemExit(f'expected exactly one legacy Bad classifier, found {s.count(old)}')
-          p.write_text(s.replace(old,new))
-          PY
-          python3 gen.py
-          cargo check --examples --target x86_64-unknown-linux-gnu --keep-going --message-format=json > check.json 2> check.err || true
-          python3 - <<'PY'
           import json
-          from collections import defaultdict, Counter
+          from collections import Counter
           m=json.load(open('manifest.json'))
-          errors=defaultdict(list)
-          for raw in open('check.json'):
-              raw=raw.strip()
-              if not raw.startswith('{'): continue
-              try: r=json.loads(raw)
-              except json.JSONDecodeError: continue
-              if r.get('reason')!='compiler-message': continue
-              msg=r.get('message',{})
-              if msg.get('level')!='error': continue
-              t=(r.get('target') or {}).get('name')
-              if t: errors[t].append(msg)
-          probed=[(name,x) for name,x in m.items() if x.get('reason')=='probe legacy Bad/anti-pattern section']
-          clean=[]; failed=[]
-          for name,x in probed:
-              ds=errors.get(name,[])
-              if ds: failed.append((name,x,ds))
-              else: clean.append((name,x))
-          print(f'BAD_PROBE total={len(probed)} clean={len(clean)} failed={len(failed)}')
-          print('\nFAILED_BAD')
-          for name,x,ds in sorted(failed,key=lambda row:(row[1]['file'],row[1]['line'])):
-              toks=sorted({((d.get('code') or {}).get('code') or ('P:'+d.get('message','').splitlines()[0][:80])) for d in ds})
-              print(f"{x['file']}\t{x['line']}\t{x['section']}\t{','.join(toks)}")
-          print('\nCLEAN_BAD')
-          for name,x in sorted(clean,key=lambda row:(row[1]['file'],row[1]['line'])):
-              print(f"{x['file']}\t{x['line']}\t{x['section']}")
+          c=Counter(x['expect'] for x in m.values())
+          print(' '.join(f'{k}={c[k]}' for k in sorted(c)))
           PY
+
+      - name: Commit migration
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add checks/gen.py rules
+          git commit -m 'Compile-check Bad examples by default'
+          git push
