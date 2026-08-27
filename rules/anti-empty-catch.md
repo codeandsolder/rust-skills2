@@ -8,6 +8,7 @@ Empty error handling (`if let Err(_) = ...`, `let _ = result`, `.ok()`) silently
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding application context -->
 ```rust
 // Silently ignores errors
 let _ = write_to_file(data);

@@ -8,6 +8,7 @@ When one task needs to send a request and wait for exactly one response, `onesho
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding request and response types -->
 ```rust
 // Using mpsc for single response - wasteful
 let (tx, mut rx) = mpsc::channel::<Response>(1);

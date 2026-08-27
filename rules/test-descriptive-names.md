@@ -8,6 +8,7 @@ Test names appear in test output and serve as documentation. A good test name te
 
 ## Bad
 
+<!-- rust-check: fragment; reason=test-name pseudocode intentionally omits surrounding definitions -->
 ```rust
 #[test]
 fn test1() { ... }

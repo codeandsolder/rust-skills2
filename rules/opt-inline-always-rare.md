@@ -8,6 +8,7 @@
 
 ## Bad
 
+<!-- rust-check: fragment; reason=method anti-pattern is extracted without its surrounding impl -->
 ```rust
 // Annotating everything - trusting intuition over data
 #[inline(always)]

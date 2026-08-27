@@ -10,6 +10,7 @@ Reserve `.expect()` for programming errors where panic is appropriate.
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding application types and functions -->
 ```rust
 // Network failures are expected - don't panic
 let response = client.get(url).await.expect("failed to fetch");

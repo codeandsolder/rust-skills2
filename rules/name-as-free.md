@@ -63,6 +63,7 @@ let os_str: &OsStr = os.as_os_str(); // Free, returns &OsStr
 
 ## Bad
 
+<!-- rust-check: fragment; reason=naming anti-pattern fragment omits surrounding type definitions -->
 ```rust
 impl MyType {
     // BAD: as_ but allocates

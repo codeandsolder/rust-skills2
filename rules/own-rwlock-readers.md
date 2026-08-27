@@ -13,6 +13,7 @@ Pick the lock based on context:
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding shared state and data types -->
 ```rust
 use std::sync::{Arc, Mutex};
 

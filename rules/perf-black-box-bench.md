@@ -8,6 +8,7 @@ The compiler aggressively optimizes code, potentially eliminating computations w
 
 ## Bad
 
+<!-- rust-check: fragment; reason=benchmark anti-pattern uses surrounding benchmark input -->
 ```rust
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 

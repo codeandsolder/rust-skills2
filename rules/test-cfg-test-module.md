@@ -8,6 +8,7 @@ The `#[cfg(test)]` attribute ensures test code is only compiled during `cargo te
 
 ## Bad
 
+<!-- rust-check: fragment; reason=test-layout pseudocode intentionally omits surrounding definitions -->
 ```rust
 // Tests without cfg(test) - compiled into release binary
 mod tests {

@@ -8,6 +8,7 @@ A `const fn` can be called in const contexts — array lengths, `const`/`static`
 
 ## Bad
 
+<!-- rust-check: compile_fail; reason=a non-const function cannot be used in an array length constant expression -->
 ```rust
 // not const — cannot use result as an array length or const initializer
 fn header_len() -> usize {

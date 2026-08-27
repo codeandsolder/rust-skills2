@@ -8,14 +8,15 @@ Unlike `mpsc` where one consumer receives each message, `broadcast` delivers eac
 
 ## Bad
 
+<!-- rust-check: compile_fail; reason=tokio mpsc receivers are single-consumer and cannot be cloned -->
 ```rust
 use tokio::sync::mpsc;
 
-// mpsc only delivers to ONE consumer
-let (tx, mut rx) = mpsc::channel::<Event>(100);
+// mpsc has one receiving endpoint; it cannot be cloned into subscribers
+let (_tx, rx) = mpsc::channel::<i32>(100);
 
-// Only one of these receives each message!
-let mut rx2 = ???;  // Can't clone receiver
+// Error: Receiver<T> does not implement Clone
+let _rx2 = rx.clone();
 ```
 
 ## Good

@@ -10,6 +10,7 @@ Sometimes your type needs to be parameterized by a type that doesn't appear in a
 
 ## Bad
 
+<!-- rust-check: compile_fail; reason=an unused generic type parameter is rejected without a marker field -->
 ```rust
 // Type parameter unused — compiler error
 struct Handle<T> {
@@ -17,10 +18,10 @@ struct Handle<T> {
     // Error: parameter `T` is never used
 }
 
-// Workaround with unnecessary storage
-struct Handle<T> {
+// A storage field merely to mention T changes the representation and semantics.
+struct StoredHandle<T> {
     id: u64,
-    _type: Option<T>,  // Wastes memory, requires T: Default
+    _type: Option<T>,
 }
 ```
 

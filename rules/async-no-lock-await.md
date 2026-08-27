@@ -10,6 +10,7 @@ A blocking mutex guard held across `.await` can block an executor worker thread 
 
 ## Bad: Blocking Mutex Across Await
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding shared state and async work -->
 ```rust
 use std::sync::Mutex;
 
@@ -24,6 +25,7 @@ async fn bad_update(state: &Mutex<State>) {
 
 For ordinary shared data, prefer doing asynchronous work before acquiring the lock:
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding shared state and async work -->
 ```rust
 use tokio::sync::Mutex;
 

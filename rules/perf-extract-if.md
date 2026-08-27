@@ -12,6 +12,7 @@ The APIs are not identical: **`Vec::extract_if` and `BTreeMap::extract_if` take 
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding task collection context -->
 ```rust
 // Manual retain + collect: two passes and clones.
 fn extract_high_priority(tasks: &mut Vec<Task>) -> Vec<Task> {

@@ -10,6 +10,7 @@ When you know (or can estimate) the final size of a collection, pre-allocating a
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding item types and input -->
 ```rust
 // Vec starts at capacity 0, reallocates at 4, 8, 16, 32...
 let mut results = Vec::new();

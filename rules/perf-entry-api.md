@@ -8,6 +8,7 @@ The entry API performs a single lookup for insert-or-update operations. Without 
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding map and value context -->
 ```rust
 use std::collections::HashMap;
 

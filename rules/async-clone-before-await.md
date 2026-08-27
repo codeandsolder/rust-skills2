@@ -8,6 +8,7 @@ References held across `.await` points extend the future's lifetime and can caus
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding request and async operation context -->
 ```rust
 use std::sync::Arc;
 

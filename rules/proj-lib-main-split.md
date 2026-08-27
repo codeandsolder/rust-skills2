@@ -8,6 +8,7 @@ Putting your logic in `lib.rs` makes it testable, reusable, and keeps `main.rs` 
 
 ## Bad
 
+<!-- rust-check: fragment; reason=project-layout anti-pattern references surrounding application functions -->
 ```rust
 // src/main.rs - everything here
 fn main() {

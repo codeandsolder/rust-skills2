@@ -11,6 +11,7 @@ Logs and traces are routinely shipped to cloud aggregators (Datadog, Grafana Lok
 ```rust
 use tracing::instrument;
 
+#[derive(Debug)]
 struct Credentials {
     username: String,
     password: String,   // secret
@@ -47,7 +48,8 @@ impl std::fmt::Display for Secret {
     }
 }
 
-struct Credentials {
+#[derive(Debug)]
+struct SafeCredentials {
     username: String,
     password: Secret,   // redacts in Debug/Display
     api_key: Secret,    // redacts in Debug/Display
@@ -55,7 +57,7 @@ struct Credentials {
 
 // GOOD: skip sensitive args by name
 #[instrument(skip(credentials), fields(username = %credentials.username))]
-async fn authenticate(credentials: &Credentials) -> bool {
+async fn authenticate(credentials: &SafeCredentials) -> bool {
     info!("authenticating user");
     // password and api_key never appear in any span field or log line
     verify_password(&credentials.username, &credentials.password)

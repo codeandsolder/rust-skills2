@@ -12,8 +12,8 @@ If a function can panic, document exactly when.
 
 ```rust
 /// Returns the element at the given index.
-pub fn get(index: usize) -> &T {
-    &self.data[index]  // Panics if out of bounds - not documented!
+pub fn get<T>(data: &[T], index: usize) -> &T {
+    &data[index]  // Panics if out of bounds - not documented!
 }
 
 /// Divides two numbers.

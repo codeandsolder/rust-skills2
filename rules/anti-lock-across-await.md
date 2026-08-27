@@ -10,6 +10,7 @@ Holding a **blocking** `std::sync::Mutex`/`RwLock` guard across `.await` can blo
 
 ## Bad: Blocking Lock Across Await
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding shared state -->
 ```rust
 use std::sync::Mutex;
 

@@ -14,7 +14,7 @@ use std::io::{Read, Write};
 
 // Every read call goes to the OS — catastrophic for line-by-line processing
 fn count_lines_slow(path: &str) -> std::io::Result<usize> {
-    let file = File::open(path)?;
+    let mut file = File::open(path)?;
     let mut count = 0usize;
     let mut byte = [0u8; 1];
     loop {

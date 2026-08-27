@@ -8,6 +8,7 @@
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses a caller-owned collection from surrounding context -->
 ```rust
 // Forces callers to have a String
 fn greet(name: &String) {
