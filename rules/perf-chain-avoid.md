@@ -1,172 +1,162 @@
 # perf-chain-avoid
 
-> Avoid chain in hot loops
+> Use `Iterator::chain` when it expresses the traversal clearly; split or materialize only when measurement shows the chained iterator is a bottleneck
 
 ## Why It Matters
 
-`Iterator::chain()` adds overhead for checking which iterator is active on every `.next()` call. In hot loops, this branch prediction overhead can impact performance. For performance-critical code, prefer single iterators or pre-combined collections.
+`Iterator::chain` represents two iterators as one lazy iterator. At the abstract API level it must know whether the first iterator still has items, but source-level descriptions such as “exactly one extra branch per item” are not reliable descriptions of optimized machine code. LLVM may inline, specialize, simplify, or restructure the iterator state.
 
-## Bad
+Do not ban `.chain()` from hot code by rule. Benchmark the actual loop. Separate loops can sometimes generate better code, but they can also duplicate logic or make short-circuiting and composition less clear.
+
+## Idiomatic Chaining
+
+For one pass over two collections, `.chain()` is concise and allocation-free:
 
 ```rust
-// Chain in hot inner loop
-fn process_hot_path(a: &[i32], b: &[i32]) -> i64 {
-    let mut sum = 0i64;
-    
-    // Called millions of times
-    for _ in 0..1_000_000 {
-        for x in a.iter().chain(b.iter()) {  // Branch every iteration
-            sum += *x as i64;
-        }
+fn sum_both(a: &[i32], b: &[i32]) -> i64 {
+    a.iter()
+        .chain(b)
+        .map(|&value| i64::from(value))
+        .sum()
+}
+
+fn main() {
+    assert_eq!(sum_both(&[1, 2], &[3, 4]), 10);
+}
+```
+
+The chained iterator itself does not concatenate the inputs or allocate a new collection.
+
+## Separate Loops Are a Valid Measured Alternative
+
+If a profile or code-generation inspection shows the chained state matters in a very hot loop, separate loops are easy to compare:
+
+```rust
+fn sum_separate(a: &[i32], b: &[i32]) -> i64 {
+    let mut sum = 0_i64;
+
+    for &value in a {
+        sum += i64::from(value);
     }
+    for &value in b {
+        sum += i64::from(value);
+    }
+
     sum
 }
 
-// Chaining multiple small slices in tight loop
-fn combine_results(parts: &[&[u8]]) -> Vec<u8> {
-    let mut result = Vec::new();
-    for part in parts {
-        for byte in std::iter::once(&0u8).chain(part.iter()) {
-            result.push(*byte);
-        }
-    }
-    result
+fn main() {
+    assert_eq!(sum_separate(&[1, 2], &[3, 4]), 10);
 }
 ```
 
-## Good
+Do not call the separate version “branch-free” as a language-level fact. Loop control still exists, and optimized code depends on the compiler, target, and surrounding operations.
+
+## `chain` Works Well with Short-Circuiting
+
+Lazy composition is especially useful when later operations may stop early:
 
 ```rust
-// Separate loops - branch-free inner loops
-fn process_hot_path(a: &[i32], b: &[i32]) -> i64 {
-    let mut sum = 0i64;
-    
-    for _ in 0..1_000_000 {
-        for x in a {
-            sum += *x as i64;
-        }
-        for x in b {
-            sum += *x as i64;
-        }
-    }
-    sum
+#[derive(Debug)]
+struct Item {
+    id: u32,
 }
 
-// Pre-combine outside hot loop
-fn combine_results(parts: &[&[u8]]) -> Vec<u8> {
-    let mut result = Vec::new();
-    for part in parts {
-        result.push(0u8);
-        result.extend_from_slice(part);
-    }
-    result
+fn find_in_either<'a>(a: &'a [Item], b: &'a [Item], target: u32) -> Option<&'a Item> {
+    a.iter().chain(b).find(|item| item.id == target)
+}
+
+fn main() {
+    let a = [Item { id: 1 }];
+    let b = [Item { id: 2 }];
+    assert_eq!(find_in_either(&a, &b, 2).map(|item| item.id), Some(2));
 }
 ```
 
-## core::iter::chain Free Function (Rust 1.91+)
+Materializing `a` and `b` into a third collection would add work and memory without helping this use case.
 
-Since Rust 1.91, the free function `core::iter::chain` provides a slightly more ergonomic way to chain two iterators. Performance is identical to the `.chain()` method, but can be clearer in functional pipelines:
+## Stable API Status
+
+`Iterator::chain` has long been stable. The separate free function `std::iter::chain(a, b)` / `core::iter::chain(a, b)` is **still nightly-only in Rust 1.98** under the `iter_chain` feature. On stable Rust, use the method form:
 
 ```rust
-use core::iter::chain;
+fn collect_all(a: &[u8], b: &[u8]) -> Vec<u8> {
+    a.iter().copied().chain(b.iter().copied()).collect()
+}
 
-// Equivalent to a.iter().chain(b.iter())
-for x in chain(a.iter(), b.iter()) {
-    process(x);
+fn main() {
+    assert_eq!(collect_all(&[1, 2], &[3]), [1, 2, 3]);
 }
 ```
 
-## When Chain Is Fine
+Do not attach a stable-version claim to the free function until it actually stabilizes.
 
-Chain is perfectly acceptable when:
+## Materialize Once Only When Repeated Traversal Needs It
+
+If the same combined sequence is traversed repeatedly and owning a combined buffer fits the semantics, materializing once can be reasonable:
 
 ```rust
-// One-time iteration, not in hot path
-fn collect_all(a: Vec<i32>, b: Vec<i32>) -> Vec<i32> {
-    a.into_iter().chain(b).collect()
+fn merge(a: &[u8], b: &[u8]) -> Vec<u8> {
+    let mut merged = Vec::with_capacity(a.len() + b.len());
+    merged.extend_from_slice(a);
+    merged.extend_from_slice(b);
+    merged
 }
 
-// Lazy evaluation with short-circuit
-fn find_in_either(a: &[Item], b: &[Item], target: i32) -> Option<&Item> {
-    a.iter().chain(b.iter()).find(|x| x.id == target)
-}
-
-// Small number of elements
-fn get_prefixes() -> impl Iterator<Item = &'static str> {
-    ["Mr.", "Mrs.", "Dr."].iter().copied()
-        .chain(["Prof."].iter().copied())
+fn main() {
+    let merged = merge(&[1, 2], &[3, 4]);
+    assert_eq!(merged.iter().sum::<u8>(), 10);
+    assert_eq!(merged.len(), 4);
 }
 ```
 
-## Alternative Patterns
+This trades an allocation/copy for a simpler contiguous representation. It is not automatically faster than chaining; the answer depends on reuse count, data size, cache effects, and the work done per element.
 
-### Pre-allocate and Extend
+## `Vec::append` Has Capacity-Dependent Allocation Behavior
 
-```rust
-fn merge_slices(slices: &[&[i32]]) -> Vec<i32> {
-    let total: usize = slices.iter().map(|s| s.len()).sum();
-    let mut result = Vec::with_capacity(total);
-    for slice in slices {
-        result.extend_from_slice(slice);
-    }
-    result
-}
-```
-
-### Use array_windows for Fixed-Size Windows
-
-For compile-time-size windows, prefer `<[T]>::array_windows` (Rust 1.94+). Unlike chained windows iterators, it produces `&[T; N]` with zero bounds-check overhead:
-
-```rust
-// Instead of trying to chain windows
-fn sliding_sum(data: &[i32]) -> Vec<i32> {
-    data.array_windows::<3>()
-        .map(|&[a, b, c]| a + b + c)
-        .collect()
-}
-```
-
-### Use chunk_by for Grouped Patterns
-
-`slice::chunk_by` (Rust 1.77+) replaces chained filter/group patterns:
-
-```rust
-// Instead of chaining to group adjacent equal elements
-let groups: Vec<_> = data.chunk_by(|a, b| a == b).collect();
-```
-
-### Use append for Vecs
+When ownership of two vectors is available, `append` moves elements from one vector into the other:
 
 ```rust
 fn combine_vecs(mut a: Vec<i32>, mut b: Vec<i32>) -> Vec<i32> {
-    a.append(&mut b);  // Moves elements, no reallocation if a has capacity
+    a.append(&mut b);
     a
 }
-```
 
-### Flatten Instead of Chain
-
-```rust
-// Instead of: a.iter().chain(b.iter()).chain(c.iter())
-let all = [a, b, c];
-for item in all.iter().flat_map(|slice| slice.iter()) {
-    process(item);
+fn main() {
+    assert_eq!(combine_vecs(vec![1, 2], vec![3, 4]), [1, 2, 3, 4]);
 }
 ```
 
-## Performance Impact
+`append` may need to grow `a` if its capacity is insufficient. Do not promise “no reallocation” without knowing the capacity.
 
-| Pattern | Per-Item Overhead |
-|---------|-------------------|
-| Single iterator | None |
-| `chain(a, b)` | 1 branch per item |
-| `chain(a, b, c)` | 2 branches per item |
-| Nested chains | Compounds |
-| Separate loops | None (but code duplication) |
+## Do Not Replace `chain` with Unrelated Iterator APIs
+
+`array_windows`, `chunk_by`, and `flat_map` solve different traversal problems. They are not generic performance replacements for chaining two sequences. Choose them when their **semantics** match the operation, not to avoid the word `chain`.
+
+Likewise, replacing a simple chain with `flat_map` can produce equivalent semantics but is not inherently faster.
+
+## Benchmark the Actual Kernel
+
+If chained traversal appears in a hot kernel, compare:
+
+- `.chain()`;
+- two explicit loops;
+- one pre-materialized contiguous collection if it will be reused;
+- any domain-specific representation that avoids repeated traversal entirely.
+
+Use representative sizes and targets. Inspect generated assembly if the claimed win depends on branch elimination or vectorization.
+
+## Practical Guidance
+
+- Prefer `.chain()` when it clearly expresses one lazy traversal over multiple sequences.
+- Keep `.chain()` for short-circuiting pipelines unless measurement says otherwise.
+- Use separate loops when they are clearer or benchmark better in a critical kernel.
+- Materialize only when ownership/reuse semantics justify the allocation and copy.
+- Remember that the free `iter::chain` function remains nightly-only on Rust 1.98.
+- Never assign fixed branch counts or performance rankings from source syntax alone.
 
 ## See Also
 
-- [perf-iter-over-index](./perf-iter-over-index.md) - Prefer iterators
-- [perf-extend-batch](./perf-extend-batch.md) - Batch insertions
-- [perf-array-windows](./perf-array-windows.md) - Fixed-size windows
-- [opt-cache-friendly](./opt-cache-friendly.md) - Cache-friendly patterns
+- [perf-iter-over-index](./perf-iter-over-index.md) - Iterator traversal guidance
+- [perf-extend-batch](./perf-extend-batch.md) - Extending collections efficiently
+- [perf-profile-first](./perf-profile-first.md) - Measure before optimizing
