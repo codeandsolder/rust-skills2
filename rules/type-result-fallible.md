@@ -1,210 +1,186 @@
 # type-result-fallible
 
-> Use `Result<T, E>` for fallible operations
+> Use `Result<T, E>` when an operation can fail with useful error information
 
 **Rule**: `type-result-fallible`
 
 ## Why It Matters
 
-`Result<T, E>` makes failure explicit in the type system. Callers must acknowledge and handle potential errors — they can't accidentally ignore failures. The `?` operator makes error propagation ergonomic while maintaining explicit error handling.
+`Result<T, E>` makes recoverable failure part of an API's type. Callers can propagate the error with `?`, inspect it, attach context, retry, or deliberately discard it. That is usually better than a sentinel value, an `Option` that erases the reason for failure, or an unconditional panic.
 
-## Bad
+## Good: Preserve the Failure Mode
 
 ```rust
-// Returning Option loses error context
-fn read_config(path: &str) -> Option<Config> {
-    let content = std::fs::read_to_string(path).ok()?;  // Why did it fail?
-    toml::from_str(&content).ok()  // Parse error lost
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DivisionError {
+    DivideByZero,
 }
 
-// Panicking on errors
-fn read_config(path: &str) -> Config {
-    let content = std::fs::read_to_string(path).unwrap();  // Crashes
-    toml::from_str(&content).unwrap()  // Crashes
-}
-
-// Sentinel values
-fn divide(a: i32, b: i32) -> i32 {
-    if b == 0 { return -1; }  // Magic value, easy to miss
-    a / b
-}
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-// Result with clear error type
-fn read_config(path: &str) -> Result<Config, ConfigError> {
-    let content = std::fs::read_to_string(path)
-        .map_err(ConfigError::IoError)?;
-    toml::from_str(&content)
-        .map_err(ConfigError::ParseError)
-}
-
-// Explicit error type
 fn divide(a: i32, b: i32) -> Result<i32, DivisionError> {
     if b == 0 {
-        return Err(DivisionError::DivideByZero);
+        Err(DivisionError::DivideByZero)
+    } else {
+        Ok(a / b)
     }
-    Ok(a / b)
 }
 
-// Caller must handle
-match divide(10, 0) {
-    Ok(result) => println!("Result: {}", result),
-    Err(e) => println!("Error: {}", e),
+fn main() {
+    assert_eq!(divide(10, 2), Ok(5));
+    assert_eq!(divide(10, 0), Err(DivisionError::DivideByZero));
 }
 ```
 
-## The `?` Operator
+Use `Option<T>` instead when absence is the whole story and there is no useful error information to preserve.
+
+## Propagate with `?`
 
 ```rust
-fn process_file(path: &str) -> Result<ProcessedData, Error> {
-    let content = std::fs::read_to_string(path)?;  // Propagates Err
-    let parsed: RawData = serde_json::from_str(&content)?;
-    let validated = validate(parsed)?;
-    Ok(validated)
+use std::num::ParseIntError;
+
+fn parse_pair(left: &str, right: &str) -> Result<(u32, u32), ParseIntError> {
+    let left = left.parse()?;
+    let right = right.parse()?;
+    Ok((left, right))
+}
+
+fn main() -> Result<(), ParseIntError> {
+    assert_eq!(parse_pair("4", "7")?, (4, 7));
+    Ok(())
 }
 ```
 
-## Result Combinators
+The `?` operator is still explicit error propagation: the function's return type states what can escape to the caller.
+
+## Transform Results Deliberately
 
 ```rust
-let result: Result<i32, Error> = Ok(42);
+#[derive(Debug, PartialEq, Eq)]
+enum Error {
+    Negative,
+}
 
-// map: transform success value
-let doubled = result.map(|n| n * 2);  // Ok(84)
+fn double_positive(value: i32) -> Result<i32, Error> {
+    Ok(value).and_then(|value| {
+        if value >= 0 {
+            Ok(value * 2)
+        } else {
+            Err(Error::Negative)
+        }
+    })
+}
 
-// map_err: transform error
-let with_context = result.map_err(|e| format!("Failed: {}", e));
+fn main() {
+    assert_eq!(double_positive(4), Ok(8));
+    assert_eq!(double_positive(-1), Err(Error::Negative));
 
-// and_then: chain fallible operations
-let processed = result.and_then(|n| {
-    if n > 0 { Ok(n * 2) } else { Err(Error::Negative) }
-});
-
-// unwrap_or: provide default on error
-let value = result.unwrap_or(0);
-
-// ok(): convert to Option, discarding error
-let maybe_value: Option<i32> = result.ok();
+    let text = double_positive(-1).map_err(|error| format!("{error:?}"));
+    assert_eq!(text, Err("Negative".to_owned()));
+}
 ```
+
+Common combinators include `map`, `map_err`, `and_then`, `or_else`, `inspect`, and `inspect_err`. Prefer the form that makes control flow clearer; a `match` is often better than a long combinator chain.
 
 ## `Result::flatten` (Rust 1.89+)
 
-Eliminate boilerplate when dealing with nested `Result<Result<T, E>, E>`:
+`flatten` removes one level from `Result<Result<T, E>, E>`. The inner and outer error types must be the same.
 
 ```rust
-// Before: manual double-unwrap
-fn get_first(items: &[Result<i32, Error>]) -> Result<i32, Error> {
-    items.first().copied().unwrap_or(Err(Error::Empty))
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Error {
+    Invalid,
 }
 
-// Nested Result: Result<Result<T, E>, E>
-let nested: Result<Result<i32, ()>, ()> = Ok(Ok(42));
+fn main() {
+    let nested: Result<Result<u32, Error>, Error> = Ok(Ok(42));
+    assert_eq!(nested.flatten(), Ok(42));
 
-// Before flatten: manual match
-let value = match nested {
-    Ok(Ok(v)) => Ok(v),
-    Ok(Err(e)) => Err(e),
-    Err(e) => Err(e),
-};
-
-// After flatten (Rust 1.89+): single method call
-let value: Result<i32, ()> = nested.flatten();  // Ok(42)
-
-// Useful with iterators
-fn process_all(items: Vec<Result<i32, Error>>) -> Result<Vec<i32>, Error> {
-    items.into_iter().collect::<Result<Vec<_>, _>>()
+    let nested: Result<Result<u32, Error>, Error> = Ok(Err(Error::Invalid));
+    assert_eq!(nested.flatten(), Err(Error::Invalid));
 }
 ```
 
-## `unused_must_use` + `Uninhabited` (Rust 1.92+)
+It is not a special never-type or infallibility feature. If the two error types differ, convert one of them first or handle the layers explicitly.
 
-Since Rust 1.92, the `unused_must_use` lint no longer warns on `Result<(), UninhabitedType>` or `ControlFlow<UninhabitedType, ()>`. The most common case is `Infallible`, but the exemption applies to any uninhabited error type (including user-defined empty enums):
+## Rust 1.92 `unused_must_use` and Uninhabited Break/Error Types
+
+Rust 1.92 stopped warning for specific unit-success/control-flow shapes whose failure/break type is uninhabited, such as `Result<(), Infallible>` and `ControlFlow<Infallible, ()>`.
 
 ```rust
 use std::convert::Infallible;
+use std::ops::ControlFlow;
 
-/// Returns a value that is always Ok — the error case is
-/// statically impossible.
-fn compute() -> Result<i32, Infallible> {
-    Ok(42)
+fn always_ok() -> Result<(), Infallible> {
+    Ok(())
 }
 
-// No warning — Err branch is statically unreachable
-compute();
-
-// Also exempt: ControlFlow<Infallible, ()>
-fn control() -> ControlFlow<Infallible, ()> {
+fn always_continue() -> ControlFlow<Infallible, ()> {
     ControlFlow::Continue(())
 }
-control();
 
-// With a real error type, the must_use lint applies:
-fn fallible() -> Result<i32, Error> {
-    Ok(42)
+fn main() {
+    always_ok();
+    always_continue();
 }
-// fallible(); // Warning: unused Result that must be used
 ```
+
+Do **not** generalize that release-note change to every `Result<T, Infallible>`. A non-unit successful value can itself be important, and the lint behavior is deliberately more specific.
 
 ## `#[diagnostic::do_not_recommend]` (Rust 1.85+)
 
-Hide implementation details from compiler error messages. Useful when a blanket `From<T>` implementation would otherwise appear in suggestions:
+This attribute is a compiler-diagnostic hint for a **legal trait impl** whose appearance in an error message would mislead users. It does not relax coherence/orphan rules and is not an error-conversion feature.
 
 ```rust
-use std::convert::Infallible;
+trait InternalFormat {}
+trait PublicFormat {}
 
 #[diagnostic::do_not_recommend]
-impl<T> From<T> for Infallible {
-    fn from(_: T) -> Self {
-        // Since Infallible can never be constructed, this
-        // impl only exists for type compatibility. The
-        // diagnostic hint prevents the compiler from
-        // suggesting it in error messages.
-        match Some(()) { None => unreachable!(), _ => todo!() }
-    }
-}
+impl<T: InternalFormat> PublicFormat for T {}
 
-// Without #[diagnostic::do_not_recommend], when the compiler
-// can't find a matching From impl, it might suggest using
-// this one — which would be incorrect. The attribute hides it
-// from suggestions.
+struct Packet;
+impl PublicFormat for Packet {}
+
+fn require_public<T: PublicFormat>(_: T) {}
+
+fn main() {
+    require_public(Packet);
+}
 ```
 
-## Defining Error Types
+Do not copy examples that implement a foreign trait such as `From` for a foreign target such as `Box<dyn Error>` or `Infallible`; those impls are illegal regardless of the diagnostic attribute.
+
+See [err-diagnostic-do-not-recommend](./err-diagnostic-do-not-recommend.md) for the dedicated rule.
+
+## Design Error Types for the Boundary
+
+A small domain error often needs no dependency:
 
 ```rust
-use thiserror::Error;
+use std::fmt;
 
-#[derive(Error, Debug)]
-pub enum ConfigError {
-    #[error("failed to read file: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("failed to parse config: {0}")]
-    Parse(#[from] toml::de::Error),
-
-    #[error("missing required field: {0}")]
-    MissingField(String),
+#[derive(Debug, PartialEq, Eq)]
+enum ParsePortError {
+    InvalidNumber,
+    Reserved,
 }
 
-fn load_config(path: &str) -> Result<Config, ConfigError> {
-    let content = std::fs::read_to_string(path)?;  // Io error
-    let config: Config = toml::from_str(&content)?;  // Parse error
-    if config.name.is_empty() {
-        return Err(ConfigError::MissingField("name".into()));
+impl fmt::Display for ParsePortError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidNumber => f.write_str("invalid port number"),
+            Self::Reserved => f.write_str("port is reserved"),
+        }
     }
-    Ok(config)
 }
+
+impl std::error::Error for ParsePortError {}
 ```
+
+Libraries usually benefit from typed public errors callers can match. Applications may prefer a context-oriented dynamic error internally. Choose from the needs of the API boundary rather than applying one error crate everywhere.
 
 ## See Also
 
-- [err-thiserror-lib](./err-thiserror-lib.md) — Defining error types
-- [err-question-mark](./err-question-mark.md) — Using `?` operator
-- [type-option-nullable](./type-option-nullable.md) — `Option` vs `Result`
-- [type-never-diverge](./type-never-diverge.md) — `!` type and `Infallible`
-- [Rust 1.89: Result::flatten](https://blog.rust-lang.org/2025/08/07/Rust-1.89.0/)
-- [Rust 1.92: Never type lints deny-by-default](https://blog.rust-lang.org/2025/12/11/Rust-1.92.0)
+- [err-thiserror-lib](./err-thiserror-lib.md) — deriving typed library errors
+- [err-question-mark](./err-question-mark.md) — `?` propagation
+- [type-option-nullable](./type-option-nullable.md) — absence versus failure
+- [type-never-diverge](./type-never-diverge.md) — never type and `Infallible`
+- [err-diagnostic-do-not-recommend](./err-diagnostic-do-not-recommend.md) — diagnostic hints
