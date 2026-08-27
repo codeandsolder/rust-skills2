@@ -1,227 +1,188 @@
 # mem-arena-allocator
 
-> Use arena allocators for batch allocations
+> Use bump arenas when many values share one lifetime and bulk deallocation is more useful than individual destruction
 
 ## Why It Matters
 
-Arena allocators (bump allocators) allocate memory from a contiguous region, making allocation extremely fast (just bump a pointer). All allocations are freed at once when the arena is dropped. Perfect for request-scoped or parse-tree allocations. **bumpalo 3.20.3** (May 2026) is the current stable release.
+A bump arena allocates values from chunks and advances an allocation cursor. That can make repeated small allocations cheap and lets the arena reclaim its storage in bulk. The model is especially attractive for parse trees, temporary query state, request-scoped scratch data, and other workloads where many allocations naturally die together.
 
-## Bad
+The trade-off is just as important: values allocated directly with `bumpalo::Bump` do **not** have their `Drop` implementations run when the arena is reset or dropped. If an arena value owns a file, socket, mutex guard, heap allocation, mmap, or another resource whose destructor matters, blindly placing it in the arena can leak or delay that resource.
 
-```rust
-// Many small allocations during parsing
-fn parse(input: &str) -> Vec<Node> {
-    let mut nodes = Vec::new();
-    for token in tokenize(input) {
-        nodes.push(Box::new(Node::new(token)));  // Heap alloc per node!
-    }
-    nodes
-}
+Use arenas because the lifetime model fits—not because “arena allocation is always faster.” Measure the real workload.
 
-// Per-request allocations add up
-fn handle_request(req: Request) -> Response {
-    let headers = parse_headers(&req);      // Allocates
-    let body = parse_body(&req);            // Allocates
-    let response = generate_response();     // Allocates
-    // All freed individually at end
-    response
-}
-```
+## Basic Arena Allocation
 
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use bumpalo::Bump;
 
-// All nodes allocated from same arena
-fn parse<'a>(input: &str, arena: &'a Bump) -> Vec<&'a Node> {
-    let mut nodes = Vec::new();
-    for token in tokenize(input) {
-        let node = arena.alloc(Node::new(token));  // Fast bump!
-        nodes.push(node);
-    }
-    nodes
-}  // Arena freed all at once
+#[derive(Debug, PartialEq)]
+struct Node {
+    value: i32,
+}
 
-// Per-request arena
-fn handle_request(req: Request) -> Response {
+fn build_nodes(arena: &Bump) -> Vec<&Node> {
+    (0..4)
+        .map(|value| arena.alloc(Node { value }) as &Node)
+        .collect()
+}
+
+fn main() {
     let arena = Bump::new();
-    
-    let headers = parse_headers(&req, &arena);
-    let body = parse_body(&req, &arena);
-    let response = generate_response(&arena);
-    
-    // Convert to owned response before arena drops
-    response.to_owned()
-}  // All request memory freed instantly
+    let nodes = build_nodes(&arena);
+    assert_eq!(nodes[2].value, 2);
+}
 ```
 
-## Fallible Allocation (bumpalo 3.17+)
+The references cannot outlive `arena`, so the borrow checker prevents them from escaping the arena's lifetime.
+
+## The Critical Destructor Caveat
+
+Directly bump-allocated values are not individually dropped during arena teardown. For plain data that needs no destructor, this is often exactly what you want. For resource-owning values, it can be wrong.
 
 ```rust
 use bumpalo::Bump;
 
-let arena = Bump::new();
-
-// try_alloc returns Result — no panic on OOM
-let node: Result<&mut Node, _> = arena.try_alloc(Node::new(token));
-if let Ok(node) = node {
-    process(node);
+#[derive(Debug)]
+struct PlainNode {
+    id: u32,
+    weight: u32,
 }
 
-// try_alloc_with for fallible construction
-let node: Result<&mut Node, _> = arena.try_alloc_with(|| Node::new(token));
+fn main() {
+    let arena = Bump::new();
+    let node = arena.alloc(PlainNode { id: 1, weight: 7 });
+    assert_eq!(node.weight, 7);
+}
 ```
 
-## Thread-Local Scratch Arena Pattern
+A plain-data node has no destructor-dependent cleanup. By contrast, putting a `String`, `Vec`, file handle, or other resource-owning object directly in the bump means its own destructor will not run automatically when the bump is cleared.
+
+If destructors must run, choose a representation that explicitly manages them. `bumpalo` offers allocator-aware owned/collection types behind crate features, and manual cleanup is also possible, but those choices should be reviewed carefully rather than assumed.
+
+## `reset()` Reuses Arena Storage
+
+`Bump::reset` takes `&mut self`, invalidating outstanding arena references before the reset can occur:
 
 ```rust
 use bumpalo::Bump;
-use std::cell::RefCell;
 
-thread_local! {
-    static SCRATCH: RefCell<Bump> = RefCell::new(Bump::with_capacity(4 * 1024));
-}
+fn main() {
+    let mut arena = Bump::new();
 
-fn with_scratch<T>(f: impl FnOnce(&Bump) -> T) -> T {
-    SCRATCH.with(|scratch| {
-        let arena = scratch.borrow();
-        let result = f(&arena);
-        result
-    })
-}
-
-fn reset_scratch() {
-    SCRATCH.with(|scratch| {
-        scratch.borrow_mut().reset();
-    });
-}
-
-// Usage
-fn process_batch(items: &[Item]) -> Vec<Output> {
-    with_scratch(|arena| {
-        let temp_data: Vec<&TempData> = items
-            .iter()
-            .map(|item| arena.alloc(compute_temp(item)))
-            .collect();
-        
-        // Use temp_data...
-        let result = finalize(&temp_data);
-        
-        reset_scratch();  // Reuse arena memory
-        result
-    })
-}
-```
-
-## Multi-Threaded: bumpalo-herd
-
-For multi-threaded work stealing, use `bumpalo-herd` to avoid thread-local contention:
-
-```rust
-use bumpalo_herd::Herd;
-
-let herd = Herd::new(|_| Bump::new());
-let work: Vec<_> = (0..4)
-    .map(|i| {
-        let h = herd.clone();
-        std::thread::spawn(move || {
-            let member = h.get();
-            member.bump().alloc(MyData { id: i });
-        })
-    })
-    .collect();
-```
-
-## Bumpalo Collections
-
-```rust
-use bumpalo::Bump;
-use bumpalo::collections::{Vec, String};
-
-fn process<'a>(arena: &'a Bump, input: &str) -> Vec<'a, String<'a>> {
-    let mut results = Vec::new_in(arena);
-    
-    for word in input.split_whitespace() {
-        let mut s = String::new_in(arena);
-        s.push_str(word);
-        s.push_str("_processed");
-        results.push(s);
+    {
+        let value = arena.alloc(123_u32);
+        assert_eq!(*value, 123);
     }
-    
-    results  // All allocated in arena
+
+    arena.reset();
+
+    let next = arena.alloc(456_u32);
+    assert_eq!(*next, 456);
 }
 ```
 
-## allocator_api (Nightly)
+Resetting bulk-reclaims bump allocations and keeps storage available for reuse according to the allocator's implementation. Do not describe it as a universal constant-time operation independent of chunk state: an implementation may release excess chunks while retaining storage for reuse.
 
-On nightly Rust, you can use the `allocator_api` feature for generic allocator-aware containers:
+The destructor caveat still applies to values allocated before a reset.
+
+## Fallible Allocation Versus Fallible Construction
+
+Current `bumpalo` distinguishes allocation failure from initializer failure:
+
+- `try_alloc(value)` / `try_alloc_with(|| value)` make the **allocation** fallible;
+- `alloc_try_with(|| Result<...>)` / `try_alloc_try_with(...)` are the APIs for a **fallible initializer**.
+
+Do not call `try_alloc_with` “fallible construction”: its closure itself returns the value, not a `Result` from construction.
+
+When out-of-memory behavior matters, use the relevant `try_` APIs and propagate their allocation errors instead of assuming every bump allocation can succeed.
+
+## Per-Request Arenas
+
+A useful shape is to create the arena outside the work that borrows from it, then convert only the final escaping value into ordinary owned data:
 
 ```rust
-#![feature(allocator_api)]
-
 use bumpalo::Bump;
-use std::boxed::Box;
 
-let arena = Bump::new();
+fn summarize(input: &str) -> String {
+    let arena = Bump::new();
+    let words: Vec<&str> = input
+        .split_whitespace()
+        .map(|word| arena.alloc_str(word) as &str)
+        .collect();
 
-// Generic allocator-aware Box
-let val = Box::new_in(42, &arena);
+    words.join("|")
+}
 
-// Works with Vec, Rc, etc. (when stabilized)
+fn main() {
+    assert_eq!(summarize("one two three"), "one|two|three");
+}
 ```
 
-## Alternative: slotmap for Stable Handles
+The returned `String` owns its memory independently; the temporary word copies can disappear with the arena.
 
-If you need stable, type-safe handles to arena-allocated data (instead of raw pointers), use `slotmap`:
+If most inputs are already borrowed strings and do not need copying, an arena may provide no benefit here—the example demonstrates the lifetime pattern, not a recommendation to arena-copy every `&str`.
+
+## Threading
+
+A `bumpalo::Bump` can be moved between threads, but it is not a shared concurrent allocator. Do not concurrently allocate through one shared `&Bump` from multiple threads. Common designs use one arena per worker/request or another allocator explicitly designed for concurrent access.
+
+## Stable Handles Are a Different Problem
+
+`slotmap` is not a bump allocator. It is useful when you want stable, generation-checked keys into a collection whose entries may be inserted and removed:
 
 ```rust
-use slotmap::{SlotMap, Key};
+use slotmap::{DefaultKey, SlotMap};
 
-let mut arena = SlotMap::new();
-let handle: Key = arena.insert(MyNode::new());
-let node: &MyNode = &arena[handle];  // Stable reference
+#[derive(Debug)]
+struct Node {
+    value: i32,
+}
+
+fn main() {
+    let mut nodes = SlotMap::new();
+    let key: DefaultKey = nodes.insert(Node { value: 42 });
+
+    assert_eq!(nodes[key].value, 42);
+    nodes.remove(key);
+    assert!(nodes.get(key).is_none());
+}
 ```
 
-## When to Use Arenas
+The key remains a small handle and stale generations are rejected after removal. This provides stable **keys**, not stable Rust references, and it does not give bump-allocation semantics.
 
-| Situation | Use Arena? |
-|-----------|-----------|
-| Parsing (AST nodes) | Yes |
-| Request handling | Yes |
-| Batch processing | Yes |
-| Long-lived data | No |
-| Data escaping scope | No (or copy out) |
-| Simple programs | Overkill |
+Use a slot map when identity/handles are the requirement; use a bump arena when shared lifetime and bulk allocation/deallocation are the requirement.
 
-## Performance Impact
+## When Arenas Fit
 
-```rust
-// Benchmarks from production systems:
-// - Individual allocations: ~25-50ns each
-// - Arena bump: ~1-2ns each (20-50x faster)
-// - Arena reset: O(1) regardless of allocation count
+Arenas are worth considering when:
 
-// Memory overhead:
-// - Arena wastes some memory (unused capacity)
-// - But eliminates per-allocation metadata overhead
-```
+- many allocations naturally share one lifetime;
+- values are mostly plain data or their destruction is otherwise managed;
+- per-object deallocation is unnecessary;
+- profiling shows allocator traffic or locality is important;
+- the lifetime boundary can be expressed clearly in the type/borrow structure.
 
-## Cargo.toml
+Prefer ordinary `Vec`, `Box`, `String`, ownership, or another collection when individual destruction, independent lifetimes, or simple code matters more.
 
-```toml
-[dependencies]
-bumpalo = "3.20"
-# For multi-threaded work stealing
-bumpalo-herd = "0.1"
-# Stable typed handles instead of raw pointers
-slotmap = "1.0"
-```
+## Performance Guidance
+
+Do not bake numbers such as “arena allocation is 20–50× faster” or “1–2 ns per allocation” into a general rule. Results depend on allocator, element size/alignment, chunk growth, cache state, compiler options, and whether ordinary allocations were optimized away or pooled elsewhere.
+
+Benchmark the operation that matters: parse throughput, request latency, allocation count, resident memory, or cache behavior—not an isolated synthetic allocation unless that is actually the bottleneck.
+
+## Practical Guidance
+
+- Start from a shared-lifetime problem, not from a desire to replace every `Box`.
+- Remember that direct bump allocations skip `Drop` on reset/arena destruction.
+- Use `reset()` only after all arena borrows are gone.
+- Distinguish fallible allocation APIs from fallible initializer APIs.
+- Do not share one `Bump` concurrently as though it were a synchronized allocator.
+- Treat `slotmap` and arenas as different tools: stable keys versus bulk lifetime allocation.
+- Measure before claiming a performance win.
 
 ## See Also
 
-- [mem-slotmap-arena](mem-slotmap-arena.md) — Stable typed handles with `SlotMap`
-- [mem-with-capacity](mem-with-capacity.md) - Pre-allocate when size is known
-- [mem-reuse-collections](mem-reuse-collections.md) - Reuse collections with clear()
-- [opt-profile-first](perf-profile-first.md) - Profile to verify benefit
+- [mem-with-capacity](./mem-with-capacity.md) - Pre-allocate when size is known
+- [mem-reuse-collections](./mem-reuse-collections.md) - Reuse collection allocations
+- [mem-slotmap-arena](./mem-slotmap-arena.md) - Generation-checked stable keys
+- [perf-profile-first](./perf-profile-first.md) - Profile before optimizing
