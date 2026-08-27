@@ -1,179 +1,241 @@
 # type-no-stringly
 
-> Avoid stringly-typed APIs
+> Replace durable stringly-typed states and identifiers with enums or domain types, while keeping text parsing at system boundaries
 
 **Rule**: `type-no-stringly`
 
 ## Why It Matters
 
-Strings accept any value — typos, wrong formats, invalid data all compile fine. Enums, newtypes, and validated types catch errors at compile time or construction time, not runtime. They also provide better IDE support, documentation, and make invalid states unrepresentable.
+A `String` can hold any spelling, so APIs that use strings for a closed set of states or for values with strong invariants push mistakes into runtime checks. Enums and newtypes make the accepted domain explicit, improve exhaustiveness checking, and give parsers a natural boundary.
 
-## Bad
+Strings remain the correct representation for genuinely open-ended text. The goal is not “never use strings”; it is to stop using strings as an undocumented type system.
+
+## Bad: Closed States as Strings
 
 ```rust
-// Status as string — easy to get wrong
-fn set_status(status: &str) {
+fn can_ship(status: &str) -> bool {
     match status {
-        "pending" => { /* ... */ }
-        "active" => { /* ... */ }
-        "completed" => { /* ... */ }
-        _ => panic!("Unknown status"),  // Runtime error
+        "paid" => true,
+        "pending" | "cancelled" => false,
+        _ => false,
     }
 }
 
-// Easy to misuse
-set_status("pending");   // OK
-set_status("Pending");   // Runtime error — wrong case
-set_status("aktive");    // Runtime error — typo
-set_status("done");      // Runtime error — wrong word
-
-// Configuration as strings — no type safety, no validation
-fn configure(key: &str, value: &str) { }
+fn main() {
+    assert!(!can_ship("Paid")); // typo/casing silently becomes another state
+}
 ```
 
-## Good
+The function cannot distinguish “a valid non-shippable state” from “a spelling nobody intended.”
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Good: Enum for a Closed Set
+
 ```rust
-// Status as enum — compile-time safety
-enum Status { Pending, Active, Completed }
-
-fn set_status(status: Status) {
-    match status {
-        Status::Pending => { /* ... */ }
-        Status::Active => { /* ... */ }
-        Status::Completed => { /* ... */ }
-    }  // Exhaustive — compiler checks all cases
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Status {
+    Pending,
+    Paid,
+    Cancelled,
 }
 
-// Can only pass valid values
-set_status(Status::Pending);  // OK
-// set_status("aktive");      // Compile error — wrong type!
+fn can_ship(status: Status) -> bool {
+    match status {
+        Status::Paid => true,
+        Status::Pending | Status::Cancelled => false,
+    }
+}
 
-// Configuration with typed builder
+fn main() {
+    assert!(can_ship(Status::Paid));
+    assert!(!can_ship(Status::Pending));
+}
+```
+
+Adding a new variant now forces relevant exhaustive matches to be reconsidered by the compiler.
+
+## Parse Text at the Boundary
+
+```rust
+use std::str::FromStr;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Priority {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsePriority;
+
+impl FromStr for Priority {
+    type Err = ParsePriority;
+
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        match raw {
+            "low" => Ok(Self::Low),
+            "medium" => Ok(Self::Medium),
+            "high" => Ok(Self::High),
+            _ => Err(ParsePriority),
+        }
+    }
+}
+
+fn main() {
+    let priority: Priority = "high".parse().unwrap();
+    assert_eq!(priority, Priority::High);
+    assert!("urgent".parse::<Priority>().is_err());
+}
+```
+
+The textual representation is still accepted where text enters the program, but the rest of the domain works with `Priority`.
+
+## `derive_more::FromStr` for Simple Newtypes
+
+For a one-field newtype whose inner type already implements `FromStr`, derive-more can forward parsing directly. The current derive does not need an old `#[from_str(forward)]` marker for the ordinary newtype case.
+
+```rust
+use derive_more::FromStr;
+
+#[derive(Debug, Clone, PartialEq, Eq, FromStr)]
+struct Username(String);
+
+fn main() {
+    let username: Username = "alice".parse().unwrap();
+    assert_eq!(username.0, "alice");
+}
+```
+
+This is appropriate when parsing the wrapper should have exactly the inner type's parsing semantics. It is **not validation**: wrapping `String` this way still accepts every string.
+
+If the domain has an invariant, write a checked parser/newtype or use a validated-newtype helper instead of relying on a forwarding derive.
+
+## Custom Parsing Errors With derive-more
+
+When forwarding from an inner parser but exposing a domain-specific error type, use the current `error(...)` attribute form.
+
+```rust
+use derive_more::{From, FromStr};
+
+#[derive(Debug, From)]
+struct PortError(std::num::ParseIntError);
+
+#[derive(Debug, PartialEq, Eq, FromStr)]
+#[from_str(error(PortError))]
+struct Port(u16);
+
+fn main() {
+    assert_eq!("443".parse::<Port>().unwrap(), Port(443));
+    assert!("https".parse::<Port>().is_err());
+}
+```
+
+That conversion only changes the parse error surface; it does not add range/domain validation beyond what the inner parser already performs.
+
+## Validated Newtypes for Open Text With Invariants
+
+An email address, username, slug, or protocol token may still be text while needing stronger construction semantics.
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Username(String);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct InvalidUsername;
+
+impl Username {
+    fn parse(raw: &str) -> Result<Self, InvalidUsername> {
+        let valid = !raw.is_empty()
+            && raw.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        valid.then(|| Self(raw.to_owned())).ok_or(InvalidUsername)
+    }
+}
+
+fn main() {
+    assert!(Username::parse("alice_42").is_ok());
+    assert!(Username::parse("alice 42").is_err());
+}
+```
+
+Here `String` is still the representation, but callers cannot construct the domain type from arbitrary text through the safe API.
+
+## Typed Configuration Instead of Key/Value Strings
+
+Prefer a structured configuration type when fields have distinct semantics:
+
+```rust
+use std::time::Duration;
+
+#[derive(Debug, Clone, Copy)]
+enum Mode {
+    Fast,
+    Safe,
+}
+
+#[derive(Debug)]
 struct Config {
     timeout: Duration,
     retries: u32,
     mode: Mode,
 }
 
-enum Mode { Fast, Safe, Balanced }
-```
-
-## Parsing at Boundaries with `FromStr`
-
-```rust
-use std::str::FromStr;
-
-#[derive(Debug, Clone, Copy)]
-enum Priority { Low, Medium, High }
-
-impl FromStr for Priority {
-    type Err = ParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "low" => Ok(Priority::Low),
-            "medium" | "med" => Ok(Priority::Medium),
-            "high" => Ok(Priority::High),
-            _ => Err(ParseError::UnknownPriority(s.to_string())),
-        }
-    }
-}
-
-// Parse once at boundary, use typed value everywhere
-fn handle_request(priority_str: &str) -> Result<(), Error> {
-    let priority: Priority = priority_str.parse()?;
-    // From here, priority is type-safe
-    process(priority);
-    Ok(())
+fn main() {
+    let config = Config {
+        timeout: Duration::from_secs(5),
+        retries: 3,
+        mode: Mode::Safe,
+    };
+    assert_eq!(config.retries, 3);
+    assert!(matches!(config.mode, Mode::Safe));
+    assert_eq!(config.timeout.as_secs(), 5);
 }
 ```
 
-## Reduce Boilerplate with `derive_more::FromStr`
+A generic `configure("timeout", "5")` interface loses field names, units, and accepted value sets in one step.
 
-For string-backed newtypes, `derive_more::FromStr` auto-generates the `FromStr` implementation:
+## Serde Can Keep the Wire Format Textual
 
-```rust
-use derive_more::FromStr;
-use std::str::FromStr;
-
-#[derive(Debug, Clone, FromStr)]
-#[from_str(forward)]
-pub struct Username(String);
-
-// FromStr impl is auto-generated from String::from_str
-let name: Username = "alice".parse()?;
-```
-
-## Validated Newtypes
-
-```rust
-// Instead of passing raw strings, use a validated newtype
-struct Email(String);
-
-impl Email {
-    fn new(s: &str) -> Result<Self, ValidationError> {
-        if is_valid_email(s) {
-            Ok(Email(s.to_string()))
-        } else {
-            Err(ValidationError::InvalidEmail)
-        }
-    }
-}
-
-// String-free IDs
-struct UserId(uuid::Uuid);
-
-// String-free paths
-struct ConfigPath(PathBuf);
-```
-
-## `cfg_select!` for Compile-Time String-Free Config (Rust 1.95+)
-
-For compile-time configuration selection, `cfg_select!` replaces string-based platform detection:
-
-```rust
-use core::cfg_select;
-
-// Compile-time config — no strings at runtime
-const BUFFER_SIZE: usize = cfg_select! {
-    target_os = "linux"   => 65536,
-    target_os = "macos"   => 4096,
-    target_os = "windows" => 8192,
-    _ => 1024,
-};
-
-// Deserialization strategy — selected at compile time
-const PARSER: ParserKind = cfg_select! {
-    feature = "json"    => ParserKind::Json,
-    feature = "toml"    => ParserKind::Toml,
-    feature = "yaml"    => ParserKind::Yaml,
-    _ => ParserKind::Json,
-};
-```
-
-## With Serde
+Typed Rust APIs do not require changing an external JSON/YAML/TOML representation.
 
 ```rust
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum EventType {
     UserCreated,
     UserDeleted,
-    UserUpdated,
 }
 
-// JSON: {"type": "user_created", ...}
-// Automatically validated during deserialization
+fn main() {
+    let encoded = serde_json::to_string(&EventType::UserCreated).unwrap();
+    assert_eq!(encoded, r#""user_created""#);
+    let decoded: EventType = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(decoded, EventType::UserCreated);
+}
 ```
+
+The boundary can remain string-based while internal code gains type checking.
+
+## When Strings Are Correct
+
+Keep ordinary strings for:
+
+- user-authored prose;
+- labels and names without a useful closed/invariant-bearing domain;
+- opaque external values that the program intentionally does not interpret;
+- extensible/plugin identifiers where a closed enum would incorrectly reject future values.
+
+Creating a newtype for every local string can add ceremony without preserving any meaningful invariant.
 
 ## See Also
 
-- [anti-stringly-typed](./anti-stringly-typed.md) — Anti-pattern details
-- [type-newtype-validated](./type-newtype-validated.md) — Validated newtypes
-- [type-enum-states](./type-enum-states.md) — Enums for states
-- [type-derive-more-boilerplate](./type-derive-more-boilerplate.md) — `derive_more` for boilderplate reduction
-- [type-nutype-validated](./type-nutype-validated.md) — `nutype` for validated newtypes
+- [anti-stringly-typed](./anti-stringly-typed.md) — stringly API anti-patterns
+- [type-newtype-validated](./type-newtype-validated.md) — validated text/domain values
+- [type-enum-states](./type-enum-states.md) — closed state sets
+- [type-derive-more-boilerplate](./type-derive-more-boilerplate.md) — derive-more helpers
+
+## References
+
+- [`std::str::FromStr`](https://doc.rust-lang.org/std/str/trait.FromStr.html)
+- [`derive_more::FromStr`](https://docs.rs/derive_more/latest/derive_more/derive.FromStr.html)
