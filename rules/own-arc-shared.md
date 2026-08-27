@@ -1,206 +1,155 @@
 # own-arc-shared
 
-> Use `Arc<T>` for thread-safe shared ownership
+> Use `Arc<T>` when multiple owners may cross thread boundaries; add synchronization only for mutation that actually requires it
 
 ## Why It Matters
 
-`Arc` (Atomic Reference Counted) provides shared ownership across threads. Unlike `Rc`, its reference count is updated atomically, making it safe for concurrent access. Use it when multiple threads need to read the same data.
+`Arc<T>` provides atomic reference-counted shared ownership. Cloning an `Arc` clones the ownership handle, not the underlying `T`, and the allocation remains alive until the last strong owner is dropped.
 
-## Bad
+`Arc` makes ownership thread-safe; it does **not** make arbitrary interior mutation safe. Whether `Arc<T>` is `Send`/`Sync` still depends on `T`, and shared mutation generally needs an appropriate synchronization primitive or an internally thread-safe type.
 
-```rust
+## Bad: `Rc` Across Threads
+
+```rust compile_fail
 use std::rc::Rc;
 use std::thread;
 
-let data = Rc::new(vec![1, 2, 3]);
-let data_clone = Rc::clone(&data);
+fn main() {
+    let data = Rc::new(vec![1, 2, 3]);
+    let other = Rc::clone(&data);
 
-// ERROR: Rc cannot be sent between threads safely
-thread::spawn(move || {
-    println!("{:?}", data_clone);
-});
+    thread::spawn(move || println!("{other:?}"));
+}
 ```
 
-## Good
+`Rc` deliberately has non-atomic reference counts and cannot be sent between threads.
+
+## Good: Shared Immutable Data With `Arc`
 
 ```rust
 use std::sync::Arc;
 use std::thread;
 
-let data = Arc::new(vec![1, 2, 3]);
-let data_clone = Arc::clone(&data);
+fn main() {
+    let data = Arc::new(vec![1, 2, 3]);
+    let other = Arc::clone(&data);
 
-thread::spawn(move || {
-    println!("{:?}", data_clone);  // Safe!
-});
+    let worker = thread::spawn(move || other.iter().sum::<i32>());
 
-println!("{:?}", data);  // Original still accessible
+    assert_eq!(worker.join().unwrap(), 6);
+    assert_eq!(data.len(), 3);
+}
 ```
 
-## Arc with Mutex for Mutable Shared State
+For immutable data, `Arc<T>` is often sufficient by itself.
+
+## Shared Mutation: Choose the Synchronization Semantics
 
 ```rust
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-let counter = Arc::new(Mutex::new(0));
-let mut handles = vec![];
+fn main() {
+    let counter = Arc::new(Mutex::new(0u32));
+    let mut workers = Vec::new();
 
-for _ in 0..10 {
-    let counter = Arc::clone(&counter);
-    let handle = thread::spawn(move || {
-        let mut num = counter.lock().unwrap();
-        *num += 1;
-    });
-    handles.push(handle);
-}
-
-for handle in handles {
-    handle.join().unwrap();
-}
-
-println!("Result: {}", *counter.lock().unwrap());
-```
-
-## Arc vs Rc Decision Tree
-
-```
-Need shared ownership?
-├── No → Use owned value or references
-└── Yes → Will it cross thread boundaries?
-    ├── No → Use Rc<T> (cheaper, no atomic ops)
-    └── Yes → Use Arc<T>
-        └── Need mutation?
-            ├── No → Arc<T> is enough
-            └── Yes → Arc<Mutex<T>> or Arc<RwLock<T>>
-```
-
-## Common Patterns
-
-```rust
-use std::sync::Arc;
-
-// Shared configuration (read-only)
-struct AppConfig {
-    database_url: String,
-    max_connections: u32,
-}
-
-fn setup_workers(config: Arc<AppConfig>) {
-    for i in 0..4 {
-        let config = Arc::clone(&config);
-        std::thread::spawn(move || {
-            println!("Worker {} using db: {}", i, config.database_url);
-        });
+    for _ in 0..4 {
+        let counter = Arc::clone(&counter);
+        workers.push(thread::spawn(move || {
+            *counter.lock().unwrap() += 1;
+        }));
     }
-}
 
-// Shared cache with interior mutability
-use std::sync::RwLock;
-use std::collections::HashMap;
+    for worker in workers {
+        worker.join().unwrap();
+    }
 
-type Cache = Arc<RwLock<HashMap<String, String>>>;
-
-fn get_cached(cache: &Cache, key: &str) -> Option<String> {
-    cache.read().unwrap().get(key).cloned()
-}
-
-fn set_cached(cache: &Cache, key: String, value: String) {
-    cache.write().unwrap().insert(key, value);
+    assert_eq!(*counter.lock().unwrap(), 4);
 }
 ```
 
-## Recent Additions
+A `Mutex` is not the automatic companion to every `Arc`. Read-mostly data may need no lock; atomics, channels, `RwLock`, concurrent collections, or ownership transfer may better express other workloads.
 
-### `Arc::new_zeroed` / `Arc::new_zeroed_slice` (1.92)
-
-Allocate an `Arc` with zeroed memory, avoiding the cost of initializing then overwriting:
+## Mutate Before Sharing When You Still Have Unique Ownership
 
 ```rust
 use std::sync::Arc;
 
-// Before 1.92: allocate, zero, then initialize
-let mut buf = Arc::new([0u8; 4096]);
-Arc::get_mut(&mut buf).unwrap().copy_from_slice(&data);
+fn main() {
+    let mut values = Arc::new(vec![1, 2, 3]);
 
-// 1.92+: allocate already-zeroed
-let buf = unsafe { Arc::new_zeroed::<[u8; 4096]>() };
-let mut buf = unsafe { buf.assume_init() };
-buf.copy_from_slice(&data);
+    Arc::get_mut(&mut values).unwrap().push(4);
+    assert_eq!(&*values, &[1, 2, 3, 4]);
 
-// Zeroed slice variant
-let slice = unsafe { Arc::new_zeroed_slice::<u8>(4096) };
-```
-
-### `Pin<Arc<T>>` Default (1.91)
-
-```rust
-use std::pin::Pin;
-use std::sync::Arc;
-
-// 1.91+: Pin<Arc<T>> implements Default when T: Default
-fn spawn_task() -> Pin<Arc<MyActor>> {
-    Default::default()  // Creates Pin<Arc<MyActor>>::default()
+    let clone = Arc::clone(&values);
+    assert!(Arc::get_mut(&mut values).is_none());
+    drop(clone);
+    assert!(Arc::get_mut(&mut values).is_some());
 }
 ```
 
-### `LazyLock<Arc<T>>` Global Singleton Pattern
+`Arc::get_mut` is useful when uniqueness is part of the control flow. `Arc::make_mut` implements copy-on-write for `T: Clone` when cloning the pointee on contention is the desired policy.
 
-```rust
-use std::sync::{Arc, LazyLock};
+## Zeroed and Uninitialized Allocation APIs
 
-static GLOBAL_CONFIG: LazyLock<Arc<AppConfig>> = LazyLock::new(|| {
-    Arc::new(AppConfig::load())
-});
+Current stable Rust can allocate `Arc` storage as `MaybeUninit<T>`. Use these APIs for deliberate initialization strategies, not as generic “faster allocation” switches.
 
-// First access initializes; subsequent accesses are fast Arc clones
-fn get_config() -> Arc<AppConfig> {
-    GLOBAL_CONFIG.clone()
-}
-```
-
-### Atomic Pointer Operations on Arc (1.91)
-
-`Arc` supports atomic pointer operations through `core::sync::atomic::AtomicPtr`:
+For a type where the all-zero bit pattern is a valid value:
 
 ```rust
 use std::sync::Arc;
-use std::sync::atomic::{AtomicPtr, Ordering};
 
-// Atomic swap of managed Arc data (conceptually)
-fn atomic_replace(data: &AtomicPtr<MyData>, new: Arc<MyData>) -> Arc<MyData> {
-    let ptr = Arc::into_raw(new) as *mut MyData;
-    let old = data.swap(ptr, Ordering::AcqRel);
-    unsafe { Arc::from_raw(old) }
+fn main() {
+    let zero = Arc::<u32>::new_zeroed();
+
+    // SAFETY: every byte is zero, which is a valid initialized u32 value.
+    let zero = unsafe { zero.assume_init() };
+    assert_eq!(*zero, 0);
+
+    let zeros = Arc::<[u32]>::new_zeroed_slice(4);
+    // SAFETY: an all-zero bit pattern is valid for every u32 element.
+    let zeros = unsafe { zeros.assume_init() };
+    assert_eq!(&*zeros, &[0, 0, 0, 0]);
 }
 ```
 
-## Performance Considerations
+The allocation functions themselves are safe because the result is `MaybeUninit`; the unsafe boundary is `assume_init`, where you assert the bytes represent valid initialized `T` values. Zero is **not** a valid bit pattern for every Rust type.
+
+If the destination will be fully written, initialize uninitialized slots instead of zeroing and then overwriting them:
 
 ```rust
-// Arc::clone is cheap - just increments atomic counter
-let a = Arc::new(large_data);
-let b = Arc::clone(&a);  // Fast! No data copied
+use std::sync::Arc;
 
-// But atomic operations have overhead vs Rc
-// Use Rc in single-threaded contexts for better performance
+fn main() {
+    let mut values = Arc::<[u32]>::new_uninit_slice(3);
+    let slots = Arc::get_mut(&mut values).unwrap();
+    slots[0].write(10);
+    slots[1].write(20);
+    slots[2].write(30);
 
-// Avoid cloning Arc in hot loops if possible
-// Bad:
-for item in items {
-    let arc = Arc::clone(&shared);  // Atomic op each iteration
-    process(arc, item);
-}
-
-// Better: Clone once outside loop if possible
-let arc = Arc::clone(&shared);
-for item in items {
-    process(&arc, item);  // Pass reference
+    // SAFETY: every element was initialized above.
+    let values = unsafe { values.assume_init() };
+    assert_eq!(&*values, &[10, 20, 30]);
 }
 ```
+
+Do not call `assume_init` after partial initialization. For ordinary values, `Arc::new(value)` is simpler and lets the compiler optimize construction normally.
+
+## Do Not Build Ad-Hoc Atomic `Arc` Containers From Raw Pointers
+
+`Arc::into_raw` / `Arc::from_raw` are ownership-transfer primitives with strict provenance and exactly-once reconstruction requirements. Putting those pointers in an `AtomicPtr` does not by itself solve reclamation, ABA, null handling, or concurrent ownership bookkeeping.
+
+Use a proven abstraction for atomically replaceable shared pointers, or design a synchronization protocol whose safety argument includes reclamation. Raw `Arc` pointers are an unsafe boundary, not a normal extension of `Arc`.
+
+## Performance
+
+`Arc::clone` increments an atomic strong count and is usually much cheaper than cloning `T`, but “cheap” is workload-dependent. In a hot loop, avoid repeated ownership-count changes when a borrowed `&Arc<T>` or `&T` is sufficient.
+
+Likewise, prefer `Rc<T>` in genuinely single-threaded ownership graphs because it avoids atomic reference-count operations—but choose from semantics first and benchmark if the difference matters.
 
 ## See Also
 
-- [own-rc-single-thread](own-rc-single-thread.md) - Use Rc for single-threaded sharing
-- [own-mutex-interior](own-mutex-interior.md) - Use Mutex for interior mutability
-- [async-clone-before-await](async-clone-before-await.md) - Clone Arc before await points
+- [own-rc-single-thread](./own-rc-single-thread.md) — single-threaded shared ownership
+- [own-mutex-interior](./own-mutex-interior.md) — mutex-based interior mutability
+- [async-clone-before-await](./async-clone-before-await.md) — ownership around async tasks
+- [unsafe-maybeuninit](./unsafe-maybeuninit.md) — initialization invariants
