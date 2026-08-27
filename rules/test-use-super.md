@@ -19,7 +19,7 @@ mod tests {
     #[test]
     fn test_function() {
         let result = public_function();
-        // ...
+        let _ = result; // assertion omitted; import style is the point here
     }
 }
 ```
