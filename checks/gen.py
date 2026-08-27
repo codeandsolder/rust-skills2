@@ -14,6 +14,16 @@ the fence:
     <!-- rust-check: ignore; reason=requires a proc-macro crate -->
     <!-- rust-check: nightly(portable_simd); reason=nightly-only API -->
 
+Native rustdoc fence attributes are also honored for compile semantics:
+
+    ```rust,compile_fail
+    ```rust,ignore
+    ```rust,no_run          # still expected to compile
+    ```rust,should_panic    # still expected to compile
+
+An explicit rust-check marker may add a more specific expectation/reason, but it
+must not contradict a native compile_fail/ignore fence attribute.
+
 Expectations are written to manifest.json for analyze.py.
 """
 import json
@@ -34,7 +44,7 @@ MARKER = re.compile(
     r"(compile|fragment|compile_fail|ignore|nightly(?:\([^)]*\))?)"
     r"(?:\s*;\s*reason=(.*?))?\s*-->$"
 )
-FENCE = re.compile(r"^```rust(?:\s*,[^`]*)?\s*$")
+FENCE = re.compile(r"^```rust(?P<attrs>\s*(?:,[^`]*)?)\s*$")
 
 HEADER = (
     "#![allow(unused, dead_code, unreachable_code, unused_imports, "
@@ -66,6 +76,48 @@ def explicit_marker(lines, fence_index):
             "requires `; reason=...`"
         )
     return expect, reason or "explicit expectation"
+
+
+def native_fence_expectation(fence_match, *, file, line):
+    """Map rustdoc fence flags that change compile expectations.
+
+    `no_run` and `should_panic` still need to type-check, so they intentionally
+    do not override the section/default expectation. Target-specific rustdoc
+    ignore flags are also left alone rather than pretending an all-target skip
+    has the same semantics.
+    """
+    raw = (fence_match.group("attrs") or "").strip()
+    if not raw:
+        return None
+    if raw.startswith(","):
+        raw = raw[1:]
+    attrs = {part.strip() for part in raw.split(",") if part.strip()}
+
+    compile_fail = "compile_fail" in attrs
+    ignore = "ignore" in attrs
+    if compile_fail and ignore:
+        raise SystemExit(
+            f"conflicting rustdoc fence attributes compile_fail+ignore in "
+            f"{file}:{line}"
+        )
+    if compile_fail:
+        return "compile_fail", "native rustdoc `compile_fail` fence"
+    if ignore:
+        return "ignore", "native rustdoc `ignore` fence"
+    return None
+
+
+def resolve_expectation(lines, fence_index, fence_match, block, section, md_name):
+    marker = explicit_marker(lines, fence_index)
+    native = native_fence_expectation(
+        fence_match, file=md_name, line=fence_index + 1
+    )
+    if marker and native and marker[0] != native[0]:
+        raise SystemExit(
+            f"conflicting rust-check {marker[0]!r} and rustdoc fence "
+            f"{native[0]!r} in {md_name}:{fence_index + 1}"
+        )
+    return marker or native or legacy_expectation(block, section)
 
 
 def legacy_expectation(block, section):
@@ -113,14 +165,16 @@ for md in sorted(RULES.glob("*.md")):
         m = re.match(r"^#{2,}\s+(.*)", line)
         if m:
             section = m.group(1).strip()
-        if FENCE.match(line.strip()):
+        fence_match = FENCE.match(line.strip())
+        if fence_match:
             start = i + 1
             j = start
             while j < len(lines) and lines[j].strip() != "```":
                 j += 1
             block = "\n".join(lines[start:j])
-            marker = explicit_marker(lines, i)
-            expect, reason = marker or legacy_expectation(block, section)
+            expect, reason = resolve_expectation(
+                lines, i, fence_match, block, section, md.name
+            )
             name = f"{md.stem.replace('-', '_')}__{file_index}"
             info = {
                 "file": md.name,
