@@ -24,22 +24,22 @@ pub fn divide(a: i32, b: i32) -> i32 {
 
 ## Good
 
-<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
+<!-- rust-check: compile -->
 ```rust
 /// Returns the element at the given index.
 ///
 /// # Panics
 ///
-/// Panics if `index` is out of bounds (i.e., `index >= self.len()`).
+/// Panics if `index` is out of bounds (i.e., `index >= data.len()`).
 ///
 /// # Examples
 ///
 /// ```
 /// let v = vec![1, 2, 3];
-/// assert_eq!(v.get(1), &2);
+/// assert_eq!(get(&v, 1), &2);
 /// ```
-pub fn get(&self, index: usize) -> &T {
-    &self.data[index]
+pub fn get<T>(data: &[T], index: usize) -> &T {
+    &data[index]
 }
 
 /// Divides two numbers.

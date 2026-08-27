@@ -8,19 +8,19 @@ Test names appear in test output and serve as documentation. A good test name te
 
 ## Bad
 
-<!-- rust-check: fragment; reason=test-name pseudocode intentionally omits surrounding definitions -->
+<!-- rust-check: compile -->
 ```rust
 #[test]
-fn test1() { ... }
+fn test1() { assert!(true); }
 
 #[test]
-fn test_parse() { ... }  // Parse what? What behavior?
+fn test_parse() { assert!(true); }  // Parse what? What behavior?
 
 #[test]
-fn it_works() { ... }
+fn it_works() { assert!(true); }
 
 #[test]
-fn test_function() { ... }
+fn test_function() { assert!(true); }
 
 // Failure output: "test test_parse ... FAILED"
 // What failed? No idea.
@@ -28,19 +28,19 @@ fn test_function() { ... }
 
 ## Good
 
-<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
+<!-- rust-check: compile -->
 ```rust
 #[test]
-fn parse_returns_error_for_empty_input() { ... }
+fn parse_returns_error_for_empty_input() { assert!(true); }
 
 #[test]
-fn parse_handles_unicode_characters() { ... }
+fn parse_handles_unicode_characters() { assert!(true); }
 
 #[test]
-fn user_creation_requires_valid_email() { ... }
+fn user_creation_requires_valid_email() { assert!(true); }
 
 #[test]
-fn expired_token_is_rejected() { ... }
+fn expired_token_is_rejected() { assert!(true); }
 
 // Failure output: "test parse_returns_error_for_empty_input ... FAILED"
 // Immediately know what broke!
