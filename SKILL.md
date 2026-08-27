@@ -116,20 +116,20 @@ Reference these guidelines when:
 - [`mem-with-capacity`](rules/mem-with-capacity.md) - Use `with_capacity()` when size is known
 - [`mem-smallvec`](rules/mem-smallvec.md) - Use `SmallVec` for usually-small collections
 - [`mem-arrayvec`](rules/mem-arrayvec.md) - Use `ArrayVec<T, N>` for fixed-capacity collections that never heap-allocate
-- [`mem-box-large-variant`](rules/mem-box-large-variant.md) - Box large enum variants to reduce overall enum size
-- [`mem-boxed-slice`](rules/mem-boxed-slice.md) - Use `Box<[T]>` instead of `Vec<T>` for fixed-size heap data
+- [`mem-box-large-variant`](rules/mem-box-large-variant.md) - Consider indirection when one enum variant makes every enum value much larger, but measure the workload before paying for a heap allocation
+- [`mem-boxed-slice`](rules/mem-boxed-slice.md) - Use `Box<[T]>` when owned heap data has a fixed length and you do not need spare capacity or growth operations
 - [`mem-thinvec`](rules/mem-thinvec.md) - Use `ThinVec<T>` for nullable collections with minimal overhead
-- [`mem-clone-from`](rules/mem-clone-from.md) - Use `clone_from()` to reuse allocations when repeatedly cloning
+- [`mem-clone-from`](rules/mem-clone-from.md) - Use `Clone::clone_from` when repeatedly replacing an existing value and the concrete type can profitably reuse its resources
 - [`mem-reuse-collections`](rules/mem-reuse-collections.md) - Reuse collection capacity across repeated temporary workloads when allocation behavior or profiling shows it is worthwhile
-- [`mem-avoid-format`](rules/mem-avoid-format.md) - Avoid `format!()` when string literals work
-- [`mem-write-over-format`](rules/mem-write-over-format.md) - Use `write!()` into existing buffers instead of `format!()` allocations
-- [`mem-arena-allocator`](rules/mem-arena-allocator.md) - Use arena allocators for batch allocations
+- [`mem-avoid-format`](rules/mem-avoid-format.md) - Avoid creating an intermediate `String` with `format!` when the caller can use a literal, formatting arguments, or an existing output buffer directly
+- [`mem-write-over-format`](rules/mem-write-over-format.md) - Write formatting directly into the real destination when an intermediate owned `String` would only be copied elsewhere
+- [`mem-arena-allocator`](rules/mem-arena-allocator.md) - Use bump arenas when many values share one lifetime and bulk deallocation is more useful than individual destruction
 - [`mem-zero-copy`](rules/mem-zero-copy.md) - Use zero-copy patterns with slices and `Bytes`
-- [`mem-compact-string`](rules/mem-compact-string.md) - Use compact string types for memory-constrained string storage
+- [`mem-compact-string`](rules/mem-compact-string.md) - Consider compact or clone-on-write string types when string representation is a measured memory or allocation bottleneck
 - [`mem-smaller-integers`](rules/mem-smaller-integers.md) - Use appropriately-sized integers to reduce memory footprint
 - [`mem-assert-type-size`](rules/mem-assert-type-size.md) - Assert type size when it is a real ABI, memory-budget, or measured performance constraint; prefer upper bounds when exact layout is not required
 - [`mem-take-replace`](rules/mem-take-replace.md) - Use `mem::take` / `mem::replace` to move a value out of a `&mut` without cloning
-- [`mem-drop-order`](rules/mem-drop-order.md) - Know and control drop order: struct fields drop top-to-bottom, locals in reverse
+- [`mem-drop-order`](rules/mem-drop-order.md) - Know Rust's deterministic destruction order, and make resource dependencies explicit when one value must outlive another
 - [`mem-arc-str`](rules/mem-arc-str.md) - Prefer `Arc<str>` over `Arc<String>` for thread-shared immutable strings
 - [`mem-box-new-uninit`](rules/mem-box-new-uninit.md) - Use `Box::new_uninit()` when you genuinely need deferred or in-place heap initialization; call `assume_init()` only after the allocation contains a valid `T`
 - [`mem-ecow-clone-heavy`](rules/mem-ecow-clone-heavy.md) - Use `EcoString` for clone-heavy string workloads
