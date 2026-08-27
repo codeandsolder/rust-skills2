@@ -1,170 +1,199 @@
 # doc-link-types
 
-> Use intra-doc links to connect related types and functions
+> Cross-link related public types and operations when the links help readers navigate the API
 
 ## Why It Matters
 
-Intra-doc links (`[`TypeName`]`) create clickable references in generated documentation. They enable navigation between related items, verify that referenced items exist at compile time, and update automatically when items are renamed. Plain text references become stale and unclickable.
+A public API is usually understood as a graph of related concepts rather than one item at a time. Intra-doc links can connect constructors to builders, operations to their error types, iterators to their item semantics, and modules to the types they expose.
 
-## Bad
+Rustdoc validates those targets when documentation is built. That catches many broken references after refactors, but the links themselves do not automatically rewrite their source paths when items move or are renamed.
+
+This rule focuses on **which relationships to link**. See [doc-intra-links](./doc-intra-links.md) for detailed syntax and disambiguation.
+
+## Good: Connect an Operation to Its Result and Error Types
 
 ```rust
-/// Parses input and returns a ParseResult.
-/// 
-/// See also: ParseError for error types.
-/// Uses the Tokenizer internally.
-pub fn parse(input: &str) -> ParseResult {
-    // "ParseResult", "ParseError", "Tokenizer" are not clickable
-    // No verification they exist
+/// Successful parsing result.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Parsed {
+    pub value: u32,
 }
-```
 
-## Good
+/// Error returned by [`parse`].
+#[derive(Debug, PartialEq, Eq)]
+pub enum ParseError {
+    Empty,
+    Invalid,
+}
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-/// Parses input and returns a [`ParseResult`].
+/// Parses a decimal number into [`Parsed`].
 ///
 /// # Errors
 ///
-/// Returns [`ParseError::InvalidSyntax`] if the input contains invalid tokens.
-/// Returns [`ParseError::UnexpectedEof`] if the input ends prematurely.
-///
-/// # Related
-///
-/// - [`Tokenizer`] - The underlying tokenizer used by this parser
-/// - [`parse_file`] - Convenience function for parsing files
-/// - [`ParseOptions`] - Configuration options for parsing
-pub fn parse(input: &str) -> ParseResult {
-    // All links are clickable and verified
+/// Returns [`ParseError::Empty`] for an empty string and
+/// [`ParseError::Invalid`] for invalid decimal input.
+pub fn parse(input: &str) -> Result<Parsed, ParseError> {
+    if input.is_empty() {
+        return Err(ParseError::Empty);
+    }
+
+    input
+        .parse::<u32>()
+        .map(|value| Parsed { value })
+        .map_err(|_| ParseError::Invalid)
+}
+
+fn main() {
+    assert_eq!(parse("42"), Ok(Parsed { value: 42 }));
 }
 ```
 
-## Link Syntax
+The links express the relationships a caller is likely to follow while learning the API.
+
+## Link Builders and Constructed Types Both Ways
 
 ```rust
-/// Basic link to type in same module
-/// See [`MyType`] for details.
+/// Configured client.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Client {
+    timeout_secs: u64,
+}
 
-/// Link to method
-/// Use [`MyType::new`] to create instances.
+/// Builder used to create a [`Client`].
+#[derive(Default)]
+pub struct ClientBuilder {
+    timeout_secs: Option<u64>,
+}
 
-/// Link to associated type
-/// Returns [`Iterator::Item`].
+impl Client {
+    /// Starts a [`ClientBuilder`].
+    pub fn builder() -> ClientBuilder {
+        ClientBuilder::default()
+    }
+}
 
-/// Link to module
-/// See the [`parser`] module.
+impl ClientBuilder {
+    /// Sets the request timeout used by the resulting [`Client`].
+    pub fn timeout_secs(mut self, value: u64) -> Self {
+        self.timeout_secs = Some(value);
+        self
+    }
 
-/// Link to external crate type
-/// Works with [`std::collections::HashMap`].
+    /// Builds a [`Client`].
+    pub fn build(self) -> Client {
+        Client {
+            timeout_secs: self.timeout_secs.unwrap_or(30),
+        }
+    }
+}
 
-/// Link with custom text
-/// See [the parser][`parse`] for details.
-
-/// Link to module item
-/// See [`crate::utils::helper`].
-
-/// Link to parent module item
-/// See [`super::Parent`].
-```
-
-## Common Patterns
-
-```rust
-/// A configuration builder.
-///
-/// # Example
-///
-/// ```
-/// use my_crate::Config;
-///
-/// let config = Config::builder()
-///     .timeout(30)
-///     .build()?;
-/// ```
-///
-/// # Methods
-///
-/// - [`Config::builder`] - Create a new builder
-/// - [`Config::default`] - Create with defaults
-///
-/// # Related Types
-///
-/// - [`ConfigBuilder`] - The builder returned by [`Config::builder`]
-/// - [`ConfigError`] - Errors that can occur when building
-pub struct Config { ... }
-
-impl Config {
-    /// Creates a new [`ConfigBuilder`].
-    ///
-    /// This is equivalent to [`ConfigBuilder::new`].
-    pub fn builder() -> ConfigBuilder { ... }
+fn main() {
+    let client = Client::builder().timeout_secs(10).build();
+    assert_eq!(client.timeout_secs, 10);
 }
 ```
 
-## Linking to Trait Items
+Bidirectional links are useful when users may enter the documentation from either the builder or the final type.
+
+## Link Trait Semantics with a Complete Implementation
 
 ```rust
-/// Implements [`Iterator`] for lazy evaluation.
-///
-/// The [`Iterator::next`] method advances the cursor.
-/// 
-/// For parallel iteration, see [`rayon::ParallelIterator`].
-pub struct MyIterator { ... }
+/// Iterator over integers from zero up to an exclusive limit.
+pub struct RangeIter {
+    current: u32,
+    end: u32,
+}
 
-impl Iterator for MyIterator {
-    /// Advances and returns the next value.
-    ///
-    /// See also [`Iterator::nth`] for skipping elements.
-    fn next(&mut self) -> Option<Self::Item> { ... }
+impl RangeIter {
+    pub fn new(end: u32) -> Self {
+        Self { current: 0, end }
+    }
+}
+
+impl Iterator for RangeIter {
+    type Item = u32;
+
+    /// Produces the next [`Iterator::Item`].
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current >= self.end {
+            return None;
+        }
+        let value = self.current;
+        self.current += 1;
+        Some(value)
+    }
+}
+
+fn main() {
+    assert_eq!(RangeIter::new(2).collect::<Vec<_>>(), vec![0, 1]);
 }
 ```
 
-## Broken Link Detection
+The old example omitted the required `Iterator::Item` associated type, so it failed to compile before rustdoc link behavior was relevant.
 
-```bash
-# Catch broken intra-doc links
-RUSTDOCFLAGS="-D warnings" cargo doc
+## Link Only Publicly Useful Relationships
 
-# Or in CI
-cargo doc --no-deps 2>&1 | grep "warning: unresolved link"
-```
+Do not expose implementation structure merely to create more links. If an internal tokenizer, cache, or helper type is not part of the supported public model, documentation for a high-level parser usually should not direct users into it.
 
-```toml
-# Cargo.toml - deny broken links
-[lints.rustdoc]
-broken_intra_doc_links = "deny"
-```
+Prefer links to concepts callers can act on:
 
-## Module-Level Documentation
+- constructors and builders;
+- returned value and error types;
+- related traits users may implement or call;
+- alternate operations with meaningful semantic differences;
+- feature-gated modules/types when the feature changes available API.
+
+## Module-Level Navigation
+
+Module documentation is a good place for a compact index of the main public concepts:
 
 ```rust
-//! # Parser Module
-//!
-//! This module provides parsing utilities.
-//!
-//! ## Main Types
-//!
-//! - [`Parser`] - The main parser struct
-//! - [`Token`] - Tokens produced by tokenization
-//! - [`Ast`] - The abstract syntax tree
-//!
-//! ## Functions
-//!
-//! - [`parse`] - Parse a string
-//! - [`parse_file`] - Parse a file
-//!
-//! ## Errors
-//!
-//! All functions return [`ParseError`] on failure.
+pub mod parser {
+    //! Parsing primitives.
+    //!
+    //! - [`Parser`] performs parsing.
+    //! - [`Token`] represents one parsed token.
 
-pub struct Parser { ... }
-pub enum Token { ... }
-pub struct Ast { ... }
+    pub struct Parser;
+    pub struct Token(pub String);
+}
+
+fn main() {
+    let _ = parser::Parser;
+    let _ = parser::Token(String::from("name"));
+}
 ```
+
+Avoid maintaining a giant hand-written table of every public item if rustdoc's generated item lists already provide adequate navigation.
+
+## Refactors Still Require Documentation Maintenance
+
+A path such as ``[`crate::parser::Parser`]`` is checked against the current source tree when rustdoc runs. If the type moves to another module, the source link can become broken. Enable rustdoc link checking so refactors fail loudly rather than relying on the false idea that Markdown links rewrite themselves.
+
+```rust
+#![deny(rustdoc::broken_intra_doc_links)]
+
+/// Creates a [`std::collections::HashMap`].
+pub fn empty_map() -> std::collections::HashMap<String, String> {
+    std::collections::HashMap::new()
+}
+
+fn main() {
+    assert!(empty_map().is_empty());
+}
+```
+
+## Practical Guidance
+
+- Link the next concept a reader is likely to need.
+- Link error/result/builder/trait relationships that clarify the public model.
+- Do not link implementation-only details just because a Rust item exists.
+- Keep examples complete so unrelated type errors do not hide documentation problems.
+- Run rustdoc with broken-link warnings enforced after refactors.
 
 ## See Also
 
+- [doc-intra-links](./doc-intra-links.md) - Link syntax and resolution
 - [doc-examples-section](./doc-examples-section.md) - Code examples in docs
 - [err-doc-errors](./err-doc-errors.md) - Documenting errors
 - [lint-deny-correctness](./lint-deny-correctness.md) - Lint settings

@@ -1,201 +1,165 @@
 # doc-hidden-setup
 
-> Use `# ` prefix to hide example setup code
+> Hide incidental doctest setup with `# ` while leaving the behavior users need to understand visible
 
 ## Why It Matters
 
-Doc examples often require setup code (imports, struct initialization, mock data) that distracts from the main point. The `# ` prefix hides lines from rendered documentation while keeping them in the compiled test, showing users only the relevant code.
+Rustdoc treats a line beginning with `# ` inside a Rust doctest as hidden source: the line participates in compilation and execution but is omitted from the rendered code example. This is useful for imports, tiny helper definitions, fallible wrappers, and other setup that would distract from the API call being demonstrated.
 
-This keeps examples focused and readable while ensuring they still compile and run.
+Hidden setup is not a license to make examples mysterious. If constructing a value, selecting a feature, or configuring an option is important to successful use, show that code.
 
-## Bad
+## Good: Hide Only Incidental Setup
 
 ```rust
-/// Processes a batch of items.
+/// Returns a normalized copy of a label.
 ///
 /// # Examples
 ///
 /// ```
-/// use my_crate::{Processor, Config, Item};
-/// use std::sync::Arc;
-/// 
-/// let config = Config {
-///     batch_size: 100,
-///     timeout_ms: 5000,
-///     retry_count: 3,
-/// };
-/// let processor = Processor::new(Arc::new(config));
-/// let items = vec![
-///     Item::new("a"),
-///     Item::new("b"),
-///     Item::new("c"),
-/// ];
-/// 
-/// // This is the actual example - buried after 15 lines of setup
-/// let results = processor.process_batch(&items)?;
-/// assert!(results.all_succeeded());
-/// # Ok::<(), my_crate::Error>(())
+/// # let raw = String::from("  Example  ");
+/// let label = raw.trim().to_ascii_lowercase();
+/// assert_eq!(label, "example");
 /// ```
-pub fn process_batch(&self, items: &[Item]) -> Result<Results, Error> {
-    // ...
+pub fn normalize_label(value: &str) -> String {
+    value.trim().to_ascii_lowercase()
+}
+
+fn main() {
+    assert_eq!(normalize_label("  Example  "), "example");
 }
 ```
 
-## Good
+The fixture is hidden; the transformation and assertion remain visible.
 
-<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
+## Hidden Fallible Wrapper
+
 ```rust
-/// Processes a batch of items.
+/// Parses a positive integer.
 ///
 /// # Examples
 ///
 /// ```
-/// # use my_crate::{Processor, Config, Item, Error};
-/// # use std::sync::Arc;
-/// # let config = Config { batch_size: 100, timeout_ms: 5000, retry_count: 3 };
-/// # let processor = Processor::new(Arc::new(config));
-/// # let items = vec![Item::new("a"), Item::new("b"), Item::new("c")];
-/// let results = processor.process_batch(&items)?;
-/// assert!(results.all_succeeded());
-/// # Ok::<(), Error>(())
-/// ```
-pub fn process_batch(&self, items: &[Item]) -> Result<Results, Error> {
-    // ...
-}
-```
-
-Users see only:
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-let results = processor.process_batch(&items)?;
-assert!(results.all_succeeded());
-```
-
-## What to Hide
-
-| Hide | Show |
-|------|------|
-| `use` statements | Core API usage |
-| Type definitions | Method calls |
-| Mock/test data setup | Key parameters |
-| Error handling boilerplate | Return value handling |
-| `Ok(())` return | Assertions (sometimes) |
-
-### Tip: Wildcard Imports
-
-Use `# use my_crate::*;` to minimize hidden lines for common imports:
-
-```rust
-/// # Examples
-///
-/// ```
-/// # use my_crate::*;
-/// let config = Config::builder().timeout(30).build()?;
-/// process(&config)?;
-/// # Ok::<(), Error>(())
-/// ```
-```
-
-## Pattern: Hiding Multi-Line Setup
-
-```rust
-/// # Examples
-///
-/// ```
-/// # use my_crate::{Client, Request};
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// # let client = Client::builder()
-/// #     .timeout(30)
-/// #     .retry(3)
-/// #     .build()?;
-/// let response = client.send(Request::get("/users"))?;
-/// println!("Status: {}", response.status());
+/// # fn main() -> Result<(), std::num::ParseIntError> {
+/// let value: u32 = "42".parse()?;
+/// assert_eq!(value, 42);
 /// # Ok(())
 /// # }
 /// ```
+pub fn parse_count(value: &str) -> Result<u32, std::num::ParseIntError> {
+    value.parse()
+}
+
+fn main() {
+    assert_eq!(parse_count("42"), Ok(42));
+}
 ```
 
-## Pattern: Showing Setup When Relevant
+This keeps error-propagation boilerplate out of the rendered example without changing what rustdoc compiles.
 
-Sometimes setup IS the point—don't hide it:
+## Do Not Hide the API Contract
+
+Suppose configuration is the point of the example. Then show it:
 
 ```rust
-/// Creates a new client with custom configuration.
+#[derive(Debug, PartialEq, Eq)]
+struct Client {
+    timeout_secs: u64,
+}
+
+impl Client {
+    fn with_timeout(timeout_secs: u64) -> Self {
+        Self { timeout_secs }
+    }
+}
+
+fn main() {
+    let client = Client::with_timeout(30);
+    assert_eq!(client.timeout_secs, 30);
+}
+```
+
+Hiding the constructor here would make the example shorter but less useful.
+
+## Multi-Line Hidden Setup
+
+Each physical source line that should disappear from rendered output needs its own hidden marker:
+
+```rust
+/// Returns the sum of a prepared fixture.
 ///
 /// # Examples
 ///
 /// ```
-/// use my_crate::Client;
-///
-/// // Configuration IS the example - show it
-/// let client = Client::builder()
-///     .base_url("https://api.example.com")
-///     .timeout_secs(30)
-///     .max_retries(3)
-///     .build()?;
-/// # Ok::<(), my_crate::Error>(())
+/// # let values = vec![
+/// #     10,
+/// #     20,
+/// #     12,
+/// # ];
+/// let total: i32 = values.iter().sum();
+/// assert_eq!(total, 42);
 /// ```
+pub fn fixture_example() {}
+
+fn main() {}
 ```
 
-## Pattern: `ignore` and `no_run`
+Do not assume one leading `#` hides an entire syntactic construct.
 
-For examples that shouldn't run in tests:
+## `no_run`, `compile_fail`, and `ignore` Solve Different Problems
+
+Hidden lines affect presentation. Fence attributes affect how rustdoc tests the block:
+
+- `no_run` compiles the doctest but does not execute it;
+- `compile_fail` requires compilation to fail;
+- `ignore` skips the doctest;
+- ordinary Rust fences compile and run.
+
+Use `no_run` for real code with undesirable runtime side effects, not `ignore`. Use `compile_fail` for an intentional compiler-rejected example. Prefer prose over marking incomplete pseudocode `ignore` just to avoid maintaining it.
 
 ```rust
-/// # Examples
+/// Binds a local listener but does not run during doctests.
 ///
 /// ```no_run
-/// # use my_crate::Server;
-/// // This would actually start a server - don't run in tests
-/// let server = Server::bind("0.0.0.0:8080").await?;
-/// server.run().await?;
-/// # Ok::<(), my_crate::Error>(())
+/// let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+/// println!("{}", listener.local_addr()?);
+/// # Ok::<(), std::io::Error>(())
 /// ```
+pub fn listener_example() {}
 
-/// ```ignore
-/// // Pseudocode or incomplete example
-/// let magic = do_something_undefined();
-/// ```
+fn main() {}
 ```
 
-## Edition 2024: Combined Doctests
+## Edition 2024 Doctest Merging
 
-Rust Edition 2024 compiles all doc tests in a single binary by default.
+Edition 2024 allows rustdoc to merge compatible doctests into fewer generated crates. This is a compilation optimization; each doctest still runs as its own test. Rustdoc automatically recognizes many cases that require a separate crate, including crate-level attributes and several macro-sensitive examples.
 
-### Impact on hidden setup
+Do not add `standalone_crate` merely because hidden setup uses `$crate` or a helper macro; rustdoc can detect many such cases itself. Use `standalone_crate` when an example truly depends on separate generated-crate details that rustdoc cannot infer, such as assertions about source locations.
 
-- `Location::caller()` and `type_name` values may differ across combined
-  doc tests because they share compilation context.
-- If your hidden setup relies on unique crate identity or `$crate`,
-  mark the doc test with `standalone_crate`:
+## Shared Setup in External Markdown
 
-```rust
-/// ```standalone_crate
-/// # use my_crate::*;
-/// // This must compile as its own crate
-/// ```
-```
+For substantial documentation reused across items, `#[doc = include_str!(...)]` can include a Markdown file. That example depends on a real repository file, so this corpus marks it explicitly instead of recording a missing-file compiler error:
 
-### Shared Setup with include_str
-
-For complex setup logic shared across multiple doc tests, extract it to a
-file and include it:
-
+<!-- rust-check: ignore; reason=requires repository Markdown file at the documented path -->
 ```rust
 /// # Examples
-///
 #[doc = include_str!("../doc_tests/setup_and_example.md")]
+pub fn shared_example() {}
 ```
 
-Note: in Edition 2024, nested `include_str!` paths resolve relative to the
-included Markdown file, not the Rust source. See
-[doc-include-str](./doc-include-str.md) for details.
+For ordinary `include_str!`, the path is relative to the Rust source containing the macro invocation. In Edition 2024, if an included Markdown file contains a **doctest** that itself invokes `include!`, `include_str!`, or `include_bytes!`, that nested path is resolved relative to the Markdown file.
+
+## Practical Guidance
+
+- Hide imports, fixtures, and wrappers only when they are incidental.
+- Keep configuration and construction visible when they teach the API contract.
+- Remember that every hidden line still has to compile.
+- Keep testing semantics (`no_run`, `compile_fail`, `ignore`) separate from presentation semantics (`# `).
+- Classify external-file examples explicitly when the verifier's standalone harness cannot provide those files.
 
 ## See Also
 
-- [doc-examples-section](./doc-examples-section.md) - Writing examples
+- [doc-examples-section](./doc-examples-section.md) - Writing useful examples
 - [doc-question-mark](./doc-question-mark.md) - Using `?` in examples
 - [test-doctest-examples](./test-doctest-examples.md) - Doctests as tests
-- [doc-test-edition-2024](./doc-test-edition-2024.md) - Edition 2024 doctest migration
-- [doc-include-str](./doc-include-str.md) - Shared examples via include_str
+- [doc-test-edition-2024](./doc-test-edition-2024.md) - Edition 2024 doctest behavior
+- [doc-include-str](./doc-include-str.md) - External Markdown documentation

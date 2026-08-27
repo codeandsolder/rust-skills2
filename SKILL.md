@@ -363,20 +363,20 @@ Reference these guidelines when:
 ### 21. Documentation (MEDIUM)
 
 - [`doc-all-public`](rules/doc-all-public.md) - Document all public items with `///` doc comments
-- [`doc-module-inner`](rules/doc-module-inner.md) - Use `//!` for module-level documentation
-- [`doc-examples-section`](rules/doc-examples-section.md) - Include `# Examples` with runnable code
+- [`doc-module-inner`](rules/doc-module-inner.md) - Use inner doc comments (`//!`) to document a crate or module as a whole
+- [`doc-examples-section`](rules/doc-examples-section.md) - Add focused `# Examples` sections when an example materially clarifies how to use the API
 - [`doc-errors-section`](rules/doc-errors-section.md) - Include `# Errors` section for fallible functions
 - [`doc-panics-section`](rules/doc-panics-section.md) - Include `# Panics` section for functions that can panic
 - [`doc-safety-section`](rules/doc-safety-section.md) - Document caller obligations with `# Safety`; justify local unsafe operations with `// SAFETY:` proofs
 - [`doc-question-mark`](rules/doc-question-mark.md) - Give doctests a `Result`-returning context when demonstrating `?`
-- [`doc-hidden-setup`](rules/doc-hidden-setup.md) - Use `# ` prefix to hide example setup code
-- [`doc-intra-links`](rules/doc-intra-links.md) - Use intra-doc links to reference types and items
-- [`doc-link-types`](rules/doc-link-types.md) - Use intra-doc links to connect related types and functions
+- [`doc-hidden-setup`](rules/doc-hidden-setup.md) - Hide incidental doctest setup with `# ` while leaving the behavior users need to understand visible
+- [`doc-intra-links`](rules/doc-intra-links.md) - Use intra-doc links for important relationships that rustdoc should resolve and validate
+- [`doc-link-types`](rules/doc-link-types.md) - Cross-link related public types and operations when the links help readers navigate the API
 - [`doc-cargo-metadata`](rules/doc-cargo-metadata.md) - Fill `Cargo.toml` metadata for published crates
 - [`doc-crate-readme`](rules/doc-crate-readme.md) - Unify the README and crate root docs with `#![doc = include_str!("../README.md")]`
 - [`doc-cfg-patterns`](rules/doc-cfg-patterns.md) - Use real `#[cfg(...)]` attributes for availability; on docs.rs, optionally add `doc(cfg)` badges behind `cfg(docsrs)` because `doc_cfg` is still unstable on stable Rust
-- [`doc-hidden-public`](rules/doc-hidden-public.md) - Use `#[doc(hidden)]` to omit internal impl details from public docs
-- [`doc-include-str`](rules/doc-include-str.md) - Use `#[doc = include_str!("...")]` for embedding external content in documentation
+- [`doc-hidden-public`](rules/doc-hidden-public.md) - Use `#[doc(hidden)]` only when a public item must remain callable but should be omitted from normal generated documentation
+- [`doc-include-str`](rules/doc-include-str.md) - Use `#[doc = include_str!("...")]` when an external text file is intentionally part of an item's generated documentation
 - [`doc-test-edition-2024`](rules/doc-test-edition-2024.md) - Edition 2024 changes for doc tests: combined binary, `standalone_crate`, nested includes, and `$crate`
 
 ### 22. Observability (MEDIUM)

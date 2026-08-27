@@ -1,137 +1,129 @@
 # doc-include-str
 
-> Use `#[doc = include_str!("...")]` for embedding external content in documentation
+> Use `#[doc = include_str!("...")]` when an external text file is intentionally part of an item's generated documentation
 
 ## Why It Matters
 
-`#[doc = include_str!("...")]` embeds the content of an external file
-into doc comments at compile time. This enables:
+`include_str!` reads a UTF-8 file at compile time and expands to a string literal. Supplying that string to the `doc` attribute lets a crate keep substantial Markdown in a separate file while still rendering it as rustdoc documentation.
 
-- Using the project README as the crate-level documentation
-- Sharing the same examples or prose across multiple items
-- Keeping large documentation files separate from source code
-- Conditional documentation with `cfg_attr(doc, ...)`
+This can be useful for crate-level README content, long guides, or intentionally shared examples. It also creates a real build dependency on that file: the path must exist, the content must be valid UTF-8, and edits to the file can cause recompilation when the macro is evaluated.
 
-## Bad
+Do not use external files merely to avoid writing ordinary short doc comments next to the code.
 
+## Crate Documentation from a README
+
+A crate can make a README part of its crate-level rustdoc:
+
+<!-- rust-check: ignore; reason=requires repository README file at the documented path -->
 ```rust
-// Duplicated across lib.rs and README — can diverge
-//! # My Crate
-//!
-//! `my_crate` is a fast HTTP client for Rust.
-//! It provides async and sync clients.
-```
-
-## Good
-
-```rust
-//! # My Crate
-//!
 #![doc = include_str!("../README.md")]
+
+pub fn version() -> &'static str {
+    "1.0"
+}
 ```
 
-The README stays as the single source of truth for both the crate docs
-and the GitHub project page.
+For an ordinary `include_str!` invocation, the relative path is resolved relative to the Rust source file containing the macro invocation.
 
-## Patterns
+The `readme = "README.md"` Cargo package field is separate metadata; it tells Cargo/crates.io which README belongs to the package. It does not itself make that README rustdoc content.
 
-### Crate Root from README
+## Long Item Documentation
 
+External Markdown can also document one item:
+
+<!-- rust-check: ignore; reason=requires repository Markdown file at the documented path -->
 ```rust
-// lib.rs
-#![doc = include_str!("../README.md")]
+#[doc = include_str!("../docs/migrations.md")]
+pub fn run_migrations() -> Result<(), std::io::Error> {
+    Ok(())
+}
 ```
 
-This makes the README the crate-level documentation. Combine with the
-`readme` field in `Cargo.toml`:
+Use this when maintaining the documentation as a separate Markdown document is actually clearer than keeping it next to the item.
 
-```toml
-[package]
-readme = "README.md"
-```
+## Shared Documentation Across Items
 
-### Shared Examples Across Items
+The same source document can be included at multiple documentation sites:
 
+<!-- rust-check: ignore; reason=requires repository Markdown file at the documented path -->
 ```rust
-/// Creates a new client.
-///
-/// # Examples
-///
 #[doc = include_str!("../examples/client_basic.md")]
-pub fn new() -> Self { ... }
+pub fn create_client() {}
 
-/// Sends a request with the client.
-///
-/// # Examples
-///
 #[doc = include_str!("../examples/client_basic.md")]
-pub fn send(&self, req: Request) -> Result<Response, Error> { ... }
+pub fn send_request() {}
 ```
 
-### Conditional Documentation
+Sharing content avoids duplicated prose, but it can also make the document less specific to each item. Prefer a shared file only when the same text genuinely makes sense in every location.
 
-Use `cfg_attr` with `doc` to include additional content only in docs:
+## Gate Documentation-Only Includes Deliberately
+
+Clippy's `doc_include_without_cfg` restriction lint can flag documentation `include_str!` usage that is evaluated during ordinary non-doc builds. A common pattern is:
+
+<!-- rust-check: ignore; reason=requires repository Markdown file at the documented path -->
+```rust
+#[cfg_attr(doc, doc = include_str!("../docs/advanced.md"))]
+pub mod advanced {}
+```
+
+This avoids reading the external documentation file unless the `doc` cfg is active. It is a trade-off, not a universal requirement: documentation metadata can participate in cross-crate rustdoc/inlining behavior, so decide whether the docs must be present outside direct documentation builds before adopting the restriction lint mechanically.
+
+## Edition 2024: Nested Includes Inside Included Markdown Doctests
+
+Edition 2024 changed a specific doctest path-resolution case. Suppose `src/lib.rs` includes `docs/guide.md` as documentation, and that Markdown contains a Rust doctest whose body is:
+
+```text
+let text = include_str!("fixture.txt");
+assert!(!text.is_empty());
+```
+
+In Edition 2024, the doctest's `include_str!("fixture.txt")` is resolved relative to `docs/guide.md`. In earlier editions, such nested doctest includes were resolved relative to the Rust source file that carried the outer doc attribute.
+
+The rule concerns `include!`, `include_str!`, and `include_bytes!` **inside doctests originating from an included Markdown file**. It does not mean that arbitrary Rust attributes written as Markdown text are evaluated as attributes.
+
+## Conditional Documentation Is Separate from Conditional Items
+
+`cfg_attr(doc, doc = ...)` controls whether a documentation attribute is attached. `#[cfg(...)]` controls whether the Rust item exists under that configuration. Keep those decisions separate:
 
 ```rust
-// Only include the extended feature docs when generating docs
-#[cfg_attr(doc, doc = include_str!("../docs/feature-guide.md"))]
-pub mod advanced_features;
+#[cfg(feature = "network")]
+/// Networking support when the `network` feature is enabled.
+pub mod network {
+    pub fn enabled() -> bool {
+        true
+    }
+}
+
+fn main() {}
 ```
 
-### Long Documentation Files
+Whether an external guide should be included only in documentation builds and whether the item itself should exist only under a feature are different API questions.
 
-For large modules, keep docs in separate files:
+## Verifying External Documentation
 
-```rust
-//! Database migration utilities.
-//!
-#![doc = include_str!("../docs/migrations.md")]
+Because the file is part of compilation when the macro is evaluated, broken paths are compile errors. Rustdoc can also run Rust code fences inside included Markdown as doctests when they are part of generated documentation.
 
-pub fn run_migrations() -> Result<(), Error> { ... }
+For a real crate, verify both documentation construction and doctests:
+
+```bash
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+cargo test --doc
 ```
 
-## Edition 2024: Nested include Paths
+This rule corpus cannot provide arbitrary repository-relative fixture files to each generated standalone example, so external-file snippets are explicitly marked `ignore` rather than kept as exact baseline failures.
 
-In Edition 2024, when a file included via `include_str!` in a doc comment
-itself contains `#[doc = include_str!("...")]`, the path resolves relative
-to the **outermost included file**, not the Rust source file.
+## Practical Guidance
 
-```rust
-// lib.rs
-#![doc = include_str!("../README.md")]
-
-// README.md
-// ## Quick Start
-//
-// ```rust
-// # use my_crate::*;
-// let result = my_crate::do_something();
-// ```
-//
-// <!-- This path is relative to README.md, not lib.rs -->
-// #[doc = include_str!("./examples/quick_start.rs")]
-```
-
-**Migration from Edition 2021**: If you used nested `include_str!` in
-doc comments, verify that paths resolve correctly under Edition 2024.
-
-## Lints
-
-Enable `clippy::doc_include_without_cfg` to warn when `include_str!` in
-docs is used without `cfg_attr(doc, ...)`:
-
-```toml
-# clippy.toml
-# (future lint, track upstream stabilization)
-```
-
-For now, manually ensure that large `include_str!` docs are not evaluated
-in non-doc contexts.
+- Use external docs when they improve maintainability, not merely to move text away from source.
+- Remember that ordinary relative `include_str!` paths start from the containing Rust source file.
+- Apply the Edition 2024 Markdown-relative rule only to nested includes inside doctests from included Markdown.
+- Consider `cfg_attr(doc, ...)` when documentation files should not be evaluated during normal builds, but account for your rustdoc/re-export needs.
+- Keep repository-dependent snippets explicitly classified in compile-checking harnesses that do not copy those files.
 
 ## See Also
 
-- [doc-module-inner](./doc-module-inner.md) - Crate-level documentation
-- [doc-examples-section](./doc-examples-section.md) - Examples in docs
-- [doc-cfg-patterns](./doc-cfg-patterns.md) - Conditional doc annotations
-- [doc-test-edition-2024](./doc-test-edition-2024.md) - Nested include path changes
-- [doc-cargo-metadata](./doc-cargo-metadata.md) - README field in Cargo.toml
+- [doc-module-inner](./doc-module-inner.md) - Crate and module documentation
+- [doc-examples-section](./doc-examples-section.md) - Runnable examples
+- [doc-cfg-patterns](./doc-cfg-patterns.md) - Conditional documentation patterns
+- [doc-test-edition-2024](./doc-test-edition-2024.md) - Edition 2024 doctest changes
+- [doc-cargo-metadata](./doc-cargo-metadata.md) - Cargo README metadata

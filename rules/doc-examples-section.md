@@ -1,218 +1,176 @@
 # doc-examples-section
 
-> Include `# Examples` with runnable code
+> Add focused `# Examples` sections when an example materially clarifies how to use the API
 
 ## Why It Matters
 
-Examples are the most valuable part of documentation. They show users exactly how to use your API. Rust's doc tests ensure examples stay correct as code evolves.
+Rustdoc examples can serve two jobs at once: they teach callers how an API is meant to be used, and runnable doctests keep that usage synchronized with the code. A useful example should emphasize the contract or workflow a reader actually needs rather than reproducing a large amount of setup.
 
-## Bad
+Not every public item needs its own example. Small accessors and self-evident trait implementations can often rely on surrounding type/module documentation. Put examples where they explain construction, error handling, state transitions, feature-dependent behavior, or other non-obvious usage.
+
+## Good: A Small Runnable Example
 
 ```rust
-/// Parses a string into a Foo.
-pub fn parse(s: &str) -> Result<Foo, Error> {
-    // No examples - users have to guess usage
-}
-
-/// A widget for doing things.
-/// 
-/// This widget is very useful.
-pub struct Widget {
-    // Still no examples
-}
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-/// Parses a string into a Foo.
+/// Returns the number of Unicode scalar values in `text`.
 ///
 /// # Examples
 ///
 /// ```
-/// use my_crate::parse;
-///
-/// let foo = parse("hello").unwrap();
-/// assert_eq!(foo.name(), "hello");
+/// assert_eq!(char_count("café"), 4);
 /// ```
-///
-/// Handles empty strings:
-///
-/// ```
-/// use my_crate::parse;
-///
-/// let foo = parse("").unwrap();
-/// assert!(foo.is_empty());
-/// ```
-pub fn parse(s: &str) -> Result<Foo, Error> {
-    // ...
+pub fn char_count(text: &str) -> usize {
+    text.chars().count()
+}
+
+fn main() {
+    assert_eq!(char_count("café"), 4);
 }
 ```
 
-## Use ? Not unwrap()
+The documentation demonstrates observable behavior and the surrounding rule example is also valid standalone Rust.
+
+## Use `?` When Fallible Composition Is the Point
+
+Hidden doctest lines can provide a fallible wrapper without distracting from the API call:
 
 ```rust
-/// Loads configuration from a file.
+/// Parses a decimal integer.
 ///
 /// # Examples
 ///
 /// ```
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use my_crate::Config;
-///
-/// let config = Config::load("config.toml")?;
-/// println!("Port: {}", config.port);
+/// # fn main() -> Result<(), std::num::ParseIntError> {
+/// let value: u32 = "42".parse()?;
+/// assert_eq!(value, 42);
 /// # Ok(())
 /// # }
 /// ```
-pub fn load(path: &str) -> Result<Config, Error> {
-    // ...
+pub fn parse_decimal(text: &str) -> Result<u32, std::num::ParseIntError> {
+    text.parse()
+}
+
+fn main() {
+    assert_eq!(parse_decimal("42"), Ok(42));
 }
 ```
 
-## Hide Setup Code
+Use `unwrap()` when panicking is genuinely part of a tiny assertion/example and makes the example clearer; do not mechanically replace every `unwrap()` with a hidden `Result` wrapper.
+
+## Hide Incidental Setup, Not the Concept Being Taught
 
 ```rust
-/// Processes items from a database.
+/// Returns the first configured endpoint.
 ///
 /// # Examples
 ///
 /// ```
-/// # use my_crate::{Database, Item};
-/// # fn get_db() -> Database { Database::mock() }
-/// let db = get_db();
-/// let items = db.process_items()?;
-/// assert!(!items.is_empty());
-/// # Ok::<(), my_crate::Error>(())
+/// # let endpoints = vec![String::from("https://example.test")];
+/// let first = endpoints.first().map(String::as_str);
+/// assert_eq!(first, Some("https://example.test"));
 /// ```
-pub fn process_items(&self) -> Result<Vec<Item>, Error> {
-    // ...
+pub fn first_endpoint(endpoints: &[String]) -> Option<&str> {
+    endpoints.first().map(String::as_str)
+}
+
+fn main() {
+    let endpoints = vec![String::from("https://example.test")];
+    assert_eq!(first_endpoint(&endpoints), Some("https://example.test"));
 }
 ```
 
-## Multiple Examples
+If configuration or construction is the thing users need to learn, show it instead of hiding it.
+
+## Choose Doctest Attributes Deliberately
+
+Rustdoc code-block attributes have different semantics:
+
+- ordinary Rust fences are compiled and run as doctests;
+- `no_run` compiles the example but does not execute it;
+- `compile_fail` requires the example to fail compilation;
+- `ignore` skips the doctest and should be reserved for cases that genuinely cannot be tested in the normal environment;
+- edition tags such as `edition2024` select the edition for that block;
+- `standalone_crate` requests a separate doctest crate instead of Edition 2024 doctest merging.
+
+Do not mark broken or pseudocode examples `ignore` merely to silence CI. Prefer a real runnable example, `compile_fail` for an intentional compiler error, or prose for schematic pseudocode.
+
+## `no_run` Still Checks the Example
 
 ```rust
-/// Creates a new buffer with the specified capacity.
+/// Starts a long-running service.
 ///
 /// # Examples
 ///
-/// Basic usage:
-///
+/// ```no_run
+/// let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+/// println!("listening on {}", listener.local_addr()?);
+/// # Ok::<(), std::io::Error>(())
 /// ```
-/// use my_crate::Buffer;
-///
-/// let buf = Buffer::with_capacity(1024);
-/// assert_eq!(buf.capacity(), 1024);
-/// ```
-///
-/// Zero capacity creates an empty buffer:
-///
-/// ```
-/// use my_crate::Buffer;
-///
-/// let buf = Buffer::with_capacity(0);
-/// assert!(buf.is_empty());
-/// ```
-pub fn with_capacity(cap: usize) -> Self {
-    // ...
-}
+pub fn service_documented() {}
+
+fn main() {}
 ```
 
-## Show Error Cases
+Use `no_run` for examples that should type-check but should not perform their real side effects during doctests.
+
+## Edition 2024 Doctest Merging
+
+Edition 2024 lets rustdoc merge compatible doctests into fewer generated crates to reduce compile time. Individual doctests still behave as separate tests. Rustdoc automatically keeps many incompatible cases separate, including examples with crate-level attributes, `compile_fail`, edition overrides, and several macro-sensitive cases.
+
+Use `standalone_crate` only when the example truly depends on separate-crate compilation and rustdoc cannot infer that requirement itself—for example, code whose expected `Location::caller()` line numbers depend on its generated crate layout.
 
 ```rust
-/// Divides two numbers.
+/// Demonstrates the `standalone_crate` fence attribute.
 ///
-/// # Examples
-///
-/// ```
-/// use my_crate::divide;
-///
-/// assert_eq!(divide(10, 2), Ok(5));
-/// ```
-///
-/// Division by zero returns an error:
-///
-/// ```
-/// use my_crate::{divide, MathError};
-///
-/// assert_eq!(divide(10, 0), Err(MathError::DivisionByZero));
-/// ```
-pub fn divide(a: i32, b: i32) -> Result<i32, MathError> {
-    // ...
-}
-```
-
-## Edition 2024: standalone_crate Tag
-
-Rust Edition 2024 compiles all doc tests in a single binary for performance.
-If a doc test needs its own crate (e.g., for `no_std` or `extern crate`),
-use the `standalone_crate` language tag:
-
-```rust
 /// ```standalone_crate
-/// #![no_std]
-/// #![no_main]
-/// // This must compile as its own crate
+/// let caller = std::panic::Location::caller();
+/// assert!(caller.line() > 0);
 /// ```
+pub fn location_example() {}
+
+fn main() {}
 ```
 
-## Edition 2024: Nested Include Paths
+## Shared Documentation with `include_str!`
 
-In Edition 2024, `#[doc = include_str!("...")]` paths within doc comments
-resolve **relative to the Markdown file** (if the doc comment was itself
-produced by an `include_str!`), not the Rust source file. See
-[doc-include-str](./doc-include-str.md) for details.
+External Markdown can be included into an item's documentation when sharing a substantial example is worthwhile:
 
-## Shared Examples with include_str
-
-Use `#[doc = include_str!("...")]` to share the same example across
-multiple items:
-
+<!-- rust-check: ignore; reason=requires repository Markdown file at the documented path -->
 ```rust
 /// # Examples
-///
 #[doc = include_str!("../examples/basic_usage.md")]
-pub fn function_a() { }
-
-/// # Examples
-///
-#[doc = include_str!("../examples/basic_usage.md")]
-pub fn function_b() { }
+pub fn function_a() {}
 ```
 
-## Lints
+The corpus checker cannot make that repository-specific path exist in its generated standalone example crate, so this is explicitly classified rather than baselined as a compiler failure.
 
-```rust
-#![warn(clippy::needless_doctest_main)]
-```
+For ordinary `include_str!`, the path is resolved relative to the Rust source file containing the macro invocation. Edition 2024 adds a more specific doctest rule: if an included Markdown document contains a doctest that itself calls `include!`, `include_str!`, or `include_bytes!`, those nested paths are resolved relative to the Markdown file. It does not mean arbitrary `#[doc = include_str!(...)]` text inside Markdown becomes a Rust attribute.
 
-The `needless_doctest_main` clippy lint catches doc tests that wrap
-code in an explicit `fn main() {}` when it's unnecessary.
+## Useful Lints and Commands
 
-On nightly, enable `missing_doc_code_examples` to require examples on
-all public items:
-
-```rust
-#![warn(missing_doc_code_examples)]
-```
-
-## Running Doc Tests
+`clippy::needless_doctest_main` can flag explicit `fn main()` wrappers that rustdoc does not need. Run doctests with:
 
 ```bash
-# Run all doc tests
 cargo test --doc
-
-# Run doc tests for specific item
-cargo test --doc my_function
 ```
+
+Build documentation with warnings promoted when you want broken links and other rustdoc warnings to gate CI:
+
+```bash
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+```
+
+## Practical Guidance
+
+- Add examples where they explain behavior a reader could plausibly get wrong.
+- Keep the visible code focused; hide only incidental setup.
+- Prefer doctests that actually compile and run.
+- Use `no_run`, `compile_fail`, `ignore`, and `standalone_crate` for their documented semantics rather than as generic escape hatches.
+- Keep repository-dependent external-file examples explicitly classified in this corpus.
 
 ## See Also
 
-- [doc-question-mark](doc-question-mark.md) - Use ? in examples
-- [doc-hidden-setup](doc-hidden-setup.md) - Hide setup code with #
-- [doc-errors-section](doc-errors-section.md) - Document error conditions
-- [doc-include-str](doc-include-str.md) - Shared examples via include_str
-- [doc-test-edition-2024](doc-test-edition-2024.md) - Edition 2024 doctest migration
+- [doc-question-mark](./doc-question-mark.md) - Using `?` in examples
+- [doc-hidden-setup](./doc-hidden-setup.md) - Hidden doctest setup
+- [doc-errors-section](./doc-errors-section.md) - Documenting error conditions
+- [doc-include-str](./doc-include-str.md) - External documentation with `include_str!`
+- [doc-test-edition-2024](./doc-test-edition-2024.md) - Edition 2024 doctest behavior
