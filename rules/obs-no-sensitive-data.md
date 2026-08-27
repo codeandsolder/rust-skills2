@@ -47,6 +47,7 @@ impl std::fmt::Display for Secret {
     }
 }
 
+#[derive(Debug)]
 struct Credentials {
     username: String,
     password: Secret,   // redacts in Debug/Display
