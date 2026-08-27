@@ -154,13 +154,13 @@ Reference these guidelines when:
 - [`api-newtype-safety`](rules/api-newtype-safety.md) - Use newtypes when identical representation hides meaning the compiler should distinguish
 - [`api-typestate`](rules/api-typestate.md) - Use typestate pattern to encode state machine invariants in the type system
 - [`api-sealed-trait`](rules/api-sealed-trait.md) - Use sealed traits to prevent external implementations while allowing use
-- [`api-extension-trait`](rules/api-extension-trait.md) - Use extension traits to add methods to external types
+- [`api-extension-trait`](rules/api-extension-trait.md) - Use a local extension trait when method-call syntax on an external type materially improves an API
 - [`api-parse-dont-validate`](rules/api-parse-dont-validate.md) - Parse weakly typed input into invariant-bearing domain types at system boundaries instead of repeatedly validating primitives downstream
-- [`api-impl-into`](rules/api-impl-into.md) - Accept `impl Into<T>` for flexible APIs, implement `From<T>` for conversions
-- [`api-impl-asref`](rules/api-impl-asref.md) - Use `AsRef<T>` when you only need to borrow the inner data
+- [`api-impl-into`](rules/api-impl-into.md) - Accept `Into<T>` when the API intentionally takes ownership and useful caller types can convert into `T`
+- [`api-impl-asref`](rules/api-impl-asref.md) - Use `AsRef<T>` for cheap generic borrowed views when accepting several source types is genuinely useful
 - [`api-must-use`](rules/api-must-use.md) - Add `#[must_use]` when silently discarding a value is plausibly a bug; rely on the built-in `unused_must_use` semantics instead of treating every return value alike
 - [`api-non-exhaustive`](rules/api-non-exhaustive.md) - Use `#[non_exhaustive]` on public enums and structs for forward compatibility
-- [`api-from-not-into`](rules/api-from-not-into.md) - Implement `From<T>`, not `Into<U>` - From gives you Into for free
+- [`api-from-not-into`](rules/api-from-not-into.md) - Implement `From<Source> for Destination` for clear infallible conversions you own; use `Into<Destination>` primarily as a caller-side bound
 - [`api-default-impl`](rules/api-default-impl.md) - Implement `Default` for types with sensible default values
 - [`api-common-traits`](rules/api-common-traits.md) - Implement standard traits (Debug, Clone, PartialEq, etc.) for public types
 - [`api-serde-optional`](rules/api-serde-optional.md) - Make serde optional in general-purpose libraries when serialization is not part of the core API
