@@ -16,22 +16,51 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.x'
-      - name: Generate contract inventory
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - name: Probe legacy Bad examples
         run: |
           cd checks
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('gen.py')
+          s=p.read_text()
+          old='return "ignore", "legacy Bad/anti-pattern section"'
+          new='return "compile", "probe legacy Bad/anti-pattern section"'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exactly one legacy Bad classifier, found {s.count(old)}')
+          p.write_text(s.replace(old,new))
+          PY
           python3 gen.py
+          cargo check --examples --target x86_64-unknown-linux-gnu --keep-going --message-format=json > check.json 2> check.err || true
           python3 - <<'PY'
           import json
-          from collections import Counter, defaultdict
+          from collections import defaultdict, Counter
           m=json.load(open('manifest.json'))
-          counts=Counter(x['expect'] for x in m.values())
-          print('COUNTS')
-          for k in sorted(counts): print(f'{k}={counts[k]}')
-          print('\nNONSTRICT')
-          for name, x in sorted(m.items(), key=lambda kv:(kv[1]['expect'],kv[1]['file'],kv[1]['line'])):
-              if x['expect'] in {'auto','fragment','ignore','nightly'}:
-                  print(f"{x['expect']}\t{x['file']}\t{x['line']}\t{x['section']}\t{x['reason']}")
-          print('\nREASONS')
-          rs=Counter((x['expect'],x['reason']) for x in m.values() if x['expect'] in {'auto','fragment','ignore','nightly'})
-          for (e,r),n in sorted(rs.items()): print(f'{e}\t{n}\t{r}')
+          errors=defaultdict(list)
+          for raw in open('check.json'):
+              raw=raw.strip()
+              if not raw.startswith('{'): continue
+              try: r=json.loads(raw)
+              except json.JSONDecodeError: continue
+              if r.get('reason')!='compiler-message': continue
+              msg=r.get('message',{})
+              if msg.get('level')!='error': continue
+              t=(r.get('target') or {}).get('name')
+              if t: errors[t].append(msg)
+          probed=[(name,x) for name,x in m.items() if x.get('reason')=='probe legacy Bad/anti-pattern section']
+          clean=[]; failed=[]
+          for name,x in probed:
+              ds=errors.get(name,[])
+              if ds: failed.append((name,x,ds))
+              else: clean.append((name,x))
+          print(f'BAD_PROBE total={len(probed)} clean={len(clean)} failed={len(failed)}')
+          print('\nFAILED_BAD')
+          for name,x,ds in sorted(failed,key=lambda row:(row[1]['file'],row[1]['line'])):
+              toks=sorted({((d.get('code') or {}).get('code') or ('P:'+d.get('message','').splitlines()[0][:80])) for d in ds})
+              print(f"{x['file']}\t{x['line']}\t{x['section']}\t{','.join(toks)}")
+          print('\nCLEAN_BAD')
+          for name,x in sorted(clean,key=lambda row:(row[1]['file'],row[1]['line'])):
+              print(f"{x['file']}\t{x['line']}\t{x['section']}")
           PY
