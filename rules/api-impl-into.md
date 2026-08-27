@@ -1,186 +1,195 @@
 # api-impl-into
 
-> Accept `impl Into<T>` for flexible APIs, implement `From<T>` for conversions
+> Accept `Into<T>` when the API intentionally takes ownership and useful caller types can convert into `T`
 
 ## Why It Matters
 
-APIs that accept `impl Into<T>` are ergonomic—callers can pass the target type directly or any type that converts to it. This reduces boilerplate `.into()` calls at call sites. Implement `From<T>` rather than `Into<T>` because `From` implies `Into` through a blanket implementation.
+A parameter such as `impl Into<String>` lets callers provide `String` itself or another type with an infallible consuming conversion to `String`. This is useful for constructors, setters, builders, and other APIs that need to own the resulting value.
 
-## Bad
+It is not a free abstraction. The conversion may allocate, a generic function may be monomorphized for multiple input types, and type inference/error messages can become more complex. Prefer an exact `T` when flexibility does not materially improve the API.
+
+## Good: Ownership-Taking Convenience
 
 ```rust
-// Requires exact type - forces callers to convert
-fn process_path(path: PathBuf) { ... }
-fn set_name(name: String) { ... }
-
-// Caller must convert explicitly
-process_path(PathBuf::from("/path/to/file"));
-process_path("/path/to/file".to_path_buf());  // Verbose
-process_path("/path/to/file".into());          // Explicit
-
-set_name(String::from("Alice"));
-set_name("Alice".to_string());  // Verbose
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-// Accept anything that converts to the target type
-fn process_path(path: impl Into<PathBuf>) {
-    let path = path.into();  // Convert once inside
-    // ...
+fn make_label(label: impl Into<String>) -> String {
+    label.into()
 }
 
-fn set_name(name: impl Into<String>) {
-    let name = name.into();
-    // ...
+fn main() {
+    assert_eq!(make_label("ready"), "ready");
+
+    let owned = String::from("owned");
+    assert_eq!(make_label(owned), "owned");
 }
-
-// Callers are ergonomic
-process_path("/path/to/file");    // &str converts automatically
-process_path(PathBuf::from(".")); // PathBuf works too
-
-set_name("Alice");                // &str
-set_name(String::from("Alice"));  // String
-set_name(format!("User-{}", id)); // String from format!
 ```
 
-## Implement From, Not Into
+Passing an `&str` to `Into<String>` allocates a `String`; passing an existing `String` moves it without cloning. The call-site syntax does not imply a zero-cost conversion.
+
+## `impl Into<T>` Uses Static Dispatch
+
+`impl Trait` in argument position is a generic parameter. Calls are statically dispatched/monomorphized; there is no virtual trait-object dispatch merely because the signature mentions `Into`.
+
+The relevant performance tradeoffs are instead:
+
+- the actual conversion performed by `into()`;
+- possible code-size/compile-time cost from multiple monomorphizations;
+- whether the generic boundary prevents or enables useful inlining/optimization.
+
+Do not tell callers to replace `impl Into<T>` with `T` to avoid “trait dispatch.” Measure code-size or runtime effects if they matter.
+
+## Implement `From`, Usually Accept `Into`
+
+For a conversion you own, implement `From<Source> for Destination`. The standard library's blanket implementation then provides `Into<Destination> for Source` automatically.
 
 ```rust
+#[derive(Debug, PartialEq, Eq)]
 struct UserId(u64);
 
-// ✅ Implement From
 impl From<u64> for UserId {
-    fn from(id: u64) -> Self {
-        UserId(id)
+    fn from(value: u64) -> Self {
+        Self(value)
     }
 }
 
-// Into is automatically provided by blanket impl
-let id: UserId = 42u64.into();  // Works!
+fn lookup(id: impl Into<UserId>) -> UserId {
+    id.into()
+}
 
-// ❌ Don't implement Into directly
-impl Into<UserId> for u64 {
-    fn into(self) -> UserId {
-        UserId(self)  // This works but is non-idiomatic
-    }
+fn main() {
+    assert_eq!(UserId::from(7), UserId(7));
+    assert_eq!(lookup(42_u64), UserId(42));
 }
 ```
 
-## Common Conversions
+The standard docs recommend `Into<T>` rather than `From<T>` as an input bound because it also accepts types that happen to implement `Into` directly.
+
+## Exact Owned Types Are Often Clearer
+
+If callers already have the exact owned type, adding a conversion bound may create generic complexity without improving ergonomics.
 
 ```rust
-// String-like types
-fn log_message(msg: impl Into<String>) { ... }
-log_message("literal");           // &str
-log_message(String::from("own")); // String
-log_message(Cow::from("cow"));    // Cow<str>
-
-// Path-like types  
-fn read_file(path: impl AsRef<Path>) { ... }  // AsRef for borrowed access
-fn write_file(path: impl Into<PathBuf>) { ... }  // Into when storing
-
-// Duration
-fn set_timeout(duration: impl Into<Duration>) { ... }
-set_timeout(Duration::from_secs(5));
-// Note: no blanket impl for integers, would need custom wrapper
-```
-
-## AsRef vs Into
-
-```rust
-// AsRef<T>: borrow as &T, no conversion cost
-fn count_bytes(data: impl AsRef<[u8]>) -> usize {
-    data.as_ref().len()  // Just borrows, no allocation
+struct Request {
+    body: Vec<u8>,
 }
-count_bytes("hello");  // &str -> &[u8]
-count_bytes(b"hello"); // &[u8] -> &[u8]
-count_bytes(vec![1, 2, 3]);  // &Vec<u8> -> &[u8]
 
-// Into<T>: convert to owned T, may allocate
-fn store_data(data: impl Into<Vec<u8>>) {
-    let owned: Vec<u8> = data.into();  // Takes ownership
-    // ...
+fn send(request: Request) -> usize {
+    request.body.len()
+}
+
+fn main() {
+    let request = Request { body: vec![1, 2, 3] };
+    assert_eq!(send(request), 3);
 }
 ```
 
-## When NOT to Use impl Into
+A public API can always add named constructors/conversions where the domain has meaningful alternate representations.
+
+## `Into` Is for Infallible Consuming Conversion
+
+`Into<T>` must not fail. If validating/converting can fail, use `TryInto<T>`/`TryFrom` or a named fallible constructor.
 
 ```rust
-// ❌ Trait objects need Sized
-fn process(handler: impl Into<Box<dyn Handler>>) { }
-// Better: just take Box<dyn Handler> directly
+use std::num::NonZeroU32;
 
-// ❌ Recursive types
+fn require_nonzero(value: impl TryInto<NonZeroU32>) -> Result<NonZeroU32, impl std::fmt::Debug> {
+    value.try_into()
+}
+
+fn main() {
+    assert_eq!(require_nonzero(5_u32).unwrap().get(), 5);
+    assert!(require_nonzero(0_u32).is_err());
+}
+```
+
+If a conversion is lossy, domain-dependent, or surprising, a named method can be clearer even when it cannot fail.
+
+## Trait Objects Are Not a Reason to Reject an `Into` Bound
+
+This signature is legal Rust:
+
+```rust
+trait Handler {
+    fn handle(&self) -> u32;
+}
+
+struct BoxedHandler(Box<dyn Handler>);
+
+fn install(handler: impl Into<BoxedHandler>) -> BoxedHandler {
+    handler.into()
+}
+
+fn main() {}
+```
+
+`Into` itself is `Sized` and not dyn-compatible, but the bound above is on a statically known generic input type. A trait object nested inside the destination type does not turn the `Into` call into dynamic dispatch.
+
+Whether such a bound is *useful* depends on which conversions actually exist. If only `BoxedHandler` converts to itself, accepting `BoxedHandler` directly is simpler.
+
+## Where `impl Trait` Can Appear
+
+Argument-position `impl Into<T>` is shorthand for a generic function parameter. You cannot put `impl Into<Node>` directly in an ordinary struct field type on stable Rust.
+
+```rust
 struct Node {
-    children: Vec<impl Into<Node>>,  // Error: impl Trait not allowed here
+    children: Vec<Node>,
 }
 
-// ❌ Performance-critical hot paths (minor overhead of trait dispatch)
-fn hot_path(value: impl Into<u64>) {
-    // Consider taking u64 directly if called billions of times
-}
-
-// ❌ When you need to name the type
-fn returns_impl() -> impl Into<String> { }  // Opaque, hard to use
-```
-
-## Builder Pattern with Into
-
-```rust
-struct Config {
-    name: String,
-    path: PathBuf,
-}
-
-impl Config {
-    fn new(name: impl Into<String>) -> Self {
-        Config {
-            name: name.into(),
-            path: PathBuf::new(),
-        }
-    }
-    
-    fn path(mut self, path: impl Into<PathBuf>) -> Self {
-        self.path = path.into();
-        self
+impl Node {
+    fn push(&mut self, child: impl Into<Node>) {
+        self.children.push(child.into());
     }
 }
 
-// Clean builder calls
-let config = Config::new("myapp")
-    .path("/etc/myapp");
+fn main() {
+    let mut root = Node { children: Vec::new() };
+    root.push(Node { children: Vec::new() });
+    assert_eq!(root.children.len(), 1);
+}
 ```
 
-## Builder Pattern: Into Opt-In
+Keep the stored representation concrete even when a constructor/setter accepts flexible inputs.
 
-In builder patterns, prefer opt-in `Into` conversions (e.g., `bon`'s `#[builder(into)]`) over implicit ones. This gives callers ergonomic flexibility without hiding the conversion cost:
+## `AsRef` Versus `Into`
+
+Use the trait that matches ownership:
 
 ```rust
-use bon::Builder;
+use std::path::{Path, PathBuf};
 
-#[derive(Builder)]
-pub struct Config {
-    #[builder(into)]  // Opt-in: callers can pass &str, String, Cow, etc.
-    name: String,
-
-    #[builder(default = 8080)]
-    port: u16,
+fn inspect(path: impl AsRef<Path>) -> usize {
+    path.as_ref().components().count()
 }
 
-// Callers get ergonomic conversion
-let config = Config::builder()
-    .name("my-service")  // &str auto-converts via Into<String>
-    .build();
+fn store(path: impl Into<PathBuf>) -> PathBuf {
+    path.into()
+}
+
+fn main() {
+    assert_eq!(inspect("a/b"), 2);
+    assert_eq!(store("a/b"), PathBuf::from("a/b"));
+}
 ```
 
-Without `#[builder(into)]`, callers must convert explicitly. With it, the conversion is visible in the builder definition and callers benefit from ergonomic usage. This is preferable to using `impl Into<String>` in every setter, which makes the conversion implicit at the call site.
+`AsRef<Path>` only needs a borrowed view during the call. `Into<PathBuf>` deliberately produces an owned path.
+
+## Builders
+
+Opt-in conversion setters can be a good fit when a builder's field is owned and common caller types convert naturally. Whether written manually or generated by a builder crate, the conversion should remain intentional and visible in the builder definition.
+
+Do not assume every setter benefits from `Into`; exact numeric/enumerated/domain types are often clearer and produce better inference.
+
+## Practical Guidance
+
+- Use `Into<T>` for infallible consuming conversion into an owned representation.
+- Implement `From<Source> for Destination` for conversions you own; the blanket impl supplies `Into`.
+- Do not claim `impl Into<T>` incurs virtual trait dispatch—it is statically dispatched.
+- Consider monomorphization, inference, and actual conversion cost when making public APIs generic.
+- Use `TryInto`/`TryFrom` or named constructors for fallible conversion.
+- Keep stored field types concrete even if constructor/setter parameters are flexible.
 
 ## See Also
 
-- [api-impl-asref](./api-impl-asref.md) - When to use AsRef instead
-- [api-from-not-into](./api-from-not-into.md) - Why From is preferred
-- [api-bon-builder](./api-bon-builder.md) - bon crate builder with Into support
-- [err-from-impl](./err-from-impl.md) - From for error conversion
+- [api-impl-asref](./api-impl-asref.md) - Borrowed generic views
+- [api-from-not-into](./api-from-not-into.md) - Implementing conversion traits
+- [api-bon-builder](./api-bon-builder.md) - Builder conversion opt-ins
+- [err-from-impl](./err-from-impl.md) - Error conversions
