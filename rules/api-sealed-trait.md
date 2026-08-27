@@ -1,213 +1,163 @@
 # api-sealed-trait
 
-> Use sealed traits to prevent external implementations while allowing use
+> Seal a public trait when downstream crates should be able to use it but not implement it
 
 ## Why It Matters
 
-Public traits can be implemented by anyone, which may be undesirable when you need to guarantee behavior or add methods in future versions. A sealed trait can be used by external code but not implemented by it, giving you control over implementations while maintaining a usable API.
+A public trait is normally an extension point: downstream crates can implement it for their own types when coherence allows. That is useful when third-party implementations are part of the design, but it also means adding a new required method is a breaking change for those implementations.
 
-## Bad
+A sealed trait deliberately closes that extension point. Downstream code can still name the public trait, call its methods, use it in bounds, and work with your implementations, but it cannot add new implementations. This gives the defining crate more freedom to evolve the trait's implementation requirements.
+
+Sealing does not make implementations correct by itself. It only ensures that the defining crate controls the set of implementations.
+
+## Good: Private Supertrait Pattern
 
 ```rust
-// Anyone can implement this trait
-pub trait DatabaseDriver {
-    fn connect(&self, url: &str) -> Connection;
-    fn execute(&self, query: &str) -> Result<Rows, Error>;
-}
-
-// External crate implements it incorrectly
-impl DatabaseDriver for MyBadDriver {
-    fn connect(&self, url: &str) -> Connection {
-        // Buggy implementation that doesn't handle errors
-        unsafe { force_connect(url) }
-    }
-}
-
-// Later, you want to add a required method - BREAKING CHANGE
-pub trait DatabaseDriver {
-    fn connect(&self, url: &str) -> Connection;
-    fn execute(&self, query: &str) -> Result<Rows, Error>;
-    fn transaction(&self) -> Transaction;  // External impls now broken!
-}
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
-```rust
-// Create a private module with a private trait
-mod private {
+mod sealed {
     pub trait Sealed {}
 }
 
-// Public trait requires the private trait
-pub trait DatabaseDriver: private::Sealed {
-    fn connect(&self, url: &str) -> Connection;
-    fn execute(&self, query: &str) -> Result<Rows, Error>;
+pub trait Backend: sealed::Sealed {
+    fn name(&self) -> &'static str;
 }
 
-// Only your crate can implement Sealed, thus DatabaseDriver
-pub struct PostgresDriver;
-impl private::Sealed for PostgresDriver {}
-impl DatabaseDriver for PostgresDriver {
-    fn connect(&self, url: &str) -> Connection { ... }
-    fn execute(&self, query: &str) -> Result<Rows, Error> { ... }
-}
+pub struct Local;
+pub struct Remote;
 
-pub struct MySqlDriver;
-impl private::Sealed for MySqlDriver {}
-impl DatabaseDriver for MySqlDriver {
-    fn connect(&self, url: &str) -> Connection { ... }
-    fn execute(&self, query: &str) -> Result<Rows, Error> { ... }
-}
+impl sealed::Sealed for Local {}
+impl sealed::Sealed for Remote {}
 
-// External crate cannot implement - private::Sealed is not accessible
-// impl DatabaseDriver for ExternalDriver { }  // Error!
-
-// But external code CAN use the trait
-fn use_driver(driver: &impl DatabaseDriver) {
-    let conn = driver.connect("postgres://localhost");
-}
-```
-
-## Full Pattern
-
-```rust
-pub mod db {
-    mod private {
-        pub trait Sealed {}
-    }
-    
-    /// Database driver trait.
-    /// 
-    /// This trait is sealed and cannot be implemented outside this crate.
-    pub trait Driver: private::Sealed {
-        /// Connects to the database.
-        fn connect(&self, url: &str) -> Result<Connection, Error>;
-        
-        /// Executes a query.
-        fn execute(&self, sql: &str) -> Result<Rows, Error>;
-    }
-    
-    pub struct Postgres;
-    impl private::Sealed for Postgres {}
-    impl Driver for Postgres { ... }
-    
-    pub struct Sqlite;
-    impl private::Sealed for Sqlite {}
-    impl Driver for Sqlite { ... }
-}
-
-// Usage works fine
-use db::{Driver, Postgres};
-
-fn query(driver: &impl Driver) {
-    driver.execute("SELECT 1")?;
-}
-
-query(&Postgres);
-```
-
-## Benefits of Sealing
-
-```rust
-// 1. Add methods without breaking changes
-pub trait Format: private::Sealed {
-    fn format(&self) -> String;
-    
-    // Added later - not breaking because no external impls exist
-    fn format_pretty(&self) -> String {
-        self.format()  // Default implementation
+impl Backend for Local {
+    fn name(&self) -> &'static str {
+        "local"
     }
 }
 
-// 2. Guarantee invariants
-pub trait SafeBuffer: private::Sealed {
-    // You control all implementations, so you know they're all correct
-    fn get(&self, index: usize) -> Option<&u8>;
+impl Backend for Remote {
+    fn name(&self) -> &'static str {
+        "remote"
+    }
 }
 
-// 3. Use as marker traits
-pub trait ValidConfig: private::Sealed {}
-// Only validated configs implement this
+fn describe(backend: &impl Backend) -> &'static str {
+    backend.name()
+}
+
+fn main() {
+    assert_eq!(describe(&Local), "local");
+    assert_eq!(describe(&Remote), "remote");
+}
 ```
 
-## Partially Sealed
+The `sealed::Sealed` trait is public only inside a private module. The public `Backend` trait can expose it as a supertrait, but downstream crates cannot name the private module in an impl and therefore cannot satisfy the supertrait requirement for their own types.
+
+## Why This Helps API Evolution
+
+Suppose a later release needs another required method:
 
 ```rust
-// Allow implementing some methods but not all
-mod private {
-    pub trait SealedCore {}
-}
-
-pub trait Plugin: private::SealedCore {
-    // Sealed - only we implement
-    fn initialize(&self);
-    fn shutdown(&self);
-    
-    // Open - users can override
-    fn name(&self) -> &str { "unnamed" }
-}
-
-// Only we can add new required sealed methods
-// Users can customize open methods
-```
-
-## RFC 3323: Native `#[sealed]`
-
-RFC 3323 proposes a native `#[sealed]` attribute for traits. As of June 2026, it has been accepted but not yet stabilized. Until then, the module-level sealing pattern shown above remains the standard approach.
-
-**Alternative crates:**
-- `sealed_trait` crate — proc-macro-based `#[sealed_trait]` attribute
-- `cargo-semver-checks` — detects accidental sealed trait violations
-
-## Companion: #[diagnostic::do_not_recommend]
-
-Rust 1.85.0 introduced `#[diagnostic::do_not_recommend]` for impl blocks. When used with sealed trait blanket impls, it prevents the compiler from suggesting your sealed trait in error messages:
-
-```rust
-mod private {
+mod sealed {
     pub trait Sealed {}
 }
 
-pub trait Format: private::Sealed {
-    fn format(&self) -> String;
+pub trait Format: sealed::Sealed {
+    fn compact(&self) -> String;
+    fn pretty(&self) -> String;
 }
 
-// Hides this blanket from compiler diagnostics
-#[diagnostic::do_not_recommend]
-impl<T: private::Sealed + Display> Format for T {
-    fn format(&self) -> String {
-        self.to_string()
+pub struct Json;
+impl sealed::Sealed for Json {}
+
+impl Format for Json {
+    fn compact(&self) -> String {
+        "{}".to_owned()
+    }
+
+    fn pretty(&self) -> String {
+        "{\n}".to_owned()
     }
 }
 
-// User error no longer suggests "implement Format" — they see the sealed trait pattern
+fn main() {
+    assert_eq!(Json.pretty(), "{\n}");
+}
 ```
 
-See [api-do-not-recommend](./api-do-not-recommend.md) for details.
+Because downstream crates could not implement `Format`, adding a required method does not invalidate downstream trait impls. The defining crate still has to update all of its own implementations.
 
-## Clippy Lint: clippy::sealed_trait
+Sealing does **not** make arbitrary trait changes non-breaking. Removing a public method, changing a callable signature, changing semantics, or otherwise breaking downstream uses can still be a compatibility break.
 
-Since Rust 1.83, `clippy::sealed_trait` detects traits that appear to be sealed (i.e., require a private supertrait) and verifies the pattern is used correctly:
+## Open Traits Are Often the Right Choice
 
-```toml
-[lints.clippy]
-sealed_trait = "warn"  # Detects and validates sealed trait patterns
+Do not seal a trait merely because you own it. Leave it open when third-party implementations are an intended capability.
+
+```rust
+pub trait Renderer {
+    fn render(&self, input: &str) -> String;
+}
+
+struct PlainText;
+
+impl Renderer for PlainText {
+    fn render(&self, input: &str) -> String {
+        input.to_owned()
+    }
+}
+
+fn main() {
+    let renderer = PlainText;
+    assert_eq!(renderer.render("hello"), "hello");
+}
 ```
 
-## When to Seal
+An open trait is appropriate for plugins, adapters, user-defined backends, mocks, and other genuine extension points. Once users depend on being able to implement a trait, sealing it later is itself a breaking API change.
 
-| Seal When | Don't Seal When |
-|-----------|-----------------|
-| API stability is critical | You want extension points |
-| Implementation correctness is hard | Users need custom implementations |
-| You'll add methods later | Trait is simple and stable |
-| Safety invariants required | Standard patterns (Iterator, etc.) |
+## Sealing for Safety or Invariants
+
+A sealed trait can be useful when implementations participate in an invariant that downstream code cannot be trusted or expected to uphold. The safety argument must still live in the actual implementation and API design; the seal only lets the crate author audit the complete implementation set.
+
+```rust
+mod sealed {
+    pub trait Sealed {}
+}
+
+pub trait TrustedLength: sealed::Sealed {
+    fn trusted_len(&self) -> usize;
+}
+
+pub struct Packet(Vec<u8>);
+impl sealed::Sealed for Packet {}
+
+impl TrustedLength for Packet {
+    fn trusted_len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+fn main() {
+    let packet = Packet(vec![1, 2, 3]);
+    assert_eq!(packet.trusted_len(), 3);
+}
+```
+
+If unsafe code relies on such a trait, document the invariant explicitly and ensure every in-crate implementation satisfies it. Sealing is not a substitute for that proof.
+
+## Document the Restriction
+
+A sealed trait looks like an ordinary public trait at first glance. Document that downstream implementations are intentionally unsupported so users do not design around an extension point that does not exist.
+
+## Practical Guidance
+
+- Seal a trait when downstream crates should consume it but not implement it.
+- Use a private-module supertrait as the conventional stable pattern.
+- Treat sealing as an API design decision: it trades extensibility for implementation control and some evolution freedom.
+- Do not claim sealing makes every future trait change non-breaking.
+- Do not claim sealing guarantees correctness; it only limits who can implement the trait.
+- Keep traits open when third-party implementations are part of the intended ecosystem.
 
 ## See Also
 
-- [api-do-not-recommend](./api-do-not-recommend.md) - Hiding impls from diagnostics
-- [api-non-exhaustive](./api-non-exhaustive.md) - Related pattern for enums/structs
-- [api-extension-trait](./api-extension-trait.md) - Adding methods to external types
+- [api-do-not-recommend](./api-do-not-recommend.md) - Diagnostic control for impls
+- [api-non-exhaustive](./api-non-exhaustive.md) - Reserving evolution space for enums and structs
+- [api-extension-trait](./api-extension-trait.md) - Adding methods to foreign types
 - [api-typestate](./api-typestate.md) - Compile-time state guarantees

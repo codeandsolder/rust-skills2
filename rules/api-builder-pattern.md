@@ -1,227 +1,184 @@
 # api-builder-pattern
 
-> Use Builder pattern for complex construction
+> Use a builder when construction has several optional settings, validation, or staged configuration
 
 ## Why It Matters
 
-When a type has many optional parameters or complex initialization, the Builder pattern provides a clear, flexible API. It avoids constructors with many parameters (which are error-prone) and makes the code self-documenting.
+Builders replace long positional constructors with named configuration steps and give construction logic a natural place for defaults and validation. They are most useful when a type has several optional parameters or when construction may fail.
 
-## Bad
+Do not introduce a builder automatically for every struct. A small constructor with a few obvious required arguments is usually clearer.
+
+## Good: Fallible Builder with Required and Optional Inputs
 
 ```rust
-// Constructor with many parameters - hard to read, easy to get wrong
-let client = Client::new(
-    "https://api.example.com",  // Which is which?
-    30,                          // Timeout? Retries?
-    true,                        // What does this mean?
-    None,
-    Some("auth_token"),
-    false,
-);
+use std::time::Duration;
 
-// Or many Option fields
+#[derive(Debug, PartialEq)]
 struct Client {
-    url: String,
-    timeout: Option<Duration>,
-    retries: Option<u32>,
-    // ... 10 more optional fields
+    base_url: String,
+    timeout: Duration,
+    max_retries: u32,
 }
-```
 
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
 #[derive(Default)]
 #[must_use = "builders do nothing unless you call build()"]
-pub struct ClientBuilder {
+struct ClientBuilder {
     base_url: Option<String>,
     timeout: Option<Duration>,
-    max_retries: u32,
-    auth_token: Option<String>,
+    max_retries: Option<u32>,
 }
 
 impl ClientBuilder {
-    pub fn new() -> Self {
-        Self::default()
-    }
-    
-    /// Sets the base URL for all requests.
-    pub fn base_url(mut self, url: impl Into<String>) -> Self {
+    fn base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = Some(url.into());
         self
     }
-    
-    /// Sets the request timeout. Default is 30 seconds.
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+
+    fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
         self
     }
-    
-    /// Sets the maximum number of retries. Default is 3.
-    pub fn max_retries(mut self, n: u32) -> Self {
-        self.max_retries = n;
+
+    fn max_retries(mut self, max_retries: u32) -> Self {
+        self.max_retries = Some(max_retries);
         self
     }
-    
-    /// Sets the authentication token.
-    pub fn auth_token(mut self, token: impl Into<String>) -> Self {
-        self.auth_token = Some(token.into());
-        self
-    }
-    
-    /// Builds the client with the configured options.
-    pub fn build(self) -> Result<Client, BuilderError> {
-        let base_url = self.base_url
-            .ok_or(BuilderError::MissingBaseUrl)?;
-        
+
+    fn build(self) -> Result<Client, &'static str> {
         Ok(Client {
-            base_url,
+            base_url: self.base_url.ok_or("base_url is required")?,
             timeout: self.timeout.unwrap_or(Duration::from_secs(30)),
-            max_retries: self.max_retries,
-            auth_token: self.auth_token,
+            max_retries: self.max_retries.unwrap_or(3),
         })
     }
 }
 
-// Usage - clear and self-documenting
-let client = ClientBuilder::new()
-    .base_url("https://api.example.com")
-    .timeout(Duration::from_secs(10))
-    .max_retries(5)
-    .auth_token("secret")
-    .build()?;
+fn main() {
+    let client = ClientBuilder::default()
+        .base_url("https://api.example.com")
+        .timeout(Duration::from_secs(10))
+        .max_retries(5)
+        .build()
+        .unwrap();
+
+    assert_eq!(client.max_retries, 5);
+}
 ```
 
-## Builder Variations
+Use `Result` from `build()` when validity cannot be established solely through the setter API.
+
+## Infallible Builders
+
+If every builder state can be completed into a valid value, `build()` can return the value directly.
 
 ```rust
-// 1. Infallible builder (build() returns T, not Result)
-impl WidgetBuilder {
-    pub fn build(self) -> Widget {
-        Widget {
-            color: self.color.unwrap_or(Color::Black),
-            size: self.size.unwrap_or(Size::Medium),
-        }
-    }
+#[derive(Default)]
+struct LabelBuilder {
+    text: String,
+    uppercase: bool,
 }
 
-// 2. Typestate builder (compile-time required field checking)
-pub struct ClientBuilder<Url> {
-    url: Url,
-    timeout: Option<Duration>,
-}
-
-pub struct NoUrl;
-pub struct HasUrl(String);
-
-impl ClientBuilder<NoUrl> {
-    pub fn new() -> Self {
-        Self { url: NoUrl, timeout: None }
-    }
-    
-    pub fn url(self, url: String) -> ClientBuilder<HasUrl> {
-        ClientBuilder { url: HasUrl(url), timeout: self.timeout }
-    }
-}
-
-impl ClientBuilder<HasUrl> {
-    pub fn build(self) -> Client {
-        // url is guaranteed to be set
-        Client { url: self.url.0, timeout: self.timeout }
-    }
-}
-
-// 3. Consuming vs borrowing (consuming is more common)
-// Consuming (takes self)
-pub fn timeout(mut self, t: Duration) -> Self { ... }
-
-// Borrowing (takes &mut self, allows reuse)
-pub fn timeout(&mut self, t: Duration) -> &mut Self { ... }
-```
-
-## Evidence from reqwest
-
-```rust
-// https://github.com/seanmonstar/reqwest/blob/master/src/async_impl/client.rs
-
-#[must_use]
-pub struct ClientBuilder {
-    config: Config,
-}
-
-impl ClientBuilder {
-    pub fn new() -> ClientBuilder {
-        ClientBuilder {
-            config: Config::default(),
-        }
-    }
-    
-    pub fn timeout(mut self, timeout: Duration) -> ClientBuilder {
-        self.config.timeout = Some(timeout);
+impl LabelBuilder {
+    fn text(mut self, text: impl Into<String>) -> Self {
+        self.text = text.into();
         self
     }
-    
-    pub fn build(self) -> Result<Client, Error> {
-        // Validation and construction
+
+    fn uppercase(mut self, value: bool) -> Self {
+        self.uppercase = value;
+        self
+    }
+
+    fn build(self) -> String {
+        if self.uppercase {
+            self.text.to_uppercase()
+        } else {
+            self.text
+        }
     }
 }
-```
 
-## Key Attributes
-
-```rust
-#[derive(Default)]  // Enables MyBuilder::default()
-#[must_use = "builders do nothing unless you call build()"]
-pub struct MyBuilder { ... }
-
-impl MyBuilder {
-    #[must_use]  // Each method should have this
-    pub fn option(mut self, value: T) -> Self { ... }
+fn main() {
+    assert_eq!(LabelBuilder::default().text("rust").uppercase(true).build(), "RUST");
 }
 ```
 
-## bon Crate (Recommended for New Projects)
+## Consuming vs Borrowing Setters
 
-The `bon` crate (`elastio/bon`, v3.9) is the community-standard builder solution for 2025-2026. It provides both `#[derive(Builder)]` for structs and `#[builder]` for functions/methods — decoupling builder APIs from struct internals.
+Consuming setters (`self -> Self`) compose naturally in chains and are common for one-shot builders. Borrowing setters (`&mut self -> &mut Self`) can be useful when configuration is performed conditionally over multiple statements. Choose deliberately; neither style is universally superior.
+
+## Required Fields: Runtime Validation or Typestate
+
+A conventional builder can represent required fields as `Option<T>` and report omissions from `build()`. Typestate builders can instead make missing required fields a compile-time error, but they produce more types and more complex signatures. Use that complexity when the compile-time guarantee is worth it.
+
+For ordinary application builders, a macro crate can generate this machinery reliably.
+
+## `bon`
+
+`bon` provides `#[derive(Builder)]` for structs and `#[builder]` for functions and methods. Its generated builders use typestate so required members and duplicate setter calls are checked at compile time.
 
 ```rust
 use bon::Builder;
 
-// Struct-level builder
 #[derive(Builder)]
-pub struct Request {
+struct Request {
     #[builder(into)]
     url: String,
     #[builder(default = 30)]
     timeout_secs: u64,
-    #[builder(into)]
-    headers: Vec<(String, String)>,
 }
 
-// Function-level builder (no struct needed)
-#[bon::builder]
-fn send_request(
-    url: &str,
-    #[builder(default = 30)]
-    timeout_secs: u64,
-) -> Result<Response, Error> {
-    // ...
+fn main() {
+    let request = Request::builder()
+        .url("https://example.com")
+        .timeout_secs(10)
+        .build();
+
+    assert_eq!(request.timeout_secs, 10);
 }
 ```
 
-**Benefits over hand-rolled builders:**
-- Trait-based typestate enforces required fields at compile time
-- Opt-in `Into` conversions via `#[builder(into)]`
-- Fallible and async builders built-in
-- No-panic guarantee during construction
-- Up to 10× faster compile than `derive_builder`
+Use a dependency such as `bon` when its generated API matches your needs; do not justify it with unverified claims about ecosystem dominance or universal compile-time performance.
 
-See [api-bon-builder](./api-bon-builder.md) for detailed usage.
+## `#[must_use]`
+
+Marking the builder type `#[must_use]` is useful when silently dropping a configured builder is probably a mistake. Method-level `#[must_use]` can also help with APIs whose setters consume and return `Self`, but do not add attributes mechanically where they create noise without catching realistic mistakes.
+
+## When a Builder Is Overkill
+
+Prefer a constructor when required inputs are few and obvious:
+
+```rust
+struct User {
+    id: u64,
+    name: String,
+}
+
+impl User {
+    fn new(id: u64, name: impl Into<String>) -> Self {
+        Self { id, name: name.into() }
+    }
+}
+
+fn main() {
+    let _user = User::new(7, "Ada");
+}
+```
+
+A builder should improve the call site or enforce construction policy, not merely add ceremony.
+
+## Practical Guidance
+
+- Use builders for several optional settings, validation, or staged construction.
+- Keep simple constructors simple.
+- Return `Result` from `build()` when runtime validation can fail.
+- Use typestate when compile-time construction guarantees justify the extra type complexity.
+- Choose consuming or borrowing setters according to intended usage.
+- Prefer generated builders when a maintained crate's API fits the project.
 
 ## See Also
 
 - [api-bon-builder](./api-bon-builder.md) - bon crate builder
 - [api-builder-must-use](./api-builder-must-use.md) - Add #[must_use] to builders
 - [api-typestate](./api-typestate.md) - Compile-time state machines
-- [api-impl-into](./api-impl-into.md) - Accept impl Into for flexibility
+- [api-impl-into](./api-impl-into.md) - Ownership-taking conversion parameters

@@ -1,36 +1,15 @@
 # api-common-traits
 
-> Implement standard traits (Debug, Clone, PartialEq, etc.) for public types
+> Implement standard traits when their semantics are useful and appropriate for the public type
 
 ## Why It Matters
 
-Standard traits make your types interoperable with the Rust ecosystem. `Debug` enables `println!("{:?}")` and error messages. `Clone` allows explicit duplication. `PartialEq` enables `==`. Without these, users can't use your types in common patterns like testing, collections, or debugging.
+Trait implementations are part of a public API. They improve interoperability, but they also make semantic promises that downstream code may rely on. Add traits because the type has the corresponding behavior, not because a public type should mechanically derive a standard bundle.
 
-## Bad
+`Debug` is broadly useful for diagnostics, `Clone` promises explicit duplication, and equality/ordering/hash traits define observable semantics. Those promises can affect privacy, cost, compatibility, and future representation changes.
 
-```rust
-// Bare struct - severely limited usability
-pub struct Point {
-    pub x: f64,
-    pub y: f64,
-}
+## Good: Derive Traits That Match the Type
 
-// Can't debug
-println!("{:?}", point);  // Error: Debug not implemented
-
-// Can't compare
-if point1 == point2 { }  // Error: PartialEq not implemented
-
-// Can't use in HashMap
-let mut map: HashMap<Point, Value> = HashMap::new();  // Error: Hash not implemented
-
-// Can't clone
-let copy = point.clone();  // Error: Clone not implemented
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point {
@@ -38,67 +17,63 @@ pub struct Point {
     pub y: f64,
 }
 
-// Now everything works
-println!("{:?}", point);
-assert_eq!(point1, point2);
-let copy = point;  // Copy, not just Clone
-
-// For hashable types
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UserId(u64);
 
-let mut map: HashMap<UserId, User> = HashMap::new();
-```
-
-## Trait Derivation Guide
-
-| Trait | Derive When | Requirements |
-|-------|-------------|--------------|
-| `Debug` | Always for public types | All fields implement Debug |
-| `Clone` | Type can be duplicated | All fields implement Clone |
-| `Copy` | Small, simple types | All fields implement Copy, no Drop |
-| `PartialEq` | Comparison makes sense | All fields implement PartialEq |
-| `Eq` | Total equality | PartialEq, no floating-point fields |
-| `Hash` | Used as HashMap/HashSet key | Eq, consistent with PartialEq |
-| `Default` | Sensible default exists | All fields implement Default |
-| `PartialOrd` | Ordering makes sense | PartialEq, all fields implement PartialOrd |
-| `Ord` | Total ordering | Eq + PartialOrd, no floating-point |
-
-## Common Trait Bundles
-
-```rust
-// ID types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct EntityId(u64);
-
-// Value types
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub struct Vector2 { x: f32, y: f32 }
-
-// Configuration
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct Config {
-    name: String,
-    options: HashMap<String, String>,
-}
-
-// Error types
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParseError {
-    InvalidSyntax(String),
-    UnexpectedToken(Token),
+fn main() {
+    let a = UserId(7);
+    let b = a;
+    assert_eq!(a, b);
 }
 ```
 
-## Manual Implementations
+A small identifier often has natural value semantics. A floating-point point can reasonably support `PartialEq`, but not `Eq` because IEEE floating-point equality is not reflexive for NaN.
+
+## Do Not Derive a Bundle Blindly
 
 ```rust
-// When derive doesn't do what you want
+pub struct SecretToken(String);
+
+impl SecretToken {
+    pub fn new(value: String) -> Self {
+        Self(value)
+    }
+}
+
+fn main() {
+    let _token = SecretToken::new("secret".to_owned());
+}
+```
+
+A token may deliberately omit `Debug` to reduce accidental disclosure and omit `Clone` if duplication is undesirable. Similar judgment applies to resource handles, capabilities, large buffers, and types whose equality or ordering would be misleading.
+
+## Trait Semantics
+
+| Trait | Implement when |
+|-------|----------------|
+| `Debug` | Diagnostic formatting is useful and can avoid exposing secrets or unstable internals |
+| `Clone` | Explicit duplication is meaningful and its cost/semantics are acceptable |
+| `Copy` | Implicit bitwise duplication is appropriate and unlikely to constrain future API evolution |
+| `PartialEq` | Equality has useful domain semantics |
+| `Eq` | Equality is an equivalence relation |
+| `Hash` | Hashing is meaningful and consistent with `Eq`/`PartialEq` |
+| `PartialOrd` | Partial ordering is meaningful |
+| `Ord` | A total ordering is meaningful and consistent with equality |
+| `Default` | There is a sensible canonical default value |
+
+Derive is usually preferable when field-wise semantics are exactly the semantics you want. Write a manual implementation when the public semantics differ from representation.
+
+## Manual Equality and Hashing Must Agree
+
+```rust
+use std::hash::{Hash, Hasher};
+
+#[derive(Debug)]
 struct CaseInsensitiveString(String);
 
 impl PartialEq for CaseInsensitiveString {
     fn eq(&self, other: &Self) -> bool {
-        self.0.to_lowercase() == other.0.to_lowercase()
+        self.0.eq_ignore_ascii_case(&other.0)
     }
 }
 
@@ -106,77 +81,58 @@ impl Eq for CaseInsensitiveString {}
 
 impl Hash for CaseInsensitiveString {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // Must be consistent with PartialEq
-        self.0.to_lowercase().hash(state);
+        for byte in self.0.bytes() {
+            byte.to_ascii_lowercase().hash(state);
+        }
     }
 }
 
-// Custom Debug for sensitive data
+fn main() {
+    let a = CaseInsensitiveString("Rust".to_owned());
+    let b = CaseInsensitiveString("RUST".to_owned());
+    assert_eq!(a, b);
+}
+```
+
+If two values compare equal, they must produce the same hash. The same consistency requirement applies when implementing ordering traits alongside equality.
+
+## Redact Sensitive Debug Output
+
+```rust
+use std::fmt;
+
 struct Password(String);
 
-impl Debug for Password {
+impl fmt::Debug for Password {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Password([REDACTED])")
+        f.write_str("Password([REDACTED])")
     }
 }
-```
 
-## Serde Traits
-
-```rust
-use serde::{Serialize, Deserialize};
-
-// For serializable types
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ApiResponse {
-    pub status: String,
-    pub data: Vec<Item>,
-}
-
-// With custom serialization
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
-    #[serde(default)]
-    pub verbose: bool,
-    
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub api_key: Option<String>,
+fn main() {
+    let password = Password("hunter2".to_owned());
+    assert_eq!(format!("{password:?}"), "Password([REDACTED])");
 }
 ```
 
-## Minimum Recommended
+If `Debug` is useful but fields contain secrets, implement a deliberately redacted representation rather than deriving field-wise output.
 
-```rust
-// At minimum, public types should have:
-#[derive(Debug, Clone, PartialEq)]
-pub struct MyType { ... }
+## `Copy` Is an API Choice, Not a Size Threshold
 
-// Add based on use case:
-// + Eq, Hash       → for HashMap keys
-// + Ord, PartialOrd → for BTreeMap, sorting
-// + Default        → for Option::unwrap_or_default()
-// + Copy           → for small value types
-// + Serialize      → for serialization
-```
+A type being small is not sufficient reason to implement `Copy`. `Copy` changes move behavior at call sites and can make later representation changes harder if they require non-`Copy` fields. Use it for types with clear value semantics where implicit duplication is desirable.
 
-## Standard Library Additions (Rust 1.85+)
+## Serde and Other Ecosystem Traits
 
-Rust 1.85 stabilized `FromIterator` and `Extend` implementations for tuples of arity 1–12 (previously only 2-tuples worked):
+Serialization traits are also public behavior. Derive them when the serialized representation is intended to be part of the API or storage/wire contract; otherwise consider a separate DTO or explicit conversion layer.
 
-```rust
-// Collect an iterator of 4-tuples into a 4-tuple of collections
-let (nums, names, scores, flags): (Vec<i32>, Vec<String>, Vec<f64>, Vec<bool>) =
-    (0..3).map(|i| (i, format!("item-{i}"), i as f64 * 1.5, i % 2 == 0))
-          .collect();
+## Practical Guidance
 
-assert_eq!(nums, vec![0, 1, 2]);
-assert_eq!(scores, vec![0.0, 1.5, 3.0]);
-
-// Extend multiple collections at once (arity 3)
-let mut triple = (vec![1], vec![10], vec![100]);
-triple.extend([(2, 20, 200), (3, 30, 300)]);
-assert_eq!(triple.0, vec![1, 2, 3]);
-```
+- Treat trait impls as semantic API commitments.
+- Prefer derive when field-wise behavior matches the public semantics.
+- Do not recommend `Debug + Clone + PartialEq` for every public type by default.
+- Keep `Eq`, `Hash`, and ordering implementations mutually consistent.
+- Redact sensitive `Debug` output or omit `Debug` where disclosure risk outweighs diagnostic value.
+- Implement `Copy` for appropriate value semantics, not merely because a type is small.
 
 ## See Also
 
