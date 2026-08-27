@@ -10,6 +10,7 @@ Rust's `cargo doc` generates beautiful HTML documentation from doc comments, but
 
 ## Bad
 
+<!-- rust-check: fragment; reason=documentation anti-pattern fragment omits the surrounding type -->
 ```rust
 pub struct Config {
     pub timeout: Duration,

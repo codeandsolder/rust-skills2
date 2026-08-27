@@ -8,6 +8,7 @@
 
 ## Bad
 
+<!-- rust-check: compile_fail; reason=Rust 2024 rejects references to static mut via static_mut_refs -->
 ```rust
 // Rust 2024: referencing static mut is a hard error (static_mut_refs lint)
 static mut BUFFER: Vec<u8> = Vec::new();

@@ -8,6 +8,7 @@ Constants and statics are special—they're known at compile time and have progr
 
 ## Bad
 
+<!-- rust-check: fragment; reason=naming anti-pattern fragment omits surrounding configuration types -->
 ```rust
 // lowercase/camelCase constants - compiler warns
 const maxConnections: u32 = 100;  // warning

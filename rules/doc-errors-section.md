@@ -10,6 +10,7 @@ This is especially critical for library code where users cannot easily inspect i
 
 ## Bad
 
+<!-- rust-check: fragment; reason=documentation anti-pattern fragment omits surrounding error types -->
 ```rust
 /// Opens a file and reads its contents.
 pub fn read_file(path: &Path) -> Result<String, Error> {

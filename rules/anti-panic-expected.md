@@ -10,6 +10,7 @@ Use `Result` for recoverable errors.
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding application types and functions -->
 ```rust
 // Network failures are expected
 fn fetch_data(url: &str) -> Data {

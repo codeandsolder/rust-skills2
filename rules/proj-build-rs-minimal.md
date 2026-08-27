@@ -8,6 +8,7 @@ Build scripts run on every Cargo invocation that touches their crate. Cargo deci
 
 ## Bad
 
+<!-- rust-check: fragment; reason=build-script anti-pattern references build-script-only crates and context -->
 ```rust
 // build.rs — overly broad, non-deterministic, network-dependent
 use std::process::Command;

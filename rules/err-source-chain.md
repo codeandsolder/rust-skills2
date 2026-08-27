@@ -8,6 +8,7 @@ Errors often have underlying causes. Preserving the error chain (via `source()` 
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding application error context -->
 ```rust
 #[derive(Debug)]
 enum ConfigError {

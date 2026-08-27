@@ -10,6 +10,7 @@ Standard `String::clone()` is O(n) — it allocates new heap memory and copies e
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding string collection context -->
 ```rust
 use std::collections::HashMap;
 use std::sync::Arc;

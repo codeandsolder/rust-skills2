@@ -19,6 +19,7 @@ pub fn connect(url: &str) {
 }
 ```
 
+<!-- rust-check: fragment; reason=observability anti-pattern references an application logging facade -->
 ```rust
 // Also bad: using env_logger in a library
 pub fn init_logging() {

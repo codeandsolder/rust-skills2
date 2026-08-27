@@ -8,6 +8,7 @@ Standard `Vec<T>` is 24 bytes even when empty. `ThinVec` from Mozilla's `thin_ve
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding collection context -->
 ```rust
 struct TreeNode {
     value: i32,

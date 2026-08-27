@@ -13,6 +13,7 @@ The facade approach ensures:
 
 ## Bad
 
+<!-- rust-check: ignore; reason=requires a proc-macro crate target to demonstrate proc-macro export restrictions -->
 ```rust
 // A single crate with `proc-macro = true` in Cargo.toml that also tries
 // to export regular items:

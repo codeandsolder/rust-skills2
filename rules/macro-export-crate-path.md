@@ -19,6 +19,7 @@ macro_rules! greet {
 }
 ```
 
+<!-- rust-check: fragment; reason=macro anti-pattern references an external crate name by design -->
 ```rust
 // consumer/src/main.rs — legacy
 #[macro_use]

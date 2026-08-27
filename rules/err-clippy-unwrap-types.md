@@ -8,6 +8,7 @@
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding input data -->
 ```rust
 // No config — every Mutex lock triggers unwrap_used
 fn handle_request(state: &AppState) {

@@ -8,6 +8,7 @@
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding application APIs -->
 ```rust
 fn process_request(req: Request) -> Response {
     let user_id = req.headers.get("X-User-Id").unwrap();  // Why did it fail?

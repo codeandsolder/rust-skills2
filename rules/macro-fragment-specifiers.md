@@ -10,6 +10,7 @@ Note the **follow-set restriction**: after `:expr`, `:ty`, `:pat`, and a few oth
 
 ## Bad
 
+<!-- rust-check: compile_fail; reason=tt soup accepts a let statement that later fails in expression position -->
 ```rust
 // Slurping everything as :tt, then trying to use $e as if it were an expression.
 macro_rules! debug_val {

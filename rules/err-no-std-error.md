@@ -8,6 +8,7 @@ Since Rust 1.81, `core::error::Error` is stable, making well-typed errors possib
 
 ## Bad
 
+<!-- rust-check: ignore; reason=requires a no_std library target with panic strategy configured -->
 ```rust
 // Manual no_std error — verbose and error-prone
 #![no_std]

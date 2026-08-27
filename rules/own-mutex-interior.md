@@ -13,6 +13,7 @@ The lock choice depends on where the data is used:
 
 ## Bad
 
+<!-- rust-check: compile_fail; reason=RefCell is not Sync and cannot be shared between threads through Arc -->
 ```rust
 use std::cell::RefCell;
 use std::sync::Arc;

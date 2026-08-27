@@ -11,6 +11,7 @@ Logs and traces are routinely shipped to cloud aggregators (Datadog, Grafana Lok
 ```rust
 use tracing::instrument;
 
+#[derive(Debug)]
 struct Credentials {
     username: String,
     password: String,   // secret

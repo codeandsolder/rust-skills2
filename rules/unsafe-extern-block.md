@@ -10,6 +10,7 @@ Items remain unsafe by default. Marking an item `safe` is a much stronger promis
 
 ## Bad
 
+<!-- rust-check: compile_fail; reason=Edition 2024 requires extern blocks to be unsafe -->
 ```rust
 // Rust 2021 style — forbidden in the 2024 edition
 extern "C" {

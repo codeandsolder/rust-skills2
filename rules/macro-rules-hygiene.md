@@ -26,6 +26,7 @@ macro_rules! log {
 }
 ```
 
+<!-- rust-check: fragment; reason=macro anti-pattern references surrounding module names -->
 ```rust
 // consumer/src/main.rs
 use mylib::log;

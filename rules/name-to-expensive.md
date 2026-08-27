@@ -8,6 +8,7 @@ The `to_` prefix signals "this conversion has a cost"—typically allocation, cl
 
 ## Bad
 
+<!-- rust-check: fragment; reason=naming anti-pattern fragment omits surrounding type definitions -->
 ```rust
 impl Name {
     // Misleading: suggests expensive operation

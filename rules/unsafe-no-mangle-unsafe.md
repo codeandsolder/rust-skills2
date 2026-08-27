@@ -8,6 +8,7 @@
 
 ## Bad
 
+<!-- rust-check: compile_fail; reason=Edition 2024 requires unsafe attribute syntax for no_mangle -->
 ```rust
 // Rust 2021 — bare attributes accepted, no warning about linker UB
 #[no_mangle]

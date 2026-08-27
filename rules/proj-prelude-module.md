@@ -8,6 +8,7 @@ A `prelude` module collects the most commonly used types and traits for glob imp
 
 ## Bad
 
+<!-- rust-check: fragment; reason=project-layout anti-pattern references surrounding crate modules -->
 ```rust
 // Users must import everything individually
 use my_crate::Client;

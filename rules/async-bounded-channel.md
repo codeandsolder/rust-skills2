@@ -8,6 +8,7 @@ Unbounded channels grow without limit when producers outpace consumers. In produ
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding message handling context -->
 ```rust
 use tokio::sync::mpsc;
 

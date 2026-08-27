@@ -8,6 +8,7 @@ Function call overhead (stack frame setup, register saves, jumps) can dominate s
 
 ## Bad
 
+<!-- rust-check: fragment; reason=optimization anti-pattern uses surrounding helper functions -->
 ```rust
 // Small hot function without inline hint
 // May not be inlined across crate boundaries

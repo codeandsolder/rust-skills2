@@ -8,6 +8,7 @@
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding data collection context -->
 ```rust
 // Always heap-allocates, even for 1-2 elements
 fn get_path_components(path: &str) -> Vec<&str> {

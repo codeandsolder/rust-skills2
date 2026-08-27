@@ -8,6 +8,7 @@ Intuition about performance is often wrong. The code you think is slow frequentl
 
 ## Bad
 
+<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding workload functions -->
 ```rust
 // Optimizing without measuring
 fn process(data: &[Item]) -> Vec<Output> {

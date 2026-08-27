@@ -8,6 +8,7 @@
 
 ## Bad
 
+<!-- rust-check: fragment; reason=project-layout anti-pattern references surrounding crate modules -->
 ```rust
 // lib.rs - Deep module paths exposed
 pub mod error;

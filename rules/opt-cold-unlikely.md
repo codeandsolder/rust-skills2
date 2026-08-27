@@ -8,6 +8,7 @@ The `#[cold]` attribute tells the compiler that a function is rarely called. The
 
 ## Bad
 
+<!-- rust-check: fragment; reason=optimization anti-pattern uses surrounding request and error types -->
 ```rust
 // All branches treated equally
 fn validate(input: &str) -> Result<Data, ValidationError> {

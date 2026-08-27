@@ -16,12 +16,14 @@ pub enum ErrorKind {
     TimedOut,
 }
 
-// Downstream code
-match error.kind() {
-    ErrorKind::NotFound => ...,
-    ErrorKind::PermissionDenied => ...,
-    ErrorKind::TimedOut => ...,
-    // No wildcard - will break when you add ErrorKind::Interrupted
+// Downstream code can currently match exhaustively. Adding a variant later
+// would make this match non-exhaustive and break the downstream build.
+fn describe(kind: ErrorKind) -> &'static str {
+    match kind {
+        ErrorKind::NotFound => "not found",
+        ErrorKind::PermissionDenied => "permission denied",
+        ErrorKind::TimedOut => "timed out",
+    }
 }
 
 // Public struct - adding field breaks downstream construction

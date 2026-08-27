@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Extract Rust code blocks from ../rules/*.md into Cargo examples.
 
-Recommended examples are strict by default: blocks under a heading beginning
-with "Good" get expectation `compile`. Other legacy snippets retain the older
-heuristics unless they opt in to explicit metadata.
+Recommended and anti-pattern examples are strict by default: blocks under a
+heading beginning with "Good" or "Bad" get expectation `compile`. Other legacy
+snippets retain the older heuristics unless they opt in to explicit metadata.
 
 An example can override its expectation with an HTML comment immediately above
 the fence:
@@ -121,11 +121,11 @@ def resolve_expectation(lines, fence_index, fence_match, block, section, md_name
 
 
 def legacy_expectation(block, section):
-    """Preserve old auto-skips outside recommended/Good sections."""
+    """Keep legacy classification outside strict Good/Bad sections."""
     if section.strip().lower().startswith("good"):
         return "compile", "Good sections compile by default"
     if section.strip().lower().startswith("bad"):
-        return "ignore", "legacy Bad/anti-pattern section"
+        return "compile", "Bad sections compile by default"
     if "#![feature" in block:
         return "nightly", "legacy nightly feature gate"
     if "proc_macro" in block:
