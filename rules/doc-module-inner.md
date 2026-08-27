@@ -1,176 +1,185 @@
 # doc-module-inner
 
-> Use `//!` for module-level documentation
+> Use inner doc comments (`//!`) to document a crate or module as a whole
 
 ## Why It Matters
 
-Inner doc comments (`//!`) document the module itself, not the next item. They appear at the top of module files and describe the module's purpose, contents, and usage patterns. This helps users understand what a module provides before diving into individual items.
+An outer doc comment (`///`) documents the Rust item that follows it. An inner doc comment (`//!`) documents the item that contains it, so at a crate root it documents the crate and at the start of a module body/file it documents that module.
 
-Module docs are the first thing users see in `cargo doc` when navigating to a module.
+Module-level documentation is the right place to explain purpose, major concepts, cross-cutting invariants, feature-dependent surface, and a short entry-point example. Individual item docs can then focus on their own contracts.
 
-## Bad
+## Good: Document the Module Itself
 
 ```rust
-// This module handles authentication
-// It provides JWT and session-based auth
+pub mod auth {
+    //! Authentication helpers.
+    //!
+    //! Use [`Session`] to represent an authenticated session.
 
-mod auth;
+    /// Authenticated user session.
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct Session {
+        pub user_id: u64,
+    }
 
-pub use auth::*;
+    impl Session {
+        pub fn new(user_id: u64) -> Self {
+            Self { user_id }
+        }
+    }
+}
+
+fn main() {
+    assert_eq!(auth::Session::new(7).user_id, 7);
+}
 ```
 
-```rust
-// auth.rs
-/// Authentication utilities  // Wrong: this documents nothing useful
-use std::collections::HashMap;
+The `//!` text belongs to `auth`; the `///` text belongs to `Session`.
 
-pub struct Session { /* ... */ }
-```
+## Crate-Level Documentation
 
-## Good
+At the top of `lib.rs`, inner docs describe the crate root:
 
 ```rust
-//! Authentication and authorization utilities.
-//!
-//! This module provides multiple authentication strategies:
-//!
-//! - [`JwtAuth`] - JSON Web Token based authentication
-//! - [`SessionAuth`] - Cookie-based session authentication
-//! - [`ApiKeyAuth`] - API key authentication for services
+//! Utilities for working with small counters.
 //!
 //! # Examples
 //!
 //! ```
-//! use my_crate::auth::{JwtAuth, Authenticator};
-//!
-//! let auth = JwtAuth::new("secret-key");
-//! let token = auth.generate_token(&user)?;
+//! let value = 40 + 2;
+//! assert_eq!(value, 42);
 //! ```
-//!
-//! # Feature Flags
-//!
-//! - `jwt` - Enables JWT authentication (enabled by default)
-//! - `sessions` - Enables session-based authentication
 
-use std::collections::HashMap;
+/// Returns the library's example answer.
+pub fn answer() -> u32 {
+    42
+}
 
-pub struct Session { /* ... */ }
+fn main() {
+    assert_eq!(answer(), 42);
+}
 ```
 
-## Where to Use Inner Docs
+Crate docs should orient users to the public model rather than duplicate every item's generated listing.
 
-| Location | Purpose |
-|----------|---------|
-| `lib.rs` | Crate-level documentation (appears on crate root) |
-| `mod.rs` | Module documentation for directory modules |
-| `module.rs` | Module documentation for single-file modules |
+## Where Inner Docs Belong
 
-## Crate Root Example
+| Location | What `//!` documents |
+|---|---|
+| `lib.rs` | the library crate |
+| `main.rs` | the binary crate |
+| `mod.rs` | that directory module |
+| `module.rs` | that file's module |
+| inline `mod name { ... }` | the inline module |
 
+Keep inner doc comments with other inner attributes at the beginning of the containing item, before ordinary module items.
+
+## Large Crate Docs with `include_str!`
+
+A large README or guide can become crate-level documentation:
+
+<!-- rust-check: ignore; reason=requires repository README file at the documented path -->
 ```rust
-//! # My Awesome Crate
-//!
-//! `my_crate` provides utilities for handling complex workflows.
-//!
-//! ## Quick Start
-//!
-//! ```rust
-//! use my_crate::prelude::*;
-//!
-//! let workflow = Workflow::builder()
-//!     .add_step(Step::new("fetch"))
-//!     .add_step(Step::new("process"))
-//!     .build();
-//! ```
-//!
-//! ## Modules
-//!
-//! - [`workflow`] - Core workflow engine
-//! - [`steps`] - Built-in workflow steps
-//! - [`prelude`] - Common imports
-//!
-//! ## Feature Flags
-//!
-//! | Feature | Description |
-//! |---------|-------------|
-//! | `async` | Async workflow execution |
-//! | `serde` | Serialization support |
-
-pub mod workflow;
-pub mod steps;
-pub mod prelude;
-```
-
-## Crate Root with include_str
-
-For large crate-level docs, use `#[doc = include_str!("...")]` to embed
-a README or separate doc file as the crate root documentation:
-
-```rust
-//! # My Awesome Crate
-//!
 #![doc = include_str!("../README.md")]
+
+pub fn version() -> &'static str {
+    "1.0"
+}
 ```
 
-This keeps `lib.rs` clean while ensuring the README is also the crate
-documentation.
+Use this only when the README is intentionally suitable as API documentation. Marketing/project-installation text and API reference material do not always have the same audience.
 
-> **Caution (Edition 2024)**: When using nested `include_str!` inside
-> documentation produced by `include_str!`, paths resolve relative to the
-> outermost included file, not the Rust source. See
-> [doc-include-str](./doc-include-str.md) for details.
+For ordinary `include_str!`, the path is relative to the Rust source containing the macro. In Edition 2024, a nested `include!`, `include_str!`, or `include_bytes!` **inside a doctest from included Markdown** resolves relative to that Markdown file; see [doc-include-str](./doc-include-str.md).
 
-## Feature Flags Section
+## Document Stable Feature-Gated Surface Without Unstable `doc_cfg`
 
-When using `doc_cfg`, list feature flags at the module level and annotate
-items with `#[doc(cfg(feature = "..."))]`:
+Feature tables in prose are stable and useful regardless of rustdoc's annotation features:
 
 ```rust
-//! # Feature Flags
+//! Optional functionality.
 //!
-//! | Feature | Description | Default |
-//! |---------|-------------|---------|
-//! | `async` | Async workflow execution | yes |
-//! | `serde` | Serialization support | no |
+//! # Cargo features
+//!
+//! - `network` enables [`network`] support.
+
+#[cfg(feature = "network")]
+pub mod network {
+    pub fn enabled() -> bool {
+        true
+    }
+}
+
+fn main() {}
 ```
 
-Then in the same crate:
+The `#[cfg(feature = "network")]` attribute controls whether the module exists. Document the feature's meaning and defaults in module/crate prose so users can understand the API on stable Rust.
+
+## `#[doc(cfg(...))]` Is Still Unstable on Rust 1.98
+
+Do not teach this as an ordinary stable attribute:
+
+```text
+#![feature(doc_cfg)]
+
+#[doc(cfg(feature = "network"))]
+pub mod network;
+```
+
+`#[doc(cfg(...))]` remains behind the unstable `doc_cfg` feature on Rust 1.98. Passing `--cfg docsrs` (for example through docs.rs metadata) only defines a cfg value; it does **not** enable the unstable language/rustdoc feature by itself.
+
+Projects that intentionally build documentation with nightly may opt into `doc_cfg`/related rustdoc features, but stable library guidance should not depend on them unless the nightly documentation toolchain is an explicit project choice.
+
+## docs.rs Configuration Is Build Configuration
+
+`[package.metadata.docs.rs]` can request features, targets, and rustdoc arguments for docs.rs builds. For example, a crate may ask docs.rs to build all features. That controls the documentation build environment; it does not make unstable attributes stable.
+
+Keep these questions separate:
+
+- Which Cargo features should docs.rs enable?
+- Which `--cfg` values should rustdoc receive?
+- Is the project intentionally using a nightly-only rustdoc feature?
+
+## Lint for Missing Crate-Level Docs
+
+Rustdoc provides a lint for crates with no crate-level documentation:
 
 ```rust
-/// Process items asynchronously.
-#[doc(cfg(feature = "async"))]
-pub mod async_workflow;
+#![warn(rustdoc::missing_crate_level_docs)]
+
+//! This crate has crate-level documentation.
+
+pub fn public_api() {}
+
+fn main() {}
 ```
 
-Enable this with `docsrs` cfg in your `Cargo.toml`:
+This is useful as a minimum documentation-policy check. It does not judge whether the crate docs are useful or complete.
 
-```toml
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
-```
+## What Good Module Docs Usually Cover
 
-## Lints
+Depending on complexity, module docs can include:
 
-Enable `missing_crate_level_docs` to warn when the crate root (`lib.rs`)
-lacks documentation:
+- a one-sentence purpose;
+- the main entry-point types/functions;
+- important relationships or invariants;
+- one representative usage example;
+- Cargo feature/platform constraints;
+- links to neighboring modules or concepts.
 
-```rust
-#![warn(missing_crate_level_docs)]
-```
+Do not force every module into a fixed template. Small modules need less prose than architectural subsystems.
 
-## Key Sections for Module Docs
+## Practical Guidance
 
-1. **Brief description** - One-line summary
-2. **Overview** - What the module provides
-3. **Examples** - How to use it
-4. **Feature flags** - Optional functionality and doc_cfg integration
-5. **See Also** - Related modules
+- Use `//!` for the containing crate/module and `///` for the following item.
+- Put cross-cutting context at module level instead of repeating it on every item.
+- Treat README inclusion as a content-design decision, not a default.
+- Document Cargo feature behavior on stable Rust even when you cannot use unstable `#[doc(cfg)]` annotations.
+- Do not claim `--cfg docsrs` enables `doc_cfg`.
 
 ## See Also
 
 - [doc-all-public](./doc-all-public.md) - Documenting public items
 - [doc-examples-section](./doc-examples-section.md) - Adding examples
 - [doc-cargo-metadata](./doc-cargo-metadata.md) - Crate metadata
-- [doc-include-str](./doc-include-str.md) - README as crate root docs
-- [doc-cfg-patterns](./doc-cfg-patterns.md) - Feature/platform doc annotations
+- [doc-include-str](./doc-include-str.md) - README/external Markdown docs
+- [doc-cfg-patterns](./doc-cfg-patterns.md) - Feature/platform documentation patterns
