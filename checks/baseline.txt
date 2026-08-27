@@ -95,16 +95,7 @@ opt-target-cpu.md :: Feature Detection at Runtime :: block 1 :: E0308
 own-clone-explicit.md :: When to Avoid Clone :: block 6 :: E0428
 own-cow-conditional.md :: Edition 2024 RPIT Makes `Cow<'_, str>` Returns More Ergonomic :: block 7 :: E0428
 own-cow-rpit-edition2024.md :: Eliminates Clone-for-Lifetime Workarounds :: block 3 :: E0428
-own-lifetime-elision.md :: After (Edition 2024): Automatic lifetime capture :: block 9 :: E0107
-own-lifetime-elision.md :: Before (Edition 2021): Explicit lifetime annotations required :: block 8 :: E0107
-own-lifetime-elision.md :: Common Patterns :: block 15 :: P:expected one of `!`, `(`,
-own-lifetime-elision.md :: Common Patterns Transformed by RPIT Capture :: block 11 :: E0428
-own-lifetime-elision.md :: Impact: Eliminates Clone-for-Lifetime Workarounds :: block 10 :: E0592
-own-lifetime-elision.md :: Lifetime Normalization for Closures (1.94) :: block 13 :: P:lifetime may not live long
-own-lifetime-elision.md :: The Three Elision Rules :: block 3 :: P:expected one of `->`, `where`,
-own-lifetime-elision.md :: The Three Elision Rules :: block 4 :: P:expected one of `!`, `(`,
-own-lifetime-elision.md :: The Three Elision Rules :: block 5 :: P:expected one of `!`, `(`,
-own-lifetime-elision.md :: `'_` in `impl Trait` Positions (Edition 2024) :: block 14 :: E0404,E0428
+own-lifetime-elision.md :: Precise Capture with `use<...>` :: block 7 :: E0277,E0369
 perf-chain-avoid.md :: When Chain Is Fine :: block 4 :: E0106
 perf-collect-once.md :: Anti-Pattern: HashMap::values().collect() Then Iterate :: block 5 :: E0428
 perf-iter-over-index.md :: Fixed-Size Windows with array_windows (Rust 1.94+) :: block 3 :: E0428

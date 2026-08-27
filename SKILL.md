@@ -85,7 +85,7 @@ Reference these guidelines when:
 - [`own-copy-small`](rules/own-copy-small.md) - Implement `Copy` for small, simple types
 - [`own-clone-explicit`](rules/own-clone-explicit.md) - Use explicit `Clone` for types where copying has meaningful cost
 - [`own-move-large`](rules/own-move-large.md) - Borrow large values when ownership transfer is unnecessary; use indirection when it solves a real layout, location, or ownership problem—not from a fixed byte threshold
-- [`own-lifetime-elision`](rules/own-lifetime-elision.md) - Rely on lifetime elision rules; add explicit lifetimes only when required
+- [`own-lifetime-elision`](rules/own-lifetime-elision.md) - Rely on ordinary lifetime elision where it applies; treat Edition-2024 RPIT capture as a separate rule
 - [`own-cell-update`](rules/own-cell-update.md) - Use `Cell::update` (Rust 1.88+) for concise single-threaded read-transform-write updates on `Copy` values
 - [`own-cow-rpit-edition2024`](rules/own-cow-rpit-edition2024.md) - Edition 2024 RPIT lifetime capture makes `Cow<'_, T>` returns from methods borrowing `&self` dramatically more ergonomic
 - [`own-range-copy`](rules/own-range-copy.md) - Use `core::range::Range` (Rust 1.96+) when `Copy` range values are useful; keep `core::ops::Range` for legacy iterator and API interoperability
