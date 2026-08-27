@@ -323,8 +323,8 @@ Reference these guidelines when:
 - [`name-consts-screaming`](rules/name-consts-screaming.md) - Use `SCREAMING_SNAKE_CASE` for constants and statics
 - [`name-lifetime-short`](rules/name-lifetime-short.md) - Keep lifetime parameter names short and lowercase; use `'a` by default and descriptive names such as `'src` when they add real meaning
 - [`name-type-param-single`](rules/name-type-param-single.md) - Use concise `UpperCamelCase` type-parameter names—often `T`, `E`, `K`, `V`, but descriptive names are appropriate when they improve clarity
-- [`name-as-free`](rules/name-as-free.md) - `as_` prefix: free reference conversion
-- [`name-to-expensive`](rules/name-to-expensive.md) - Use `to_` prefix for expensive conversions that allocate or compute
+- [`name-as-free`](rules/name-as-free.md) - Use `as_` for free borrowed conversions
+- [`name-to-expensive`](rules/name-to-expensive.md) - Use `to_` for ad-hoc conversions that do nontrivial work without consuming a non-Copy receiver
 - [`name-into-ownership`](rules/name-into-ownership.md) - Use `into_` for ad-hoc conversions that consume an owned value and produce another owned representation
 - [`name-no-get-prefix`](rules/name-no-get-prefix.md) - Omit `get_` for ordinary named getters; reserve `get` for APIs where “get the one obvious value” or validated/indexed access is the established operation
 - [`name-is-has-bool`](rules/name-is-has-bool.md) - Name boolean methods as clear predicates; use `is_`, `has_`, `can_`, and similar prefixes when they match the question being answered
