@@ -89,7 +89,7 @@ Reference these guidelines when:
 - [`own-cell-update`](rules/own-cell-update.md) - Use `Cell::update` (Rust 1.88+) for concise single-threaded read-transform-write updates on `Copy` values
 - [`own-cow-rpit-edition2024`](rules/own-cow-rpit-edition2024.md) - Edition 2024 RPIT lifetime capture makes `Cow<'_, T>` returns from methods borrowing `&self` dramatically more ergonomic
 - [`own-range-copy`](rules/own-range-copy.md) - Use `core::range::Range` (Rust 1.96+) when `Copy` range values are useful; keep `core::ops::Range` for legacy iterator and API interoperability
-- [`own-lazy-init`](rules/own-lazy-init.md) - Use `std::sync::LazyLock` / `std::cell::LazyCell` for lazily initialized shared data
+- [`own-lazy-init`](rules/own-lazy-init.md) - Use `LazyLock` for thread-safe lazy statics and `LazyCell` for local or thread-local lazy values; use `OnceLock`/`OnceCell` when initialization is imperative rather than tied to one initializer
 
 ### 2. Error Handling (CRITICAL)
 
@@ -158,7 +158,7 @@ Reference these guidelines when:
 - [`api-parse-dont-validate`](rules/api-parse-dont-validate.md) - Parse weakly typed input into invariant-bearing domain types at system boundaries instead of repeatedly validating primitives downstream
 - [`api-impl-into`](rules/api-impl-into.md) - Accept `impl Into<T>` for flexible APIs, implement `From<T>` for conversions
 - [`api-impl-asref`](rules/api-impl-asref.md) - Use `AsRef<T>` when you only need to borrow the inner data
-- [`api-must-use`](rules/api-must-use.md) - Mark types and functions with `#[must_use]` when ignoring results is likely a bug
+- [`api-must-use`](rules/api-must-use.md) - Add `#[must_use]` when silently discarding a value is plausibly a bug; rely on the built-in `unused_must_use` semantics instead of treating every return value alike
 - [`api-non-exhaustive`](rules/api-non-exhaustive.md) - Use `#[non_exhaustive]` on public enums and structs for forward compatibility
 - [`api-from-not-into`](rules/api-from-not-into.md) - Implement `From<T>`, not `Into<U>` - From gives you Into for free
 - [`api-default-impl`](rules/api-default-impl.md) - Implement `Default` for types with sensible default values
@@ -236,7 +236,7 @@ Reference these guidelines when:
 - [`type-phantom-marker`](rules/type-phantom-marker.md) - Use `PhantomData` for zero-cost type markers
 - [`type-never-diverge`](rules/type-never-diverge.md) - Use the never type `!` for functions that never return
 - [`type-generic-bounds`](rules/type-generic-bounds.md) - Put each trait bound on the API surface that actually requires it
-- [`type-no-stringly`](rules/type-no-stringly.md) - Avoid stringly-typed APIs
+- [`type-no-stringly`](rules/type-no-stringly.md) - Replace durable stringly-typed states and identifiers with enums or domain types, while keeping text parsing at system boundaries
 - [`type-repr-transparent`](rules/type-repr-transparent.md) - Use `#[repr(transparent)]` when a wrapper intentionally needs the wrapped field's layout and ABI
 - [`type-deref-coercion`](rules/type-deref-coercion.md) - Implement `Deref`/`DerefMut` only for smart-pointer and transparent wrapper types
 - [`type-display-vs-debug`](rules/type-display-vs-debug.md) - Use `Display` for user-facing output and `Debug` for diagnostics; never swap them
@@ -392,10 +392,10 @@ Reference these guidelines when:
 ### 23. Performance Patterns (MEDIUM)
 
 - [`perf-iter-over-index`](rules/perf-iter-over-index.md) - Prefer iterators over manual indexing
-- [`perf-iter-lazy`](rules/perf-iter-lazy.md) - Keep iterators lazy, collect only when needed
+- [`perf-iter-lazy`](rules/perf-iter-lazy.md) - Keep iterator pipelines lazy when streaming or short-circuiting is useful; collect only when ownership, reuse, sorting, indexing, or another concrete requirement needs a collection
 - [`perf-collect-once`](rules/perf-collect-once.md) - Don't collect intermediate iterators
 - [`perf-entry-api`](rules/perf-entry-api.md) - Use entry API for map insert-or-update
-- [`perf-drain-reuse`](rules/perf-drain-reuse.md) - Use drain and extract_if to reuse allocations
+- [`perf-drain-reuse`](rules/perf-drain-reuse.md) - Use `drain` or `extract_if` when you need to remove owned elements while retaining the source collection's allocation; do not introduce an intermediate collection unless ownership requires one
 - [`perf-extend-batch`](rules/perf-extend-batch.md) - Use `extend`, `extend_from_slice`, or `append` when adding a batch expresses the ownership you want; reserve explicitly when the final size is cheaply known
 - [`perf-chain-avoid`](rules/perf-chain-avoid.md) - Avoid chain in hot loops
 - [`perf-collect-into`](rules/perf-collect-into.md) - Reuse an existing destination with `clear()` + `extend()` on stable Rust; nightly `Iterator::collect_into` appends like `Extend::extend` and does not clear for you
