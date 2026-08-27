@@ -14,14 +14,7 @@ anti-over-abstraction.md :: Special Case: Deref Overuse :: block 5 :: E0308
 anti-type-erasure.md :: impl Trait Positions :: block 4 :: E0107
 anti-unsafe-send-sync.md :: Pattern: Use Existing Safe Types :: block 6 :: E0428
 anti-vec-for-slice.md :: Mutable Slices :: block 4 :: E0428
-doc-examples-section.md :: Shared Examples with include_str :: block 8 :: P:couldn't read `examples/../examples/basic_usage.md`: no such
-doc-hidden-public.md :: What NOT to Hide :: block 3 :: E0428
-doc-hidden-setup.md :: Shared Setup with include_str :: block 9 :: P:expected statement after outer attribute
-doc-include-str.md :: Long Documentation Files :: block 6 :: P:couldn't read `examples/../docs/migrations.md`: no such
-doc-include-str.md :: Shared Examples Across Items :: block 4 :: P:couldn't read `examples/../examples/client_basic.md`: no such
-doc-intra-links.md :: Linking to Trait Items :: block 4 :: E0046
-doc-link-types.md :: Linking to Trait Items :: block 5 :: E0046
-doc-module-inner.md :: Feature Flags Section :: block 7 :: E0658
+doc-include-str.md :: Edition 2024: Nested Includes Inside Included Markdown Doctests :: block 5 :: P:couldn't read `examples/fixture.txt`: no such
 err-anyhow-app.md :: Main Function Pattern :: block 4 :: E0428
 err-context-chain.md :: Building Context Chains :: block 4 :: E0107
 err-expect-bugs-only.md :: expect() Message Guidelines :: block 3 :: P:expected expression, found `.`
