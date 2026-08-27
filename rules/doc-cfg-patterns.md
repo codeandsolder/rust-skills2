@@ -1,144 +1,165 @@
 # doc-cfg-patterns
 
-> Use `#[doc(cfg(...))]` to annotate platform/feature-gated items
+> Use real `#[cfg(...)]` attributes for availability; on docs.rs, optionally add `doc(cfg)` badges behind `cfg(docsrs)` because `doc_cfg` is still unstable on stable Rust
 
 ## Why It Matters
 
-When an item is gated behind a feature flag or platform target, users need to know why it's not available. `#[doc(cfg(...))]` renders a prominent badge ("Available on crate feature `foo` only" / "Available on Unix only") in the generated docs, helping users understand compile-time requirements without trial and error.
+Conditionally compiled APIs need two separate things:
 
-## Bad
+1. a real `#[cfg(...)]` that controls whether the item exists; and
+2. documentation that tells readers which feature or target makes it available.
+
+`#[doc(cfg(...))]` provides a useful availability badge in rustdoc, but on stable Rust it is still part of the unstable `doc_cfg` feature. docs.rs builds crates with a nightly compiler and exposes the `docsrs` cfg, so a common pattern is to enable `doc_cfg` only there and gate the annotation with `cfg_attr`.
+
+Do not use `doc(cfg)` as though it were the availability gate itself: it documents a condition, but `#[cfg(...)]` is what actually includes or excludes the item.
+
+## Bad: Documentation Attribute Without the Real Gate
 
 ```rust
-// Users see the module but not what gates it
-#[cfg(feature = "cuda")]
-pub mod cuda_accel;
+// BAD: this would only describe a condition; it would not make the module
+// feature-gated even on a compiler where doc(cfg) is enabled.
+#[cfg_attr(docsrs, doc(cfg(feature = "cuda")))]
+pub mod cuda_accel {}
 ```
 
-## Good
+## Good: Pair the Real Gate With a docs.rs Badge
 
 ```rust
 /// CUDA-accelerated tensor operations.
-#[doc(cfg(feature = "cuda"))]
-pub mod cuda_accel;
+#[cfg(feature = "cuda")]
+#[cfg_attr(docsrs, doc(cfg(feature = "cuda")))]
+pub mod cuda_accel {}
 
-/// Unix-specific file system utilities.
-#[doc(cfg(target_os = "linux"))]
-pub mod linux_fs;
+/// Linux-specific filesystem utilities.
+#[cfg(target_os = "linux")]
+#[cfg_attr(docsrs, doc(cfg(target_os = "linux")))]
+pub mod linux_fs {}
+
+fn main() {}
 ```
 
-Users see a badge: **Available on crate feature `cuda` only**.
+On an ordinary stable build where `docsrs` is not set, the unstable documentation attribute is not emitted. On docs.rs, the annotation can render an availability badge while the actual `cfg` still controls the API.
 
-## Setup
+## Crate-Root Setup for docs.rs
 
-Enable `doc_cfg` annotations on docs.rs by configuring `Cargo.toml`:
+Because `doc_cfg` remains unstable, enable it only for the docs.rs build:
 
-```toml
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
-```
-
-Then in your crate root, enable the nightly `doc_cfg` feature on docs.rs:
-
+<!-- rust-check: fragment; reason=crate-root inner attribute intended for a docs.rs nightly rustdoc build -->
 ```rust
 #![cfg_attr(docsrs, feature(doc_cfg))]
 ```
 
-And guard annotations with `#[cfg_attr(docsrs, doc(cfg(...)))]`:
+docs.rs currently builds documentation with nightly Rust and sets `cfg(docsrs)` for the final rustdoc invocation. You therefore do not need to invent a different feature flag just for this purpose.
 
-```rust
-/// Async HTTP client.
-#[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-pub mod async_client;
+If the items you want to document are behind Cargo features, configure docs.rs to build the relevant features. For a crate where every public feature is safe to combine, that can be:
+
+```toml
+[package.metadata.docs.rs]
+all-features = true
 ```
 
-### Using `#[doc(cfg(...))]` Directly
+For crates with mutually exclusive, internal, or otherwise unsuitable features, list only the documentation feature set you actually want instead of blindly enabling everything.
 
-When `doc_cfg` is fully stabilized (nightly tracking, PR #150055),
-you can write `#[doc(cfg(feature = "..."))]` directly without
-`cfg_attr` wrapping:
+## Declare the Custom `docsrs` cfg for `unexpected_cfgs`
 
-```rust
-#[doc(cfg(feature = "cuda"))]
-pub mod cuda_accel;
+Modern Cargo/rustc can warn about unknown custom cfg names. If your lint configuration checks cfg names, declare `docsrs` explicitly:
+
+```toml
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(docsrs)'] }
 ```
 
-## Common Patterns
+This is separate from enabling the cfg. docs.rs supplies `docsrs`; the lint declaration simply tells rustc that the name is intentional.
 
-### Feature-Gated Modules
+## Feature-Gated Modules
 
 ```rust
+#[cfg(feature = "cuda")]
 #[cfg_attr(docsrs, doc(cfg(feature = "cuda")))]
 pub mod cuda_accel {
-    // ...
+    pub fn device_count() -> usize {
+        1
+    }
 }
+
+fn main() {}
 ```
 
-### Platform-Specific Items
+If docs.rs should show this module, make sure the `cuda` feature is enabled in the docs.rs build metadata.
+
+## Platform-Specific Items
 
 ```rust
+#[cfg(windows)]
 #[cfg_attr(docsrs, doc(cfg(windows)))]
-pub fn windows_only_hook() { /* ... */ }
+pub fn windows_only_hook() {}
 
+#[cfg(target_os = "linux")]
 #[cfg_attr(docsrs, doc(cfg(target_os = "linux")))]
-pub fn inotify_watch() { /* ... */ }
+pub fn inotify_watch() {}
+
+fn main() {}
 ```
 
-### Enum Variants Behind a Feature
+A docs build for one target cannot automatically document an item that was completely cfg'd out for that target unless the build configuration also arranges for the item to exist. `doc(cfg)` only labels an item that rustdoc is actually documenting.
+
+## Enum Variants Behind Features
 
 ```rust
 #[non_exhaustive]
 pub enum Backend {
-    /// CPU-based computation (always available).
     Cpu,
-    /// CUDA GPU acceleration.
+
+    #[cfg(feature = "cuda")]
     #[cfg_attr(docsrs, doc(cfg(feature = "cuda")))]
     Cuda,
-    /// Apple Metal acceleration.
+
+    #[cfg(feature = "metal")]
     #[cfg_attr(docsrs, doc(cfg(feature = "metal")))]
     Metal,
 }
-```
 
-### Methods on a Feature-Gated Impl Block
-
-```rust
-impl Tensor {
-    /// Creates a tensor on the GPU device.
-    #[cfg_attr(docsrs, doc(cfg(feature = "cuda")))]
-    pub fn to_cuda(&self) -> CudaTensor { /* ... */ }
+fn main() {
+    let _ = Backend::Cpu;
 }
 ```
 
-## Anti-Pattern: Over-Tagging
+The same pairing applies to methods, trait impls, modules, variants, and other conditionally compiled public items.
 
-Don't annotate internal trivial gates or every single item:
+## Direct `#[doc(cfg(...))]` Is Still Unstable on Stable Rust 1.98
 
-```rust
-// Bad: overly verbose, adds visual noise
-#[doc(cfg(feature = "serde"))]
-impl Serialize for MyType {}
+Do not write a rule that presents this as stable today:
 
-#[doc(cfg(feature = "serde"))]
-impl Deserialize for MyType {}
+```rust,ignore
+#![feature(doc_cfg)]
 
-// Good: tag only the module or feature entry-point
-#[doc(cfg(feature = "serde"))]
-pub mod serde_impls;
+#[doc(cfg(feature = "cuda"))]
+pub mod cuda_accel {}
 ```
 
-## Lints
+That form is appropriate only in a nightly build with the feature enabled. The stable-compatible source pattern is to hide both the feature gate and the `doc(cfg)` attribute behind `cfg(docsrs)`.
 
-There is no built-in lint for missing `doc(cfg)` annotations yet. Review
-feature-gated items manually or with a custom CI check:
+## Avoid Over-Tagging
 
-```bash
-# Search for items gated behind #[cfg] without matching doc(cfg)
-grep -rn '#\[cfg' src/ | grep -v 'doc(cfg)' | grep -v 'test'
-```
+If an entire public module is already clearly feature-gated, repeating the same badge on every private helper or every implementation detail adds noise. Put availability documentation at the public boundary readers actually need.
+
+Conversely, do not omit a badge merely because the source has a `cfg`: users browsing generated docs should not have to inspect source code to learn why an API is unavailable.
+
+## CI for Documentation Builds
+
+Once a crate relies on docs.rs-specific configuration, test that path deliberately. At minimum, make sure ordinary stable `cargo check` / `cargo doc` still work with `docsrs` unset. For projects that depend heavily on docs.rs behavior, add a nightly documentation job that enables `cfg(docsrs)` and the same feature set used by docs.rs.
+
+Do not make every normal stable build enable `doc_cfg`; keeping the unstable feature isolated to documentation builds reduces toolchain coupling.
 
 ## See Also
 
-- [doc-cargo-metadata](./doc-cargo-metadata.md) - docs.rs metadata setup
-- [doc-module-inner](./doc-module-inner.md) - Feature flags in module docs
-- [doc-include-str](./doc-include-str.md) - Conditional doc includes with cfg_attr
+- [doc-cargo-metadata](./doc-cargo-metadata.md) — docs.rs metadata setup
+- [doc-module-inner](./doc-module-inner.md) — module-level documentation
+- [doc-include-str](./doc-include-str.md) — conditional documentation includes
+
+## References
+
+- [Rustdoc unstable features: `doc(cfg)`](https://doc.rust-lang.org/rustdoc/unstable-features.html#doccfg-and-docauto_cfg)
+- [Rust Unstable Book: `doc_cfg`](https://doc.rust-lang.org/beta/unstable-book/language-features/doc-cfg.html)
+- [docs.rs build environment](https://docs.rs/about/builds)
+- [docs.rs metadata](https://docs.rs/about/metadata)
