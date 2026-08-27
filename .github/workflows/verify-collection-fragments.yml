@@ -1,0 +1,32 @@
+name: Verify collection fragment contracts
+
+on:
+  push:
+    branches: [fix/collection-fragment-contracts]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - name: Run complete verifier
+        run: bash checks/check.sh
+      - name: Show contract counts
+        run: |
+          cd checks
+          python3 gen.py
+          python3 - <<'PY'
+          import json
+          from collections import Counter
+          c = Counter(x['expect'] for x in json.load(open('manifest.json')).values())
+          print(' '.join(f'{k}={c[k]}' for k in sorted(c)))
+          PY
