@@ -1,248 +1,221 @@
 # own-lifetime-elision
 
-> Rely on lifetime elision rules; add explicit lifetimes only when required
+> Rely on ordinary lifetime elision where it applies; treat Edition-2024 RPIT capture as a separate rule
 
 ## Why It Matters
 
-Rust's lifetime elision rules handle most common borrowing patterns automatically. Adding explicit lifetimes where they're not needed clutters code without adding clarity. However, understanding when elision applies helps you know when explicit lifetimes are truly necessary.
+Rust has several different mechanisms that can make lifetimes disappear from source code. Two of the most commonly confused are:
 
-**Edition 2024's RPIT lifetime capture is the single biggest improvement to Rust's lifetime ergonomics since NLL (Non-Lexical Lifetimes).** Many functions that previously required explicit lifetime annotations or clone-for-lifetime workarounds now compile automatically.
+- **lifetime elision in reference types**, which assigns omitted lifetimes in function and method signatures; and
+- **generic capture by return-position `impl Trait` (RPIT)**, which controls which in-scope generic parameters the hidden return type may use.
 
-## Bad
+Edition 2024 changed RPIT capture. It did **not** replace the ordinary reference-elision rules, and it does not turn borrowed values into `'static` data.
+
+## Good: Let Ordinary Elision Handle Simple Borrows
 
 ```rust
-// Unnecessary explicit lifetimes - elision handles these
-fn first_word<'a>(s: &'a str) -> &'a str {
-    s.split_whitespace().next().unwrap_or("")
+fn first_word(input: &str) -> &str {
+    input.split_whitespace().next().unwrap_or("")
 }
 
-fn get_name<'a>(person: &'a Person) -> &'a str {
-    &person.name
+fn first<T>(values: &[T]) -> Option<&T> {
+    values.first()
 }
 
-impl<'a> Display for Wrapper<'a> {
-    fn fmt<'b>(&'b self, f: &'b mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
+fn main() {
+    assert_eq!(first_word("hello world"), "hello");
+    assert_eq!(first(&[10, 20, 30]), Some(&10));
 }
 ```
 
-## Good
+Writing explicit names such as `fn first_word<'a>(input: &'a str) -> &'a str` is correct but adds no information here.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## The Function Elision Rules
+
+For ordinary function and method signatures, the important rules are:
+
+1. Every elided lifetime in an input position becomes a distinct lifetime parameter.
+2. If exactly one lifetime appears among the inputs, that lifetime is assigned to all elided output lifetimes.
+3. For methods, if the receiver is `&Self` or `&mut Self`, the receiver's lifetime is assigned to elided output lifetimes.
+
+That means this works without naming a lifetime:
+
 ```rust
-// Let elision do its job
-fn first_word(s: &str) -> &str {
-    s.split_whitespace().next().unwrap_or("")
+struct Person {
+    name: String,
 }
 
-fn get_name(person: &Person) -> &str {
-    &person.name
-}
-
-impl Display for Wrapper<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+impl Person {
+    fn name(&self) -> &str {
+        &self.name
     }
+}
+
+fn main() {
+    let person = Person { name: "Ada".into() };
+    assert_eq!(person.name(), "Ada");
 }
 ```
 
-## The Three Elision Rules
-
-1. **Each input reference gets its own lifetime:**
-   ```rust
-   fn foo(x: &str, y: &str) 
-   // becomes
-   fn foo<'a, 'b>(x: &'a str, y: &'b str)
-   ```
-
-2. **One input reference → output gets same lifetime:**
-   ```rust
-   fn foo(x: &str) -> &str
-   // becomes  
-   fn foo<'a>(x: &'a str) -> &'a str
-   ```
-
-3. **Method with `&self`/`&mut self` → output gets self's lifetime:**
-   ```rust
-   fn foo(&self, x: &str) -> &str
-   // becomes
-   fn foo<'a, 'b>(&'a self, x: &'b str) -> &'a str
-   ```
-
-## When Explicit Lifetimes ARE Required
+But two unrelated borrowed inputs do not tell the compiler which lifetime an output should use:
 
 ```rust
-// Multiple input references, output could come from either
-fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
-    if x.len() > y.len() { x } else { y }
+fn longest<'a>(left: &'a str, right: &'a str) -> &'a str {
+    if left.len() >= right.len() { left } else { right }
 }
 
-// Struct holding references
+fn main() {
+    assert_eq!(longest("long", "x"), "long");
+}
+```
+
+The explicit `'a` states the relationship: whichever input is returned, both inputs must be usable for the output lifetime.
+
+## Reference-Holding Types Still Need Lifetime Parameters
+
+Elision in function signatures does not remove lifetime parameters from types that store references.
+
+```rust
 struct Parser<'input> {
     source: &'input str,
     position: usize,
 }
 
-// Multiple distinct lifetimes needed
-struct Context<'s, 'c> {
-    source: &'s str,
-    cache: &'c mut Cache,
-}
-
-// Static lifetime for constants
-fn get_default() -> &'static str {
-    "default"
-}
-```
-
-## Anonymous Lifetime `'_`
-
-Use `'_` to let the compiler infer while being explicit about the presence of a lifetime:
-
-```rust
-// In struct definitions
-impl Iterator for Parser<'_> {
-    type Item = Token;
-    fn next(&mut self) -> Option<Self::Item> { ... }
-}
-
-// In function signatures where it adds clarity
-fn parse(input: &str) -> Result<Ast<'_>, Error> { ... }
-
-// Especially useful in trait bounds
-fn process(data: &impl AsRef<str>) -> Cow<'_, str> { ... }
-```
-
-## Edition 2024 RPIT Lifetime Capture
-
-In Edition 2024, return-position `impl Trait` (RPIT) automatically captures all in-scope lifetimes. This is transformative for functions that return types containing borrowed data.
-
-### Before (Edition 2021): Explicit lifetime annotations required
-
-```rust
-// Must add '_ lifetime to connect return to &self
-fn iter(&self) -> impl Iterator<Item = &str> + '_ {
-    self.items.iter().map(|s| s.as_str())
-}
-
-// Must use 'static bound or clone when lifetimes can't be named
-fn get_connection(&self) -> impl Future<Output = Result<()>> + 'static {
-    let config = self.config.clone(); // Clone to escape &self lifetime
-    async move { connect(config).await }
-}
-```
-
-### After (Edition 2024): Automatic lifetime capture
-
-```rust
-// Lifetimes are automatically captured from &self
-fn iter(&self) -> impl Iterator<Item = &str> {
-    self.items.iter().map(|s| s.as_str())
-}
-
-// No need for 'static + clone workaround
-async fn get_connection(&self) -> Result<()> {
-    connect(&self.config).await  // &self lifetime auto-captured
-}
-```
-
-### Impact: Eliminates Clone-for-Lifetime Workarounds
-
-The biggest practical impact is eliminating `clone()` calls that existed solely to satisfy lifetime bounds:
-
-```rust
-// Edition 2021: must clone to satisfy 'static bound
-struct Processor {
-    name: String,
-}
-
-impl Processor {
-    fn process(&self) -> impl Future<Output = ()> + 'static {
-        let name = self.name.clone(); // Clone just for lifetime
-        async move { println!("{}", name) }
+impl Parser<'_> {
+    fn remaining(&self) -> &str {
+        &self.source[self.position..]
     }
 }
 
-// Edition 2024: borrow naturally, no clone needed
-impl Processor {
-    async fn process(&self) {
-        println!("{}", self.name) // Borrows &self — no clone
-    }
+fn main() {
+    let parser = Parser { source: "abcdef", position: 2 };
+    assert_eq!(parser.remaining(), "cdef");
 }
 ```
 
-See [own-cow-rpit-edition2024](own-cow-rpit-edition2024.md) for how this interacts with `Cow<'_, T>` return types.
+`'_` is useful when a lifetime parameter exists but naming it would add no value in that particular type use.
 
-### Common Patterns Transformed by RPIT Capture
+## Edition 2024 RPIT Capture Is Different
 
-```rust
-// Edition 2021: explicit lifetime
-fn filter(&self, pred: impl Fn(&str) -> bool) -> impl Iterator<Item = &str> + '_ { ... }
+An RPIT such as `-> impl Iterator<...>` has a hidden concrete return type. That hidden type may need to mention generic parameters from the surrounding function.
 
-// Edition 2024: automatic
-fn filter(&self, pred: impl Fn(&str) -> bool) -> impl Iterator<Item = &str> { ... }
-```
-
-## Recent Additions
-
-### `mismatched_lifetime_syntaxes` Lint (1.89)
-
-This lint detects confusing lifetime syntax usage:
+In Edition 2024, RPIT automatically captures all in-scope type, const, and lifetime parameters unless a precise-capture `use<...>` bound says otherwise.
 
 ```rust
-// Lint warns: inconsistent use of 'a and '_ in similar positions
-fn foo<'a>(x: &'a str) -> &'_ str { x }
-// Warning: mismatched_lifetime_syntaxes — mixing explicit and anonymous
-```
+fn words(input: &str) -> impl Iterator<Item = &str> {
+    input.split_whitespace()
+}
 
-Resolution: be consistent within a signature.
-
-### Lifetime Normalization for Closures (1.94)
-
-Closure lifetime inference is more precise in Rust 1.94+:
-
-```rust
-// Before 1.94: complex closure signatures needed explicit annotations
-let result: &str;
-let process = |s: &str| -> &str { s.trim() };
-result = process("  hello  "); // OK
-
-// 1.94+: closure lifetime normalization handles more patterns
-let transform = |x: &i32| -> &i32 { x };
-let value = 42;
-let r = transform(&value); // Works seamlessly
-```
-
-### `'_` in `impl Trait` Positions (Edition 2024)
-
-```rust
-// Edition 2024: '_ can be used in impl Trait position
-fn make_debug(&self) -> impl Debug + '_ { ... }
-// Equivalent to omitting '_ in Edition 2024 (auto-captured)
-fn make_debug(&self) -> impl Debug { ... }
-```
-
-## Common Patterns
-
-```rust
-// ✅ Elision works
-fn trim(s: &str) -> &str { s.trim() }
-fn first(v: &[i32]) -> Option<&i32> { v.first() }
-fn name(&self) -> &str { &self.name }
-
-// ❌ Elision fails - multiple inputs, ambiguous output
-fn pick(a: &str, b: &str, first: bool) -> &str // Error!
-
-// ✅ Fixed with explicit lifetime
-fn pick<'a>(a: &'a str, b: &'a str, first: bool) -> &'a str {
-    if first { a } else { b }
+fn main() {
+    let text = String::from("one two");
+    let mut words = words(&text);
+    assert_eq!(words.next(), Some("one"));
+    assert_eq!(words.next(), Some("two"));
 }
 ```
+
+The returned iterator borrows `input`. Edition 2024 lets the opaque return type capture that lifetime without an explicit `+ '_` bound.
+
+Pre-2024 editions had narrower automatic lifetime capture for free functions and inherent methods. Code written for an older edition may therefore contain `+ '_`, named lifetime bounds, or precise-capture syntax that is redundant after migrating to Edition 2024.
+
+## Automatic Capture Does Not Satisfy `'static`
+
+RPIT capture allows a hidden type to borrow an input. It does not make that borrow live forever.
+
+```rust
+fn borrowed_len(text: &str) -> impl Fn() -> usize + '_ {
+    move || text.len()
+}
+
+fn main() {
+    let text = String::from("hello");
+    let len = borrowed_len(&text);
+    assert_eq!(len(), 5);
+}
+```
+
+If an API genuinely requires a `'static` value—for example because work may outlive the current borrow—you still need ownership or another lifetime-safe design. Edition 2024 does not eliminate clones that are required to satisfy a real `'static` contract; it only removes some clones or annotations that existed solely because the opaque return type could not previously capture a borrow ergonomically.
+
+## Precise Capture with `use<...>`
+
+Sometimes Edition 2024 captures **more** generic parameters than the hidden type actually needs. A precise-capture bound can opt out of that overcapture.
+
+```rust
+fn first_value<'a>(values: &'a [u32]) -> impl Copy + use<> {
+    values[0]
+}
+
+fn main() {
+    let values = vec![10, 20];
+    let first = first_value(&values);
+    drop(values);
+    assert_eq!(first, 10);
+}
+```
+
+The hidden type is just `u32`, so it does not need to capture `'a`. `use<>` makes that explicit.
+
+When a hidden type really does borrow a named lifetime, include it in the capture set:
+
+```rust
+use std::fmt::Display;
+
+fn displayed<'a>(text: &'a str) -> impl Display + use<'a> {
+    text
+}
+
+fn main() {
+    let text = String::from("hello");
+    assert_eq!(displayed(&text).to_string(), "hello");
+}
+```
+
+In Edition 2024, a `use<...>` list that captures exactly everything the default would already capture can be redundant. Use precise capture to express a real restriction or edition-compatibility need, not as routine decoration.
+
+## Edition Migration Can Reveal Overcapture
+
+Because Edition 2024 captures more lifetime parameters by default, migration can make an opaque return type appear to keep a borrow alive longer than it did before. Rust provides migration lints for this situation, including `impl_trait_overcaptures`.
+
+If the hidden type does not actually depend on a lifetime, `use<>` or another precise capture list can preserve the narrower relationship explicitly.
+
+This is the opposite of “Edition 2024 always eliminates lifetime problems”: broader automatic capture is ergonomic when the hidden type needs the borrow, but sometimes needs to be narrowed when it does not.
+
+## `mismatched_lifetime_syntaxes` (Rust 1.89+)
+
+Rust 1.89 added the warn-by-default `mismatched_lifetime_syntaxes` lint. It detects signatures where the same lifetime is referred to using visibly different lifetime syntax in related input/output positions, which can make the borrowing relationship harder to read.
+
+A simple consistent signature avoids that ambiguity:
+
+```rust
+fn identity<'a>(value: &'a str) -> &'a str {
+    value
+}
+
+fn main() {
+    assert_eq!(identity("hello"), "hello");
+}
+```
+
+Do not interpret the lint as “explicit lifetimes and `'_` may never coexist.” Its purpose is to flag confusing mismatches in how the same lifetime relationship is presented.
+
+## Closures Have Their Own Inference Rules
+
+Do not invent release-specific “lifetime normalization” rules for closures unless an actual language change requires them. A closure returning one of its borrowed arguments can still run into lifetime constraints that differ from a normal generic function, and adding an explicit `-> &T` annotation is not a universal fix.
+
+When the relationship matters in an API, a normal function or a higher-ranked trait bound can often express it more clearly than relying on closure inference folklore.
+
+## Practical Guidance
+
+- Omit lifetime names for straightforward one-input/one-output borrows and ordinary receiver-based methods.
+- Name lifetimes when you need to state a relationship among multiple borrows or store references in a type.
+- Treat `'_` as an anonymous lifetime placeholder, not a magic lifetime extension.
+- Treat Edition-2024 RPIT capture separately from reference lifetime elision.
+- Do not claim automatic RPIT capture satisfies genuine `'static` requirements.
+- Use `use<...>` when you need precise opaque-type capture, especially to avoid Edition-2024 overcapture.
+- Prefer compiler/reference-backed rules over version folklore about closure lifetime inference.
 
 ## See Also
 
-- [own-cow-rpit-edition2024](./own-cow-rpit-edition2024.md) - Edition 2024 RPIT with Cow
-- [own-borrow-over-clone](./own-borrow-over-clone.md) - Prefer borrowing to avoid ownership issues
-- [own-refcell-interior](./own-refcell-interior.md) - Edition 2024 temporary scope changes
-- [api-impl-asref](./api-impl-asref.md) - Generic borrowing with AsRef
+- [own-cow-rpit-edition2024](./own-cow-rpit-edition2024.md) — RPIT capture and `Cow`
+- [own-borrow-over-clone](./own-borrow-over-clone.md) — borrowing versus ownership
+- [api-impl-asref](./api-impl-asref.md) — generic borrowing with `AsRef`
