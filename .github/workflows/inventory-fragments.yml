@@ -1,0 +1,77 @@
+name: Inventory fragment contracts
+
+on:
+  push:
+    branches: [fix/fragment-contracts-1]
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - name: Inventory fragment diagnostics
+        run: |
+          cd checks
+          python3 gen.py
+          cargo check --examples --target x86_64-unknown-linux-gnu --keep-going --message-format=json > check.json 2> check.err || true
+          python3 - <<'PY'
+          import json
+          from collections import defaultdict, Counter
+
+          manifest = json.load(open('manifest.json'))
+          errors = defaultdict(list)
+          for raw in open('check.json'):
+              raw = raw.strip()
+              if not raw.startswith('{'):
+                  continue
+              try:
+                  rec = json.loads(raw)
+              except json.JSONDecodeError:
+                  continue
+              if rec.get('reason') != 'compiler-message':
+                  continue
+              msg = rec.get('message', {})
+              if msg.get('level') != 'error':
+                  continue
+              target = (rec.get('target') or {}).get('name')
+              if target:
+                  errors[target].append(msg)
+
+          rows = []
+          clean = []
+          counts = Counter()
+          for name, info in manifest.items():
+              if info.get('expect') != 'fragment':
+                  continue
+              ds = errors.get(name, [])
+              if not ds:
+                  clean.append((name, info))
+                  continue
+              toks = []
+              for d in ds:
+                  code = (d.get('code') or {}).get('code')
+                  tok = code or ('P:' + d.get('message','').splitlines()[0][:100])
+                  toks.append(tok)
+                  counts[tok] += 1
+              rows.append((name, info, sorted(set(toks))))
+
+          print(f'FRAGMENTS total={len(clean)+len(rows)} clean={len(clean)} failing={len(rows)}')
+          print('\nCLEAN_FRAGMENTS')
+          for name, info in sorted(clean, key=lambda r:(r[1]['file'],r[1]['line'])):
+              print(f"{info['file']}\t{info['line']}\t{info['section']}\t{info['reason']}")
+          print('\nFAILING_FRAGMENTS')
+          for name, info, toks in sorted(rows, key=lambda r:(r[1]['file'],r[1]['line'])):
+              print(f"{info['file']}\t{info['line']}\t{info['section']}\t{','.join(toks)}\t{info['reason']}")
+          print('\nTOKEN_COUNTS')
+          for tok, n in counts.most_common():
+              print(f'{n}\t{tok}')
+          PY
