@@ -194,4 +194,3 @@ A read-write lock can help when concurrent reads are valuable and writes are suf
 
 - [async-mpsc-queue](./async-mpsc-queue.md) — Message passing between tasks
 - [conc-atomic-ordering](./conc-atomic-ordering.md) — Atomic ordering semantics
-- [async-mutex-choice](./async-mutex-choice.md) — Choosing sync versus async mutexes
