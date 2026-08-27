@@ -1,132 +1,100 @@
 # proj-pub-super-parent
 
-> Use pub(super) for parent-only visibility
+> Use `pub(super)` when an item declared in a child module must be visible in its parent module scope
 
 ## Why It Matters
 
-`pub(super)` exposes items only to the immediate parent module. This is useful for helper functions and types that submodules share but shouldn't be visible to the rest of the crate.
+`pub(super)` is shorthand for `pub(in super)`: it raises an item's visibility to the item's **parent module**. It is useful when a child module owns an implementation detail that its parent or sibling modules need, while the rest of the crate should not see it.
+
+Do not use `pub(super)` on an item merely so that the item's own child modules can access it. Ordinary private items are already visible to the module that defines them and its descendants.
 
 ## Bad
 
 ```rust
-// src/parser/mod.rs
-pub mod lexer;
-pub mod ast;
+mod parser {
+    // This is broader than necessary if Token is only an implementation
+    // detail used by parser and parser's descendants: private would suffice.
+    pub(super) struct Token(u8);
 
-// src/parser/lexer.rs
-pub fn internal_helper() {  // Visible to entire crate!
-    // Helper only needed by lexer and ast
+    mod lexer {
+        fn use_token(token: super::Token) -> u8 {
+            token.0
+        }
+    }
 }
 
-pub(crate) struct Token {  // Visible to entire crate
-    // Only parser submodules need this
-}
+fn main() {}
 ```
+
+Because `Token` is declared in `parser`, `pub(super)` makes it visible in `parser`'s parent scope. The nested `lexer` module did not require that visibility increase.
 
 ## Good
 
 ```rust
-// src/parser/mod.rs
-pub mod lexer;
-pub mod ast;
+mod parser {
+    // Parent-owned implementation details can stay private; descendants may
+    // use private items defined by their ancestors.
+    struct Token(u8);
 
-// Shared types for parser submodules only
-pub(super) struct Token {
-    pub(super) kind: TokenKind,
-    pub(super) span: Span,
-}
+    mod lexer {
+        // This item is declared in the child module. pub(super) exposes it to
+        // the parser module's scope, which also makes it usable by siblings.
+        pub(super) fn scan_one() -> super::Token {
+            super::Token(7)
+        }
+    }
 
-pub(super) fn shared_helper() -> Token {
-    // Only visible in parser/*
-}
+    mod ast {
+        pub(super) fn parse_tag() -> u8 {
+            super::lexer::scan_one().0
+        }
+    }
 
-// src/parser/lexer.rs
-use super::{Token, shared_helper};
-
-pub fn lex(input: &str) -> Vec<Token> {
-    shared_helper();
-    // ...
-}
-
-// src/parser/ast.rs
-use super::Token;
-
-pub fn parse(tokens: Vec<Token>) -> Ast {
-    // ...
-}
-```
-
-## Visibility Hierarchy
-
-```
-src/
-├── lib.rs           # crate root
-├── parser/
-│   ├── mod.rs       # pub(super) items visible here
-│   ├── lexer.rs     # can use pub(super) from mod.rs
-│   └── ast.rs       # can use pub(super) from mod.rs
-└── codegen.rs       # CANNOT see pub(super) parser items
-```
-
-## Pattern: Layered Visibility
-
-```rust
-// src/database/mod.rs
-mod connection;
-mod query;
-mod pool;
-
-// Only this module's children can see
-pub(super) struct RawConnection { /* ... */ }
-
-// Entire crate can see
-pub(crate) struct Pool { /* ... */ }
-
-// Everyone can see
-pub struct Database { /* ... */ }
-```
-
-## Pattern: Test Helpers
-
-```rust
-// src/parser/mod.rs
-mod lexer;
-mod ast;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    // Test helper visible only to parser module's tests
-    pub(super) fn make_test_token() -> Token {
-        Token { kind: TokenKind::Test, span: Span::dummy() }
+    pub fn parse_tag() -> u8 {
+        ast::parse_tag()
     }
 }
 
-// src/parser/lexer.rs
-#[cfg(test)]
-mod tests {
-    use super::super::tests::make_test_token;
-    // ...
+fn main() {
+    assert_eq!(parser::parse_tag(), 7);
 }
 ```
 
-## Comparison
+Here `scan_one` stays hidden from the crate root, but code within the `parser` scope can use it. `Token` needs no visibility modifier because it is defined by the ancestor module whose descendants consume it.
 
-| Visibility | Scope | Use Case |
-|------------|-------|----------|
-| `pub` | Everywhere | Public API |
-| `pub(crate)` | Crate-wide | Internal shared utilities |
-| `pub(super)` | Parent module | Submodule helpers |
-| `pub(in path)` | Specific path | Precise control |
-| (private) | Current module | Implementation details |
+## Choosing a Visibility
 
-## When to Use pub(super)
+| Form | Meaning |
+|---|---|
+| private | visible in the current module and its descendants |
+| `pub(super)` | visible within the parent module's scope |
+| `pub(crate)` | visible throughout the current crate |
+| `pub(in crate::path)` | visible within a specified ancestor-module scope |
+| `pub` | potentially reachable outside the crate, subject to the enclosing path's visibility |
 
-- Helper functions shared between sibling modules
-- Types used by submodules but not the rest of crate
-- Implementation details of a module group
-- Test utilities for a module tree
+Visibility restrictions can only name ancestor scopes. If several sibling modules need a shared abstraction, consider whether that abstraction belongs in their parent module rather than automatically widening a child item's visibility.
+
+## `pub(super)` for Test Helpers
+
+The same rule applies in test module trees. A helper declared inside a nested test module can use `pub(super)` if its parent test scope needs it. But a helper declared by the parent is already visible to its private child test modules.
+
+```rust
+#[cfg(test)]
+mod tests {
+    mod fixtures {
+        pub(super) fn sample_id() -> u64 {
+            42
+        }
+    }
+
+    #[test]
+    fn uses_fixture() {
+        assert_eq!(fixtures::sample_id(), 42);
+    }
+}
+
+fn main() {}
+```
 
 ## See Also
 

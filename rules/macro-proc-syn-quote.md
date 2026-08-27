@@ -1,110 +1,127 @@
 # macro-proc-syn-quote
 
-> Build procedural macros with `syn`, `quote`, and `proc-macro2`
+> Put proc-macro parsing and generation in testable `syn`/`quote` helpers
 
 ## Why It Matters
 
-Writing a proc-macro by hand-parsing `proc_macro::TokenStream` is fragile and verbose. The standard ecosystem trio — `syn` (parsing), `quote` (code generation), and `proc-macro2` (span-aware token types) — gives you a typed AST, readable quasi-quoting, and the ability to unit-test your macro logic outside the compiler.
+Procedural macros have two different concerns: a thin compiler-facing entry point using `proc_macro::TokenStream`, and ordinary transformation logic that parses syntax, validates it, and generates tokens. Keeping most logic in helpers built around `syn`, `quote`, and `proc-macro2` makes the transformation easier to read and lets normal unit tests exercise it outside a proc-macro invocation.
 
-Enable only the `syn` features you actually use. The `full` feature parses all Rust syntax but adds compile time; `derive` is sufficient for most `#[proc_macro_derive]` implementations.
+Use only the `syn` features required by the syntax you parse. A derive macro usually needs `DeriveInput`; `full` is useful only when you genuinely parse the wider Rust grammar.
 
 ## Bad
 
 ```rust
-// Manually iterating tokens to find a struct name — brittle and hard to read.
-use proc_macro::TokenStream;
+use proc_macro2::{TokenStream, TokenTree};
 
-#[proc_macro_derive(Hello)]
-pub fn derive_hello(input: TokenStream) -> TokenStream {
-    let mut iter = input.into_iter();
-    // skip `struct`, grab the next ident... error-prone and breaks on generics
-    iter.next(); // "struct"
-    let name = iter.next().unwrap().to_string();
-    format!("impl Hello for {name} {{ fn hello(&self) {{ println!(\"hello\"); }} }}")
-        .parse()
-        .unwrap()
+fn find_type_name(input: TokenStream) -> String {
+    // Positional token walking quickly becomes wrong around attributes,
+    // visibility, generics, where clauses, and other valid Rust syntax.
+    input.into_iter()
+        .find_map(|token| match token {
+            TokenTree::Ident(ident) => Some(ident.to_string()),
+            _ => None,
+        })
+        .expect("type name")
 }
+
+fn main() {}
 ```
 
 ## Good
 
-```toml
-# Cargo.toml for the derive crate
-[dependencies]
-syn  = { version = "2", features = ["derive"] }
-quote = "1"
-proc-macro2 = "1"
-```
-
 ```rust
-// src/lib.rs
-use proc_macro::TokenStream;
-use proc_macro2::Span;
-use quote::{quote, quote_spanned};
-use syn::{parse_macro_input, spanned::Spanned, DeriveInput};
+use proc_macro2::TokenStream;
+use quote::quote;
+use syn::DeriveInput;
 
-#[proc_macro_derive(Hello)]
-pub fn derive_hello(input: TokenStream) -> TokenStream {
-    // parse_macro_input! gives a typed DeriveInput or emits a compile error.
-    let input = parse_macro_input!(input as DeriveInput);
+fn generate_hello_impl(input: &DeriveInput) -> TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
-    // quote! quasi-quotes Rust tokens; `#name` splices the identifier.
-    let expanded = quote! {
+    quote! {
         impl #impl_generics Hello for #name #ty_generics #where_clause {
-            fn hello(&self) {
-                println!("hello from {}", stringify!(#name));
+            fn hello(&self) -> &'static str {
+                stringify!(#name)
             }
         }
-    };
+    }
+}
 
-    expanded.into()
+fn expand(input: TokenStream) -> syn::Result<TokenStream> {
+    let input: DeriveInput = syn::parse2(input)?;
+    Ok(generate_hello_impl(&input))
+}
+
+fn main() {
+    let input: DeriveInput = syn::parse_quote! { struct Widget<T>(T); };
+    let tokens = generate_hello_impl(&input).to_string();
+    assert!(tokens.contains("Hello for Widget"));
+
+    assert!(expand(quote! { struct Plain; }).is_ok());
 }
 ```
 
-## Using `quote_spanned!` for Better Diagnostics
+`quote!` preserves token structure and lets syntax-tree values be interpolated directly. `proc_macro2::TokenStream` is usable in ordinary library/test code, which is the key reason to keep the transformation helper independent of the compiler-only entry point.
 
-Attaching generated code to a meaningful span makes errors point at the right location in user code:
+## Cargo Setup
+
+A derive crate typically has a dedicated proc-macro target and dependencies along these lines:
+
+```toml
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["derive"] }
+```
+
+Choose `syn` features from the APIs the macro actually uses rather than copying `full` by default.
+
+## Thin Proc-Macro Entry Point
+
+The entry point itself requires a `proc-macro` crate target, so the normal example harness intentionally skips it:
+
+<!-- rust-check: ignore; reason=proc_macro attributes and proc_macro::TokenStream require a proc-macro crate target -->
+```rust
+use proc_macro::TokenStream;
+
+#[proc_macro_derive(Hello)]
+pub fn derive_hello(input: TokenStream) -> TokenStream {
+    match expand(input.into()) {
+        Ok(tokens) => tokens.into(),
+        Err(error) => error.into_compile_error().into(),
+    }
+}
+```
+
+The useful unit-test surface is `expand`/`generate_hello_impl`, not the compiler entry point.
+
+## Spans and Generated Diagnostics
+
+Use `quote_spanned!` when generated code should deliberately inherit a particular source span. Do not attach every generated token to one arbitrary span: default `quote!` interpolation often provides better, more natural provenance.
 
 ```rust
-use syn::{spanned::Spanned, Field};
+use proc_macro2::TokenStream;
 use quote::quote_spanned;
+use syn::{spanned::Spanned, Field};
 
-fn require_named_field(field: &Field) -> proc_macro2::TokenStream {
+fn access_named_field(field: &Field) -> syn::Result<TokenStream> {
+    let name = field.ident.as_ref().ok_or_else(|| {
+        syn::Error::new_spanned(field, "expected a named field")
+    })?;
     let span = field.span();
-    let name = field.ident.as_ref().expect("named field");
 
-    // Any error from the generated code will point at the field declaration.
-    quote_spanned! { span =>
-        let _ = &self.#name; // generated access to prove the field exists
-    }
+    Ok(quote_spanned! { span => self.#name })
 }
+
+fn main() {}
 ```
 
-## Unit Testing with `proc-macro2`
-
-Because `proc-macro2::TokenStream` is usable outside the compiler, you can test generation logic in regular `#[test]` functions:
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use quote::quote;
-    use syn::parse_quote;
-
-    #[test]
-    fn generates_impl_for_unit_struct() {
-        let input: DeriveInput = parse_quote! { struct Foo; };
-        // Call the internal generation function (not the proc_macro entry point).
-        let tokens = generate_hello_impl(&input);
-        let code = tokens.to_string();
-        assert!(code.contains("impl Hello for Foo"));
-    }
-}
-```
+For errors detected by the macro itself, prefer `syn::Error` with an appropriate input span; see the dedicated error-span rule.
 
 ## See Also
 
-- [macro-proc-two-crate](macro-proc-two-crate.md) - separating proc-macro and facade crates
-- [macro-proc-error-spans](macro-proc-error-spans.md) - reporting errors with spans, not panics
+- [macro-proc-two-crate](./macro-proc-two-crate.md) - separating proc-macro and facade crates
+- [macro-proc-error-spans](./macro-proc-error-spans.md) - reporting input errors with spans

@@ -1,70 +1,89 @@
 # proj-feature-additive
 
-> Design Cargo features to be strictly additive
+> Design Cargo features to be additive whenever feature unification can combine them
 
 ## Why It Matters
 
-Cargo unifies features across the dependency graph: if any crate in the build enables a feature, every consumer of that crate gets it. A feature that removes or changes existing behavior will break crates that depend on the baseline behavior the moment a third dependency enables it. Features must only add capability — new trait impls, additional dependencies, optional integrations — never subtract. Mutually exclusive features are an anti-pattern in the Cargo model.
+Cargo may unify features requested for the same dependency package, taking their union. A feature therefore should not normally mean “turn some other capability off”: another dependency can enable both features even when one direct consumer expected only one of them.
+
+Treat features as capabilities that can coexist. This is especially important for library crates. Mutually exclusive modes sometimes exist for unavoidable backend or platform reasons, but they are a constraint to detect and document rather than a model Cargo enforces for you.
 
 ## Bad
 
 ```toml
 [features]
-# "no_std" disables std — enabling it REMOVES behavior
+# Enabling this feature removes the default std implementation.
 no_std = []
-
-[dependencies]
-# and somewhere in lib.rs:
-# #[cfg(not(feature = "no_std"))]
-# use std::collections::HashMap;
 ```
 
-```rust
-// lib.rs — toggling off std via a feature is non-additive
-#[cfg(not(feature = "no_std"))]
-use std::vec::Vec;
-
-#[cfg(feature = "no_std")]
-use alloc::vec::Vec;
-```
+A downstream dependency that enables `no_std` can have that feature unified with another consumer's feature set. Negative feature names are also difficult to compose: Cargo features are good at adding configuration, not subtracting it.
 
 ## Good
 
 ```toml
 [features]
-# "std" ADDS std support; no_std is the baseline
+# The implementation is capable of no_std without default features;
+# enabling `std` adds standard-library integration.
 default = ["std"]
 std = []
 
-# Optional integrations — purely additive
 serde = ["dep:serde"]
-tokio = ["dep:tokio"]
 
 [dependencies]
 serde = { version = "1", optional = true }
-tokio = { version = "1", optional = true }
 ```
 
+For a library that uses allocation in its no-std configuration, the crate root may look like this:
+
+<!-- rust-check: ignore; reason=crate-root no_std feature example must be verified as a library under multiple Cargo feature combinations, not as the harness binary example -->
 ```rust
-// lib.rs — std is opt-in, no_std is the default baseline
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
 #[cfg(feature = "std")]
-use std::vec::Vec;
+type Buffer<T> = std::vec::Vec<T>;
 
 #[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
+type Buffer<T> = alloc::vec::Vec<T>;
 ```
 
-## Rules for Additive Features
+Test both intended configurations in CI, for example the default feature set and `--no-default-features`. The source snippet alone cannot prove that the Cargo feature matrix is coherent.
 
-- A feature may add new items, trait impls, or dependencies — never gate-away existing ones.
-- If you ship a `no_std` crate, make `std` a feature in `default`, not the other way around.
-- Mutually exclusive features (e.g. `backend-a` vs `backend-b`) cannot be enforced by Cargo; emit a compile-time error via `compile_error!` if both are set, and document the limitation clearly.
-- Use `dep:` syntax (`dep:serde`) to keep optional dependency names out of the feature namespace.
+## Optional Dependencies
+
+Use `dep:name` when you want a named feature to control an optional dependency without also exposing the dependency name as an implicit public feature:
+
+```toml
+[features]
+json = ["dep:serde_json"]
+
+[dependencies]
+serde_json = { version = "1", optional = true }
+```
+
+## Mutually Exclusive Features
+
+Prefer an additive design when possible: select a backend with a runtime/configuration value, put incompatible implementations in separate crates, or expose separate constructors/types.
+
+When two features genuinely cannot coexist, fail loudly instead of silently picking one based on `cfg` order:
+
+```rust
+#[cfg(all(feature = "backend_a", feature = "backend_b"))]
+compile_error!("features `backend_a` and `backend_b` cannot be enabled together");
+
+fn main() {}
+```
+
+That check documents the limitation, but it does not stop dependency feature unification from producing the conflicting combination. Consumers must still coordinate the feature set.
+
+## Avoid Feature-Dependent Semantic Rewrites
+
+Adding optional APIs, trait impls, dependencies, or integrations is usually composable. Changing the meaning of an existing public item when a feature is enabled is much harder to reason about, even if both configurations compile. Prefer separate items or explicit configuration when callers may observe meaningfully different semantics.
 
 ## See Also
 
-- [api-serde-optional](api-serde-optional.md) - gate Serialize/Deserialize behind a feature flag
-- [proj-workspace-deps](proj-workspace-deps.md) - use workspace dependency inheritance
-- [lint-cfg-check](lint-cfg-check.md) - catch feature-gate typos with unexpected_cfgs
+- [api-serde-optional](./api-serde-optional.md) - gate serialization integration behind a feature
+- [proj-workspace-deps](./proj-workspace-deps.md) - workspace dependency inheritance
+- [lint-cfg-check](./lint-cfg-check.md) - catch feature-gate typos
