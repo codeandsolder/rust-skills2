@@ -1,222 +1,185 @@
 # type-newtype-validated
 
-> Use newtypes to enforce validation at construction
+> Put durable domain invariants behind checked constructors so downstream code can rely on the type instead of re-validating primitives
 
 **Rule**: `type-newtype-validated`
 
 ## Why It Matters
 
-A validated newtype guarantees its inner value is always valid. Once you have an `Email`, you know it passed validation — no re-checking needed. This "parse, don't validate" pattern catches errors at boundaries and makes invalid states unrepresentable.
+A validation function that returns `bool` leaves the caller holding the same weakly typed value. A validated newtype records the successful check in the type: safe code cannot construct the value without going through an invariant-preserving boundary.
 
-## Bad
+This is most valuable when the property survives across multiple calls or layers of the program. For a one-off local condition, a plain check is often clearer.
+
+## Bad: Validate but Keep the Primitive
 
 ```rust
-// Validation scattered throughout code
-fn send_email(to: &str, body: &str) -> Result<(), Error> {
-    if !is_valid_email(to) {  // Must check every time
-        return Err(Error::InvalidEmail);
-    }
-    // ...
+fn is_valid_username(value: &str) -> bool {
+    value.len() >= 3 && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-fn add_recipient(list: &mut Vec<String>, email: &str) -> Result<(), Error> {
-    if !is_valid_email(email) {  // Check again
-        return Err(Error::InvalidEmail);
-    }
-    list.push(email.to_string());
-    Ok(())
+fn greet(username: &str) -> String {
+    // Must trust that somebody validated this earlier.
+    format!("hello {username}")
+}
+
+fn main() {
+    let raw = "alice_42";
+    assert!(is_valid_username(raw));
+    assert_eq!(greet(raw), "hello alice_42");
 }
 ```
 
-## Good
+## Good: Close Construction Around the Invariant
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Email(String);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Username(String);
 
-impl Email {
-    pub fn new(s: &str) -> Result<Self, EmailError> {
-        if is_valid_email(s) {
-            Ok(Email(s.to_string()))
-        } else {
-            Err(EmailError::Invalid(s.to_string()))
-        }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidUsername;
+
+impl Username {
+    pub fn parse(raw: &str) -> Result<Self, InvalidUsername> {
+        let value = raw.trim().to_lowercase();
+        let valid = value.len() >= 3
+            && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+
+        valid.then_some(Self(value)).ok_or(InvalidUsername)
     }
 
-    pub fn as_str(&self) -> &str { &self.0 }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
-// No validation needed — Email is always valid
-fn send_email(to: &Email, body: &str) -> Result<(), Error> {
-    send_to_address(to.as_str(), body)
+fn greet(username: &Username) -> String {
+    format!("hello {}", username.as_str())
 }
 
-fn add_recipient(list: &mut Vec<Email>, email: Email) {
-    list.push(email);  // Already validated
+fn main() {
+    let username = Username::parse("  Alice_42 ").unwrap();
+    assert_eq!(greet(&username), "hello alice_42");
+    assert!(Username::parse("!!").is_err());
 }
 ```
 
-## Common Validated Types
+Keep the field private and avoid unrestricted mutable access to the representation. Otherwise safe callers can invalidate the guarantee after construction.
 
-```rust
-// URLs
-pub struct Url(url::Url);
-
-impl Url {
-    pub fn parse(s: &str) -> Result<Self, UrlError> {
-        url::Url::parse(s).map(Url).map_err(UrlError::from)
-    }
-}
-
-// Non-empty strings
-pub struct NonEmptyString(String);
-
-impl NonEmptyString {
-    pub fn new(s: String) -> Option<Self> {
-        if s.is_empty() { None } else { Some(NonEmptyString(s)) }
-    }
-}
-
-// Positive numbers
-pub struct PositiveI32(i32);
-
-impl PositiveI32 {
-    pub fn new(n: i32) -> Option<Self> {
-        if n > 0 { Some(PositiveI32(n)) } else { None }
-    }
-}
-
-// Bounded ranges
-pub struct Percentage(f64);
-
-impl Percentage {
-    pub fn new(value: f64) -> Result<Self, RangeError> {
-        if (0.0..=100.0).contains(&value) {
-            Ok(Percentage(value))
-        } else {
-            Err(RangeError::OutOfBounds)
-        }
-    }
-}
-```
-
-## Using `core::num::NonZero<uN>` for Non-Zero Integers
-
-For the common case of "must be non-zero", use the standard library's `NonZero` types — no custom validation needed:
+## Use `NonZero` for the Common Non-Zero Integer Invariant
 
 ```rust
 use core::num::NonZero;
 
-// NonZero encodes the "not zero" invariant in the type system
-pub struct OrderId(NonZero<u64>);
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkerCount(NonZero<u32>);
 
-impl OrderId {
-    pub fn new(raw: u64) -> Option<Self> {
-        Some(Self(NonZero::new(raw)?))
+impl WorkerCount {
+    pub fn new(value: u32) -> Option<Self> {
+        NonZero::new(value).map(Self)
+    }
+
+    pub fn get(self) -> u32 {
+        self.0.get()
     }
 }
 
-// Option<OrderId> is 8 bytes — zero-cost optional
-// (the zero bit pattern is the None discriminant)
+fn main() {
+    assert!(WorkerCount::new(0).is_none());
+    assert_eq!(WorkerCount::new(8).unwrap().get(), 8);
+}
 ```
 
-## Using `nutype` for Ergonomic Validated Newtypes
+Do not hand-roll validation when the standard library already has a type that precisely represents the invariant.
 
-The `nutype` crate (v0.7.0+) replaces 40–60 lines of manual boilerplate with a single attribute:
+## `nutype` 0.7 for Repetitive Validated-Newtype APIs
+
+`nutype` can generate sanitization, validation, conversion, display, and serde support. Validation changes the constructor to `try_new`.
 
 ```rust
 use nutype::nutype;
 
 #[nutype(
-    validate(predicate = |s| s.contains('@') && s.contains('.')),
     sanitize(trim, lowercase),
-    derive(Debug, Clone, Display, AsRef, Deref, FromStr),
-    serde(Deserialize),
+    validate(not_empty, len_char_max = 64),
+    derive(Debug, Clone, PartialEq, Eq, Display, AsRef, FromStr, Serialize, Deserialize),
 )]
-pub struct Email(String);
+pub struct Username(String);
 
-// One attribute generates: constructor, validation, sanitization,
-// Display, AsRef, Deref, FromStr, serde Deserialize, error type.
+fn main() {
+    let username = Username::try_new("  Alice  ").unwrap();
+    assert_eq!(username.as_ref(), "alice");
+    assert!(Username::try_new("   ").is_err());
 
-let email = Email::new("  User@Example.COM  ").unwrap();
-assert_eq!(email.as_str(), "user@example.com");  // Auto-lowercased
+    let encoded = serde_json::to_string(&username).unwrap();
+    let decoded: Username = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(decoded, username);
+}
 ```
 
-## `#[serde(try_from = "...")]` Pattern
+With `nutype` 0.7, request serde traits through `derive(Serialize, Deserialize)` and enable the crate's `serde` feature. Older-looking `serde(...)` attribute syntax is not the current API.
 
-For serde deserialization with validation, use `#[serde(try_from = "...")]` to reuse your `TryFrom` impl:
+Use a hand-written newtype when the invariant/API is small or highly custom; proc-macro convenience is not itself a reason to add a dependency.
+
+## Manual Serde Must Re-Establish the Invariant
+
+If a manual newtype is deserialized from an untrusted representation, route deserialization through the checked constructor rather than constructing the field directly.
 
 ```rust
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::fmt;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Email(String);
 
-// Implement TryFrom<String> / TryFrom<&str>
-impl TryFrom<String> for Email {
-    type Error = EmailError;
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        if is_valid_email(&s) {
-            Ok(Email(s))
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmailError;
+
+impl fmt::Display for EmailError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("invalid email address")
+    }
+}
+
+impl Email {
+    pub fn parse(raw: String) -> Result<Self, EmailError> {
+        if raw.contains('@') && !raw.starts_with('@') && !raw.ends_with('@') {
+            Ok(Self(raw))
         } else {
-            Err(EmailError::Invalid(s))
+            Err(EmailError)
         }
     }
 }
 
-// Reuse TryFrom for serde deserialization
 impl<'de> Deserialize<'de> for Email {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>,
+        D: Deserializer<'de>,
     {
-        let s = String::deserialize(deserializer)?;
-        Email::try_from(s).map_err(serde::de::Error::custom)
-    }
-}
-```
-
-## Compile-Time Validation with `static_assertions`
-
-For invariants that can be checked at compile time (type sizes, alignment, trait bounds), use `static_assertions`:
-
-```rust
-use static_assertions::const_assert;
-
-// Ensure the validated type doesn't accidentally grow
-const_assert!(std::mem::size_of::<Email>() == std::mem::size_of::<String>());
-
-// Ensure alignment matches expectations
-const_assert!(std::mem::align_of::<Email>() == std::mem::align_of::<String>());
-```
-
-## With Serde (Manual)
-
-```rust
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize)]
-pub struct Email(String);
-
-impl<'de> Deserialize<'de> for Email {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        Email::new(&s).map_err(serde::de::Error::custom)
+        let raw = String::deserialize(deserializer)?;
+        Email::parse(raw).map_err(serde::de::Error::custom)
     }
 }
 
-let email: Email = serde_json::from_str(r#""user@example.com""#)?;
+fn main() {
+    let email: Email = serde_json::from_str(r#""user@example.com""#).unwrap();
+    assert_eq!(email.0, "user@example.com");
+    assert!(serde_json::from_str::<Email>(r#""not-an-email""#).is_err());
+}
 ```
+
+Serde derives or custom implementations are alternate construction paths. They must preserve the same invariant as ordinary constructors.
+
+## Sanitization Is a Domain Decision
+
+Trimming or normalizing case can be correct for some identifiers and wrong for others. Treat sanitization as part of parsing semantics, not as a generic way to make invalid input pass.
+
+Likewise, avoid unchecked constructors unless there is a measured need and a clearly documented invariant proof at every call site.
 
 ## See Also
 
-- [api-parse-dont-validate](./api-parse-dont-validate.md) — Parse at boundaries
-- [api-newtype-safety](./api-newtype-safety.md) — Type-safe distinctions
-- [type-newtype-ids](./type-newtype-ids.md) — ID newtypes
-- [type-nutype-validated](./type-nutype-validated.md) — `nutype` for ergonomic validated newtypes
-- [type-nonzero-intrinsics](./type-nonzero-intrinsics.md) — `NonZero<uN>` for non-zero integers
-- [type-derive-more-boilerplate](./type-derive-more-boilerplate.md) — `derive_more` for boilerplate reduction
+- [api-parse-dont-validate](./api-parse-dont-validate.md) — parse at boundaries
+- [api-newtype-safety](./api-newtype-safety.md) — semantic newtypes
+- [type-newtype-ids](./type-newtype-ids.md) — identifier wrappers
+- [type-nutype-validated](./type-nutype-validated.md) — current `nutype` API details
+- [type-nonzero-intrinsics](./type-nonzero-intrinsics.md) — standard non-zero invariant type
