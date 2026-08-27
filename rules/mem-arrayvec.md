@@ -1,18 +1,18 @@
 # mem-arrayvec
 
-> Use `ArrayVec<T, N>` for fixed-capacity collections that never heap-allocate
+> Use `ArrayVec<T, N>` when a hard capacity belongs in the type
 
 ## Why It Matters
 
-`ArrayVec` from the `arrayvec` 0.7 series stores up to `N` values inline and never grows onto the heap. Unlike `SmallVec`, which may spill to a heap allocation when its inline capacity is exceeded, `ArrayVec` has a hard compile-time capacity.
+`ArrayVec<T, N>` from `arrayvec` stores its elements inline in a fixed-size array and never grows onto the heap. Its capacity is the const generic `N`; `push` panics when full, while fallible methods such as `try_push` return a capacity error.
 
-That makes it useful when a hard upper bound is part of the design—for example embedded/no-alloc code, bounded protocol fields, or small temporary buffers. It is not automatically better than `Vec`: large capacities increase the size of the containing value and can put substantial objects on the stack.
+That makes `ArrayVec` useful when a hard upper bound is part of the design—for example bounded protocol fields, embedded/no-alloc code, or small temporary buffers. It is not automatically better than `Vec`: the inline storage is part of every `ArrayVec` value, so a large capacity makes the value itself large regardless of its current length.
 
 ## Bad
 
 ```rust
-// If the protocol guarantees at most eight items, an unbounded Vec does not
-// express that invariant in the type.
+// If the protocol guarantees at most eight codes, an unbounded Vec does not
+// express that invariant in the result type.
 fn collect_codes(input: &str) -> Vec<u16> {
     input.split(',')
         .filter_map(|part| part.parse().ok())
@@ -22,35 +22,27 @@ fn collect_codes(input: &str) -> Vec<u16> {
 
 ## Good
 
-<!-- rust-check: fragment; reason=standalone fragment: domain parser and sensor context -->
+<!-- rust-check: compile -->
 ```rust
 use arrayvec::ArrayVec;
 
-struct ParsedOption;
-
-fn parse_options(input: &str) -> ArrayVec<ParsedOption, 8> {
-    let mut options = ArrayVec::new();
+fn parse_codes(input: &str) -> ArrayVec<u16, 8> {
+    let mut codes = ArrayVec::new();
     for part in input.split(',') {
-        let option = parse_option(part);
-        if options.try_push(option).is_err() {
+        let Ok(code) = part.parse::<u16>() else {
+            continue;
+        };
+        if codes.try_push(code).is_err() {
             break;
         }
     }
-    options
+    codes
 }
 
-// In a no_std crate, ArrayVec can be used with arrayvec's default `std`
-// feature disabled.
-fn collect_readings() -> ArrayVec<SensorReading, 16> {
-    let mut readings = ArrayVec::new();
-    for sensor in SENSORS.iter().take(readings.capacity()) {
-        readings.push(sensor.read());
-    }
-    readings
-}
+assert_eq!(&parse_codes("10,20,30")[..], &[10, 20, 30]);
 ```
 
-Do not put `#[no_std]` on an individual function. `#![no_std]` is a crate-level attribute; configure the dependency/features for the crate that needs no-std operation.
+For a crate that needs `no_std`, disable `arrayvec`'s default `std` feature at the dependency level. `#![no_std]` is a crate-level choice, not an annotation for an individual function.
 
 ## `ArrayVec` vs `SmallVec` vs `Vec`
 
@@ -58,9 +50,9 @@ Do not put `#[no_std]` on an individual function. `#![no_std]` is a crate-level 
 |------|------------------|----------|
 | `Vec<T>` | Heap-backed, grows dynamically | Size is not tightly bounded |
 | `SmallVec<[T; N]>` | Inline up to N, may spill to heap | Usually small but growth is allowed |
-| `ArrayVec<T, N>` | Always inline, hard capacity N | Exceeding N is an error/panic by policy |
+| `ArrayVec<T, N>` | Always inline, hard capacity N | Exceeding N must be handled or treated as a bug |
 
-## API Patterns
+## Capacity APIs
 
 ```rust
 use arrayvec::ArrayVec;
@@ -77,7 +69,7 @@ let collected: ArrayVec<i32, 4> = (0..4).collect();
 assert_eq!(&collected[..], &[0, 1, 2, 3]);
 ```
 
-`FromIterator` cannot return a capacity error, so collecting more than `N` items into an `ArrayVec<T, N>` panics. When the input length is not statically bounded, prefer `try_push` or another explicitly fallible construction path.
+`FromIterator` cannot return a capacity error, so collecting more than `N` items into an `ArrayVec<T, N>` panics. When the input length is not guaranteed, prefer `try_push` or another explicitly fallible construction path.
 
 ## `ArrayString` for Bounded Strings
 
@@ -90,11 +82,13 @@ fn format_code(code: u32) -> ArrayString<16> {
     write!(&mut s, "CODE-{code:04}").unwrap();
     s
 }
+
+assert_eq!(format_code(42).as_str(), "CODE-0042");
 ```
 
 ## When Not to Use It
 
-Avoid choosing an arbitrary large capacity merely to avoid allocation. An `ArrayVec<u8, 1_000_000>` makes every value roughly a megabyte even when empty. If the size is genuinely variable, use `Vec`; if a small inline fast path with heap fallback is desirable, consider `SmallVec`.
+Avoid choosing a large arbitrary capacity merely to avoid allocation. An `ArrayVec<u8, 1_000_000>` carries roughly a megabyte of inline element storage in every value. If the size is genuinely variable, use `Vec`; if a small inline fast path with heap fallback is desirable, consider `SmallVec`.
 
 ## Cargo.toml
 
@@ -103,7 +97,7 @@ Avoid choosing an arbitrary large capacity merely to avoid allocation. An `Array
 arrayvec = "0.7"
 ```
 
-As of August 2026, the current 0.7 release line is 0.7.8. Prefer a compatible-series requirement unless the project has a reason to pin a patch release.
+As of August 2026, the current 0.7 release is 0.7.8. Prefer a compatible-series requirement unless the project has a reason to pin a patch release.
 
 ## See Also
 
