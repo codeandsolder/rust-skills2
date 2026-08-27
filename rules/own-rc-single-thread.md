@@ -1,103 +1,165 @@
 # own-rc-single-thread
 
-> Use `Rc<T>` for shared ownership in single-threaded contexts
+> Use `Rc<T>` for shared ownership that is confined to one thread
 
 ## Why It Matters
 
-`Rc<T>` (Reference Counted) provides shared ownership without the atomic overhead of `Arc<T>`. In single-threaded code, `Rc` is faster because it uses non-atomic reference counting. Using `Arc` when you don't need thread-safety wastes CPU cycles on unnecessary synchronization.
+`Rc<T>` provides reference-counted ownership without atomic reference-count operations. It is intentionally `!Send` and `!Sync`, so the type system prevents an `Rc` ownership graph from crossing thread boundaries.
 
-## Bad
+Choose `Rc` when the ownership model is genuinely single-threaded. Choose `Arc` when owners must cross threads. Do not select either solely from a blanket performance rule; the threading and ownership contract comes first.
+
+## Bad: Pay for Thread-Safe Ownership You Do Not Need
 
 ```rust
 use std::sync::Arc;
 
-// Single-threaded application using Arc unnecessarily
-fn build_tree() -> Arc<Node> {
-    let root = Arc::new(Node::new("root"));
-    let child1 = Arc::new(Node::new("child1"));
-    let child2 = Arc::new(Node::new("child2"));
-    
-    // All in same thread, but paying atomic overhead
-    root.add_child(child1.clone());
-    root.add_child(child2.clone());
-    root
+fn main() {
+    let root = Arc::new(String::from("root"));
+    let left = Arc::clone(&root);
+    let right = Arc::clone(&root);
+
+    assert_eq!(&*left, "root");
+    assert_eq!(&*right, "root");
 }
 ```
 
-Atomic operations have measurable overhead even without contention.
+This is correct Rust, but if the entire ownership graph is permanently single-threaded, `Rc` expresses that constraint more directly and avoids atomic reference-count updates.
 
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-use std::rc::Rc;
-
-// Single-threaded: use Rc for zero atomic overhead
-fn build_tree() -> Rc<Node> {
-    let root = Rc::new(Node::new("root"));
-    let child1 = Rc::new(Node::new("child1"));
-    let child2 = Rc::new(Node::new("child2"));
-    
-    root.add_child(child1.clone());
-    root.add_child(child2.clone());
-    root
-}
-
-// Compiler enforces single-thread: Rc is !Send + !Sync
-// Attempting to send across threads = compile error
-```
-
-## Decision Guide
-
-| Scenario | Use |
-|----------|-----|
-| Single-threaded, shared ownership | `Rc<T>` |
-| Multi-threaded, shared ownership | `Arc<T>` |
-| Single owner, might need multiple later | Start with `Rc`, upgrade if needed |
-| Library code, unknown threading model | `Arc<T>` (safer default) |
-
-## Recent Additions
-
-### `Rc::new_zeroed` / `Rc::new_zeroed_slice` (1.92)
+## Good: Single-Threaded Shared Ownership
 
 ```rust
 use std::rc::Rc;
 
-// 1.92+: allocate zeroed Rc, avoids double-initialization
-let buf = unsafe { Rc::new_zeroed::<LargeBuf>() };
-let buf = unsafe { buf.assume_init() }; // Now safe to use
-```
+#[derive(Debug)]
+struct Node {
+    name: String,
+}
 
-### `Pin<Rc<T>>` Default (1.91)
+fn main() {
+    let node = Rc::new(Node { name: "root".into() });
+    let left = Rc::clone(&node);
+    let right = Rc::clone(&node);
 
-```rust
-use std::pin::Pin;
-use std::rc::Rc;
-
-// 1.91+: Pin<Rc<T>> implements Default when T: Default
-fn create_pinned() -> Pin<Rc<MyData>> {
-    Default::default()
+    assert_eq!(left.name, "root");
+    assert_eq!(right.name, "root");
+    assert_eq!(Rc::strong_count(&node), 3);
 }
 ```
 
-### `Cell::as_array_of_cells` with `Rc<Cell<[T; N]>>` (1.91)
+`Rc::clone(&value)` makes the ownership operation visually explicit and is conventional when cloning the pointee itself would mean something different.
+
+## Interior Mutability When the Graph Needs Mutation
+
+`Rc<T>` alone only gives shared ownership. For single-threaded shared mutation, pair it with an interior-mutability type whose runtime semantics fit the problem.
+
+```rust
+use std::cell::RefCell;
+use std::rc::Rc;
+
+fn main() {
+    let values = Rc::new(RefCell::new(vec![1, 2]));
+    let other = Rc::clone(&values);
+
+    other.borrow_mut().push(3);
+    assert_eq!(&*values.borrow(), &[1, 2, 3]);
+}
+```
+
+`RefCell` dynamically checks the usual one-mutable-or-many-shared borrowing rule and panics on violations. It is not a synchronization primitive.
+
+## Cycles Need Weak References
+
+Strong `Rc` cycles leak because every node in the cycle keeps another strong owner alive. Use `Weak<T>` for non-owning back-references or other edges that should not contribute to lifetime.
+
+```rust
+use std::rc::{Rc, Weak};
+
+fn main() {
+    let owner = Rc::new(String::from("resource"));
+    let observer: Weak<String> = Rc::downgrade(&owner);
+
+    assert_eq!(observer.upgrade().as_deref(), Some("resource"));
+    drop(owner);
+    assert!(observer.upgrade().is_none());
+}
+```
+
+## Zeroed and Uninitialized Allocation APIs
+
+Current stable Rust exposes `Rc` constructors that return `MaybeUninit` storage. The allocation itself is safe; `assume_init` is unsafe because that is where validity is asserted.
+
+```rust
+use std::rc::Rc;
+
+fn main() {
+    let zero = Rc::<u32>::new_zeroed();
+    // SAFETY: the all-zero bit pattern is a valid u32.
+    let zero = unsafe { zero.assume_init() };
+    assert_eq!(*zero, 0);
+
+    let zeros = Rc::<[u32]>::new_zeroed_slice(3);
+    // SAFETY: every zeroed element is a valid initialized u32.
+    let zeros = unsafe { zeros.assume_init() };
+    assert_eq!(&*zeros, &[0, 0, 0]);
+}
+```
+
+Do not generalize that example to arbitrary `T`: all-zero bytes are invalid for references, `NonZero` integers, many enums, and other types.
+
+For full overwrite, initialize uninitialized storage directly:
+
+```rust
+use std::rc::Rc;
+
+fn main() {
+    let mut values = Rc::<[u32]>::new_uninit_slice(2);
+    let slots = Rc::get_mut(&mut values).unwrap();
+    slots[0].write(7);
+    slots[1].write(9);
+
+    // SAFETY: both elements were initialized above.
+    let values = unsafe { values.assume_init() };
+    assert_eq!(&*values, &[7, 9]);
+}
+```
+
+Use ordinary `Rc::new(value)` unless deferred/in-place initialization solves a real problem.
+
+## `Cell<[T; N]>` Element Access
+
+`Cell::as_array_of_cells` gives an array-shaped view of the element cells while preserving `Cell`'s single-threaded interior-mutability rules.
 
 ```rust
 use std::cell::Cell;
 use std::rc::Rc;
 
-// 1.91+: reinterpret &Cell<[T; N]> as &[Cell<T>; N]
-let data: Rc<Cell<[u32; 4]>> = Rc::new(Cell::new([1, 2, 3, 4]));
-let cells: &[Cell<u32>; 4] = data.as_array_of_cells();
+fn main() {
+    let data: Rc<Cell<[u32; 4]>> = Rc::new(Cell::new([1, 2, 3, 4]));
+    let cells: &[Cell<u32>; 4] = data.as_array_of_cells();
 
-// Mutate individual elements through the cell
-cells[0].set(10);
-cells[1].set(20);
-// This was previously impossible without unsafe code
+    cells[0].set(10);
+    cells[1].set(20);
+    assert_eq!(data.get(), [10, 20, 3, 4]);
+}
 ```
+
+The exact array-returning convenience is newer than the long-standing slice-of-cells API; it is not accurate to claim element-wise `Cell` access was previously impossible without unsafe code.
+
+## `Rc` vs `Arc`
+
+| Requirement | Typical choice |
+|---|---|
+| Shared ownership, one thread | `Rc<T>` |
+| Shared ownership across threads | `Arc<T>` |
+| No shared ownership needed | owned value / borrow |
+| Single-threaded shared mutation | often `Rc<RefCell<T>>`, `Rc<Cell<T>>`, or a domain-specific design |
+| Cross-thread mutation | `Arc` plus an appropriate synchronization/concurrent abstraction |
+
+Library code should expose the semantics it needs rather than defaulting to `Arc` merely because callers might someday use threads.
 
 ## See Also
 
-- [own-arc-shared](./own-arc-shared.md) - When you need thread-safe sharing
-- [own-refcell-interior](./own-refcell-interior.md) - Combining Rc with interior mutability
-- [own-cell-update](./own-cell-update.md) - Cell::update for Copy types
+- [own-arc-shared](./own-arc-shared.md) — cross-thread shared ownership
+- [own-refcell-interior](./own-refcell-interior.md) — runtime borrow checking
+- [own-cell-update](./own-cell-update.md) — `Cell` updates
+- [unsafe-maybeuninit](./unsafe-maybeuninit.md) — initialization validity
