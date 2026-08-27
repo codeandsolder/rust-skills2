@@ -78,7 +78,10 @@ fn main() {
     let owner = Rc::new(String::from("resource"));
     let observer: Weak<String> = Rc::downgrade(&owner);
 
-    assert_eq!(observer.upgrade().as_deref(), Some("resource"));
+    let upgraded = observer.upgrade().unwrap();
+    assert_eq!(&*upgraded, "resource");
+    drop(upgraded);
+
     drop(owner);
     assert!(observer.upgrade().is_none());
 }
