@@ -1,116 +1,161 @@
 # err-clippy-unwrap-types
 
-> Configure `allow-unwrap-types` to whitelist safe `unwrap()` calls while keeping real `unwrap_used` violations
+> Use `allow-unwrap-types` only for types where the project deliberately chooses a panic-on-error policy
 
 ## Why It Matters
 
-`Mutex::lock().unwrap()`, `RwLock::read().unwrap()`, and similar calls are extremely common and intentionally safe: the `LockResult` / `PoisonError` wrapping is a Rust standard-library convention that is almost never handled in practice. Denying `clippy::unwrap_used` for these drowns teams in false positives. The `allow-unwrap-types` config (clippy PR #16605, merged 2026) lets you whitelist specific types while keeping the lint active for real logic errors.
+Clippy's `unwrap_used` and `expect_used` restriction lints are intentionally broad. Sometimes a project has a type-specific policy where panicking is the desired response to that error. Current Clippy supports an `allow-unwrap-types` configuration list so those types can be exempted without disabling the lint everywhere.
+
+This is a **lint policy**, not a safety proof. In particular, `Mutex::lock().unwrap()` means "panic if this lock is poisoned." A poisoned lock indicates that a thread panicked while holding exclusive access and the protected data may no longer satisfy its invariants. Whether to propagate that panic, repair the state, or continue with the guard is an application decision.
 
 ## Bad
 
-<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding input data -->
+<!-- rust-check: compile -->
 ```rust
-// No config — every Mutex lock triggers unwrap_used
-fn handle_request(state: &AppState) {
-    let data = state.cache.lock().unwrap(); // clippy warns: unwrap_used
-    let reader = state.config.read().unwrap(); // clippy warns: unwrap_used
-    process(data, reader);
+use std::collections::HashMap;
+use std::sync::{Mutex, RwLock};
+
+struct User;
+
+struct AppState {
+    cache: Mutex<Vec<u8>>,
+    config: RwLock<String>,
+}
+
+fn use_state(state: &AppState) {
+    let cache = state.cache.lock().unwrap();
+    let config = state.config.read().unwrap();
+    let _ = (cache.len(), config.len());
+}
+
+fn unchecked_lookup(map: &HashMap<u64, User>, id: u64) -> &User {
+    map.get(&id).unwrap()
 }
 ```
 
-Teams often respond by disabling `unwrap_used` entirely, which defeats the purpose.
+If the project responds by disabling `clippy::unwrap_used` globally, both the deliberate lock policy and unrelated unchecked lookups become invisible to that lint.
 
 ## Good
 
-```toml
-# clippy.toml (or .clippy.toml at workspace root)
-allow-unwrap-types = [
-    "core::result::Result::<std::sync::PoisonError<std::sync::MutexGuard<_>>>",
-    "core::result::Result::<std::sync::PoisonError<std::sync::RwLockReadGuard<_>>>",
-    "core::result::Result::<std::sync::PoisonError<std::sync::RwLockWriteGuard<_>>>",
-]
-```
-
-```toml
-# Alternately, use the short form (applies to all generic params of the type)
-allow-unwrap-types = [
-    "std::sync::LockResult<std::sync::MutexGuard<_>>",
-    "std::sync::LockResult<std::sync::RwLockReadGuard<_>>",
-    "std::sync::LockResult<std::sync::RwLockWriteGuard<_>>",
-]
-```
-
-Now `Mutex::lock().unwrap()` no longer triggers:
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-// No false positive — LockResult is whitelisted
-fn handle_request(state: &AppState) {
-    let data = state.cache.lock().unwrap();    // OK: whitelisted type
-    let reader = state.config.read().unwrap(); // OK: whitelisted type
-    process(data, reader);
-}
-
-// But real logic errors still fire:
-fn unchecked_lookup(map: &HashMap<u64, User>, id: u64) -> &User {
-    map.get(&id).unwrap() // clippy warns: unwrap_used — not whitelisted!
-}
-```
-
-## Cargo.toml Integration
-
-```toml
-[workspace.metadata.clippy]
-# workspace-root clippy.toml equivalent (Cargo workspace, Rust 1.85+)
-allow-unwrap-types = [
-    "std::sync::LockResult<std::sync::MutexGuard<_>>",
-]
-```
-
-Or for a single crate:
-
-```toml
-# .cargo/config.toml
-[target.'cfg(all())'.clippy]
-allow-unwrap-types = [
-    "std::sync::LockResult<std::sync::MutexGuard<_>>",
-]
-```
-
-## Recommended Lint Configuration
+Keep the lint enabled:
 
 ```toml
 # Cargo.toml
 [lints.clippy]
-unwrap_used = "deny"       # Deny real unwrap violations
-expect_used = "warn"       # Warn on expect (opt-in for stricter teams)
+unwrap_used = "deny"
+expect_used = "warn"
 ```
 
-This works because `allow-unwrap-types` is a configuration, not a suppression — it tells clippy that certain types are known-safe, so `unwrap_used` = "deny" stays effective for everything else.
+Then configure the narrow type exemption in `clippy.toml` or `.clippy.toml`:
 
-## What About PoisonError Handling?
+```toml
+# This says that unwrap/expect on LockResult is an accepted project policy.
+allow-unwrap-types = ["std::sync::LockResult"]
+```
 
-The standard library's `PoisonError` exists to detect poisoned mutexes (when another thread panicked while holding the lock). For most applications, the correct behavior is:
+Now the code itself can remain ordinary Rust:
+
+<!-- rust-check: compile -->
+```rust
+use std::collections::HashMap;
+use std::sync::{Mutex, RwLock};
+
+struct User;
+
+struct AppState {
+    cache: Mutex<Vec<u8>>,
+    config: RwLock<String>,
+}
+
+fn use_state(state: &AppState) {
+    // With the Clippy configuration above, these are exempt because their
+    // receiver type is LockResult. Runtime semantics are unchanged: poison
+    // still causes a panic here.
+    let cache = state.cache.lock().unwrap();
+    let config = state.config.read().unwrap();
+    let _ = (cache.len(), config.len());
+}
+
+fn unchecked_lookup(map: &HashMap<u64, User>, id: u64) -> &User {
+    // HashMap::get returns Option, so this remains an unwrap_used violation.
+    map.get(&id).unwrap()
+}
+```
+
+`allow-unwrap-types` applies to both `unwrap_used` and `expect_used`.
+
+## Where the Configuration Lives
+
+Clippy documents `clippy.toml` and `.clippy.toml` configuration files. It starts searching from the first available location in this order:
+
+1. `CLIPPY_CONF_DIR`,
+2. `CARGO_MANIFEST_DIR`,
+3. the current directory,
+
+then walks upward through parent directories. Clippy currently labels this configuration-file interface unstable.
+
+Do not put `allow-unwrap-types` under `[workspace.metadata.clippy]`, `[lints.clippy]`, or a target table in `.cargo/config.toml`. `[lints.clippy]` controls lint **levels**; `allow-unwrap-types` is a separate Clippy configuration value.
+
+## Poisoning Policy Is the Real Decision
+
+### Panic on poison
+
+If a panic while holding the lock means the process/thread should not continue with potentially inconsistent state, `unwrap()` or an explanatory `expect()` is a coherent policy:
 
 ```rust
-// Accept the poison — acquire the lock anyway
-let data = state.cache.lock().unwrap_or_else(|e| e.into_inner());
+use std::sync::Mutex;
 
-// Or simply:
-let data = state.cache.lock().unwrap(); // safe — see above
+fn next_id(ids: &Mutex<u64>) -> u64 {
+    let mut id = ids.lock().expect("id allocator state poisoned");
+    *id += 1;
+    *id
+}
 ```
 
-Real poisoning recovery is exceptionally rare in practice; the `allow-unwrap-types` whitelist reflects this reality.
+### Continue despite poison
 
-## When Not to Use
+`PoisonError::into_inner()` gives access to the guard despite poisoning. That is not automatically "safer" than panicking; it explicitly accepts possibly tainted state and should be justified by the protected invariant:
 
-- In `no_std` crates without mutex types
-- In libraries where you want to force explicit poison handling
-- In codebases that prefer `?` with custom error types for all lock operations
+```rust
+use std::sync::Mutex;
+
+fn read_best_effort(cache: &Mutex<Vec<u8>>) -> usize {
+    let guard = cache.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    guard.len()
+}
+```
+
+### Repair and clear poison
+
+If the program can restore a known-good invariant, repair the state and then clear the poison flag:
+
+```rust
+use std::sync::Mutex;
+
+fn reset_after_poison(state: &Mutex<Vec<u8>>) {
+    let mut guard = state.lock().unwrap_or_else(|mut poisoned| {
+        poisoned.get_mut().clear();
+        state.clear_poison();
+        poisoned.into_inner()
+    });
+    guard.clear();
+}
+```
+
+Choose among these policies based on what a panic can do to the protected state, not merely to silence a lint.
+
+## When to Use `allow-unwrap-types`
+
+Use it when all of these are true:
+
+- the lint is valuable for the rest of the codebase,
+- the exempted type has a deliberate, documented panic policy,
+- applying that policy uniformly to the whole type is appropriate.
+
+If only one call site is exceptional, a local `#[expect(clippy::unwrap_used, reason = "...")]` is usually more precise than a type-wide exemption.
 
 ## See Also
 
-- [err-no-unwrap-prod](./err-no-unwrap-prod.md) — Avoiding unwrap in production
-- [err-expect-not-allow](./err-expect-not-allow.md) — Prefer #[expect] over #[allow]
-- [err-expect-bugs-only](./err-expect-bugs-only.md) — When expect() is appropriate
-- [lint-clippy](./lint-deny-correctness.md) — Compiler lint configuration
+- [err-no-unwrap-prod](./err-no-unwrap-prod.md) — Expected failures versus panic-worthy invariants
+- [err-expect-not-allow](./err-expect-not-allow.md) — Prefer `#[expect]` for local lint exceptions
+- [err-expect-bugs-only](./err-expect-bugs-only.md) — Using `expect()` for invariants
