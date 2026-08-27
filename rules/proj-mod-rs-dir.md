@@ -1,138 +1,136 @@
 # proj-mod-rs-dir
 
-> Use mod.rs for multi-file modules
+> Choose a consistent multi-file module layout; both `foo.rs` + `foo/` and `foo/mod.rs` are supported
 
 ## Why It Matters
 
-Rust offers two styles for multi-file modules. The `mod.rs` style is clearer for larger modules and aligns with how most Rust projects are structured. Choose one style consistently.
+Rust supports two ordinary filesystem layouts for a module with submodules. Neither is inherently more correct or more scalable. Pick the style that makes your project easy to navigate, and avoid mixing styles accidentally when consistency matters to the team.
 
-## Two Styles
+## Adjacent Module File
 
-### Style 1: mod.rs (Recommended for larger modules)
-
-```
+```text
 src/
-├── user/
-│   ├── mod.rs          # Module root
-│   ├── model.rs
-│   └── repository.rs
-└── lib.rs
+├── lib.rs
+├── user.rs
+└── user/
+    ├── model.rs
+    └── repository.rs
 ```
 
 ```rust
-// src/lib.rs
-mod user;  // Looks for user/mod.rs or user.rs
-
-// src/user/mod.rs
-mod model;
-mod repository;
-pub use model::User;
-```
-
-### Style 2: Adjacent file (Recommended for smaller modules)
-
-```
-src/
-├── user.rs             # Module root
-├── user/
-│   ├── model.rs
-│   └── repository.rs
-└── lib.rs
-```
-
-```rust
-// src/lib.rs
-mod user;  // Looks for user.rs, then user/ for submodules
-
 // src/user.rs
 mod model;
 mod repository;
-pub use model::User;
+
+pub fn module_name() -> &'static str {
+    "user"
+}
 ```
 
-## When to Use Each
+With `mod user;` in the parent, `user.rs` is the module root and `user/` contains its children.
 
-| Scenario | Recommendation |
-|----------|----------------|
-| Simple module (1-3 submodules) | Adjacent file (`user.rs` + `user/`) |
-| Complex module (4+ submodules) | `mod.rs` style (`user/mod.rs`) |
-| Deep nesting | `mod.rs` at each level |
-| Library with public modules | Consistent style throughout |
+## `mod.rs` Module Root
 
-## mod.rs Benefits
-
-- Clear that `user/` is a module directory
-- All module code inside the folder
-- Easier to move/rename entire modules
-- Common in large codebases (tokio, serde)
-
-## Adjacent File Benefits
-
-- Module declaration outside directory
-- Can see module's interface without entering folder
-- Matches Rust 2018+ default lint preference
-- Good for small modules with few submodules
-
-## Example: Complex Module
-
-```
+```text
 src/
-├── database/
-│   ├── mod.rs          # Main module, re-exports
-│   ├── connection.rs   # Connection pool
-│   ├── migrations.rs   # Schema migrations
-│   ├── queries/        # Sub-module for queries
-│   │   ├── mod.rs
-│   │   ├── user.rs
-│   │   └── order.rs
-│   └── error.rs
-└── lib.rs
+├── lib.rs
+└── user/
+    ├── mod.rs
+    ├── model.rs
+    └── repository.rs
 ```
 
 ```rust
-// src/database/mod.rs
-mod connection;
-mod migrations;
-mod queries;
-mod error;
+// src/user/mod.rs
+mod model;
+mod repository;
 
-pub use connection::Pool;
-pub use error::DatabaseError;
-pub use queries::{UserQueries, OrderQueries};
+pub fn module_name() -> &'static str {
+    "user"
+}
 ```
 
-## Edition 2024: `gen` Keyword Reservation
+With `mod user;` in the parent, `user/mod.rs` can instead be the module root.
 
-Rust Edition 2024 reserves `gen` as a keyword (RFC 3513). Avoid naming any module or file `gen.rs` — it will become a syntax error.
+Do not provide both `user.rs` and `user/mod.rs` for the same module. Choose one root layout for that module.
 
-| ❌ Avoid | ✅ Use Instead |
-|----------|---------------|
-| `gen.rs` | `generator.rs`, `gen_mod.rs`, `r#gen.rs` |
-| `src/gen/` | `src/generator/` |
-| `mod gen;` | `mod generator;` |
+## Choose by Project Navigation, Not Submodule Count
+
+Rules such as “use `mod.rs` above four submodules” are arbitrary. More useful considerations are:
+
+- whether unique editor-tab filenames matter (`user.rs` is easier to distinguish than several `mod.rs` tabs);
+- whether keeping every file for a module under one directory is more convenient;
+- existing repository convention;
+- tooling or lint rules the project intentionally enables.
+
+A large project can use either layout successfully.
+
+## Edition 2024: `gen` Is a Keyword
+
+Edition 2024 reserves `gen`. Existing identifiers can remain spelled `gen` by using a raw identifier in Rust source:
 
 ```rust
-// ❌ Will break in Edition 2024
-mod gen;
+mod r#gen {
+    pub fn generate() -> u32 {
+        42
+    }
+}
 
-// ✅ Works in all editions
-mod generator;
+fn main() {
+    assert_eq!(r#gen::generate(), 42);
+}
 ```
 
-## Consistency Rule
+For a file module, the source declaration can be `mod r#gen;` while the filesystem name remains the ordinary module name, such as `gen.rs` or `gen/mod.rs`. Do **not** rename the file to `r#gen.rs`; `r#` is Rust source syntax, not part of the identifier's filesystem name.
 
-Pick one style for your project and stick with it:
+For edition migration, `cargo fix --edition` uses the `keyword_idents_2024` compatibility lint to rewrite affected source identifiers to raw identifiers where appropriate. Renaming the module to something clearer such as `generator` is also reasonable when you control the API.
 
-```rust
-// Cargo.toml or clippy.toml
+## Clippy Can Enforce Either Layout
+
+These are restriction lints, not default Rust style rules:
+
+```toml
+# Cargo.toml
 [lints.clippy]
-mod_module_files = "warn"  # Enforces mod.rs style
-# OR
-self_named_module_files = "warn"  # Enforces adjacent style
+mod_module_files = "warn"        # bans mod.rs; prefers foo.rs + foo/
 ```
+
+Or, for the opposite convention:
+
+```toml
+# Cargo.toml
+[lints.clippy]
+self_named_module_files = "warn" # requires foo/mod.rs-style roots
+```
+
+Do not enable both. They intentionally prescribe opposite filesystem layouts.
+
+## Keep Module Roots Useful
+
+Whichever layout you choose, module roots are good places for the module's public surface and internal structure:
+
+```rust
+mod parser {
+    mod lexer {
+        pub(super) fn token_count(input: &str) -> usize {
+            input.split_whitespace().count()
+        }
+    }
+
+    pub fn tokens(input: &str) -> usize {
+        lexer::token_count(input)
+    }
+}
+
+fn main() {
+    assert_eq!(parser::tokens("a b c"), 3);
+}
+```
+
+Avoid turning filesystem style into an architecture rule. Module boundaries, visibility, and public re-exports matter more than whether the root happens to be named `mod.rs`.
 
 ## See Also
 
-- [proj-flat-small](./proj-flat-small.md) - Keep small projects flat
-- [proj-mod-by-feature](./proj-mod-by-feature.md) - Feature organization
-- [proj-pub-use-reexport](./proj-pub-use-reexport.md) - Re-export patterns
+- [proj-flat-small](./proj-flat-small.md) — keep small projects simple
+- [proj-mod-by-feature](./proj-mod-by-feature.md) — organize modules by responsibility
+- [proj-pub-use-reexport](./proj-pub-use-reexport.md) — shape the public module surface

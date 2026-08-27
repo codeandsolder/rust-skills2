@@ -1,266 +1,163 @@
 # err-thiserror-lib
 
-> Use `thiserror` for library error types
+> Use `thiserror` to derive typed library errors when it removes boilerplate without hiding the API
 
 ## Why It Matters
 
-Libraries should expose typed, matchable errors so users can handle specific error conditions. `thiserror` generates `Error` trait implementations with minimal boilerplate, creating ergonomic error types that are easy to match against.
+Library callers often need structured errors they can match and inspect. `thiserror` derives `Display` and `Error` implementations while leaving the resulting error type as an ordinary enum or struct in your public API.
 
-## Bad
+The crate is a boilerplate tool, not a substitute for error design. Choose meaningful variants, decide which source errors should be exposed, and avoid conversions that erase context.
 
-```rust
-// String errors - not matchable
-fn parse(input: &str) -> Result<Data, String> {
-    Err("parse error".to_string())
-}
+## Good: A Matchable Error Enum
 
-// Box<dyn Error> - not matchable
-fn load(path: &Path) -> Result<Data, Box<dyn std::error::Error>> {
-    Err(Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found")))
-}
-
-// Manual implementation - verbose
-#[derive(Debug)]
-enum MyError {
-    Io(std::io::Error),
-    Parse(String),
-}
-
-impl std::fmt::Display for MyError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MyError::Io(e) => write!(f, "io error: {}", e),
-            MyError::Parse(s) => write!(f, "parse error: {}", s),
-        }
-    }
-}
-
-impl std::error::Error for MyError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            MyError::Io(e) => Some(e),
-            MyError::Parse(_) => None,
-        }
-    }
-}
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
 ```rust
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Debug, Error)]
 pub enum ParseError {
     #[error("invalid syntax at line {line}: {message}")]
     Syntax { line: usize, message: String },
-    
-    #[error("unexpected end of file")]
+
+    #[error("unexpected end of input")]
     UnexpectedEof,
-    
-    #[error("invalid utf-8 encoding")]
+
+    #[error("invalid UTF-8")]
     Utf8(#[from] std::str::Utf8Error),
-    
-    #[error("io error reading input")]
-    Io(#[from] std::io::Error),
 }
 
-// Usage
-fn parse(input: &str) -> Result<Ast, ParseError> {
+fn parse(input: &[u8]) -> Result<&str, ParseError> {
     if input.is_empty() {
         return Err(ParseError::UnexpectedEof);
     }
-    // ...
+    Ok(std::str::from_utf8(input)?)
 }
 
-// Users can match specific errors
-match parse(input) {
-    Ok(ast) => process(ast),
-    Err(ParseError::Syntax { line, message }) => {
-        eprintln!("Syntax error on line {}: {}", line, message);
-    }
-    Err(ParseError::UnexpectedEof) => {
-        eprintln!("File ended unexpectedly");
-    }
-    Err(e) => eprintln!("Error: {}", e),
+fn main() {
+    assert!(matches!(parse(b""), Err(ParseError::UnexpectedEof)));
 }
 ```
 
-## Key Attributes
+Callers can match variants without depending on human-readable `Display` text.
+
+## `#[from]` Generates Conversion and Source Wiring
 
 ```rust
 use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum MyError {
-    // Simple message
-    #[error("operation failed")]
-    Failed,
-    
-    // Interpolated fields
-    #[error("invalid value: {0}")]
-    InvalidValue(String),
-    
-    // Named fields
-    #[error("connection to {host}:{port} failed")]
-    Connection { host: String, port: u16 },
-    
-    // Automatic From impl with #[from]
-    #[error("database error")]
-    Database(#[from] sqlx::Error),
-    
-    // Source without From (manual conversion needed)
-    #[error("validation failed")]
-    Validation {
-        #[source]
-        cause: ValidationError,
-        field: String,
-    },
-    
-    // Transparent - delegates Display and source to inner
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
-}
-```
-
-## Error Chaining
-
-```rust
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum ConfigError {
-    #[error("failed to read config file")]
-    Read(#[source] std::io::Error),
-    
-    #[error("failed to parse config")]
-    Parse(#[source] toml::de::Error),
-    
-    #[error("invalid config value for '{key}'")]
-    InvalidValue {
-        key: String,
-        #[source]
-        cause: ValueError,
-    },
-}
-
-// Error chain is preserved
-fn load_config(path: &Path) -> Result<Config, ConfigError> {
-    let content = std::fs::read_to_string(path)
-        .map_err(ConfigError::Read)?;
-    
-    let config: Config = toml::from_str(&content)
-        .map_err(ConfigError::Parse)?;
-    
-    Ok(config)
-}
-```
-
-## no_std Support (thiserror 2.0+)
-
-thiserror 2.0+ supports `no_std` with `core::error::Error` (Rust 1.81+):
-
-```toml
-# Cargo.toml
-[dependencies]
-thiserror = { version = "2", default-features = false }
-```
-
-```rust
-#![no_std]
-
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum SpiError {
-    #[error("DMA transfer failed on channel {channel}")]
-    DmaFailed {
-        channel: u8,
-        #[source]
-        source: DmaError,
-    },
-
-    #[error("CS assertion failed")]
-    CsAssert(#[from] GpioError),
-}
-
-// core::error::Error is automatically derived
-```
-
-## #[error(transparent)]
-
-Delegates both Display and source to the inner error:
-
-```rust
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum AppError {
-    // Transparent — passes through Display and source
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
-
-    // Without transparent, you'd need to specify both
-    #[error("io failure")]
+#[derive(Debug, Error)]
+enum LoadError {
+    #[error("I/O failure")]
     Io(#[from] std::io::Error),
 }
-```
 
-This is especially useful for wrapping `anyhow::Error` or other dynamic error types in your thiserror enum.
-
-## #[diagnostic::do_not_recommend] (Rust 1.85+)
-
-Hide blanket error conversion impls from compiler suggestions:
-
-```rust
-#[diagnostic::do_not_recommend]
-impl<T: std::error::Error + 'static> From<T> for Box<dyn std::error::Error> {
-    fn from(err: T) -> Self {
-        Box::new(err)
-    }
+fn read(path: &std::path::Path) -> Result<String, LoadError> {
+    Ok(std::fs::read_to_string(path)?)
 }
 ```
 
-This prevents the compiler from suggesting `Box<dyn Error>` conversions when users don't want them.
+Use `#[from]` when conversion from that source type is unambiguous and no extra context is required. If construction needs fields such as a path, query, or operation name, use `#[source]` and build the variant explicitly.
 
-## Alternative: snafu 0.9
-
-`snafu` 0.9 (March 2026) is an alternative to thiserror with context selectors and a `Report` macro:
+## `#[source]` Without Automatic Conversion
 
 ```rust
-use snafu::prelude::*;
+use thiserror::Error;
 
-#[derive(Debug, Snafu)]
-pub enum ConfigError {
-    #[snafu(display("failed to read config at {path}"))]
-    ReadFailed {
+#[derive(Debug, Error)]
+enum ConfigError {
+    #[error("failed to read {path}")]
+    Read {
         path: String,
+        #[source]
         source: std::io::Error,
     },
 }
 
-// snafu's Report macro for unified error reporting
-fn main() {
-    if let Err(e) = run() {
-        eprintln!("{}", Report::from_error(e));
-        std::process::exit(1);
-    }
+fn load(path: &str) -> Result<String, ConfigError> {
+    std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
+        path: path.to_owned(),
+        source,
+    })
 }
 ```
 
-Choose thiserror for simplicity and ecosystem maturity; choose snafu when you need context selectors or prefer its API.
+This preserves both domain context and the original error chain.
 
-## Library vs Application
+## `#[error(transparent)]`
 
-| Context | Crate | Why |
-|---------|-------|-----|
-| Library | `thiserror` | Typed errors users can match |
-| Application | `anyhow` | Easy error handling with context |
-| Both | `thiserror` for public API, `anyhow` internally | Best of both |
+Transparent wrappers delegate their `Display` and error source behavior to the wrapped error. Use them when the wrapper intentionally adds no user-facing context.
+
+```rust
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+enum AppError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+```
+
+If the wrapper represents a distinct domain operation, a contextual message is usually more useful than transparency.
+
+## Public Compatibility Still Matters
+
+Changing variants, fields, or source types can affect downstream matching even though `thiserror` generated the trait implementations. For a public enum expected to grow, consider `#[non_exhaustive]`.
+
+```rust
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum ClientError {
+    #[error("request timed out")]
+    Timeout,
+
+    #[error("server rejected the request")]
+    Rejected,
+}
+```
+
+## `no_std`
+
+Modern `thiserror` supports `core::error::Error`-based use in `no_std` configurations. Whether a particular error type is actually `no_std`-friendly still depends on its fields and dependencies.
+
+For a crate that does not need `std`, configure dependencies and features deliberately rather than assuming the derive alone makes the whole error graph `no_std`.
+
+## `#[diagnostic::do_not_recommend]` Is Independent of `thiserror`
+
+Rust 1.85's `#[diagnostic::do_not_recommend]` can hide a **legal trait impl** from compiler recommendations when surfacing that impl would mislead users. It is not a `thiserror` feature and does not make illegal conversion impls valid.
+
+```rust
+trait InternalConversion {}
+trait PublicConversion {}
+
+#[diagnostic::do_not_recommend]
+impl<T: InternalConversion> PublicConversion for T {}
+
+struct Direct;
+impl PublicConversion for Direct {}
+
+fn main() {}
+```
+
+Do not demonstrate the attribute by implementing foreign `From<T>` for foreign `Box<dyn Error>`: that violates Rust's orphan rules before diagnostics are relevant.
+
+See [err-diagnostic-do-not-recommend](./err-diagnostic-do-not-recommend.md) for the dedicated guidance.
+
+## Library vs Application Boundaries
+
+| Situation | Typical approach |
+|---|---|
+| Public library failures callers should distinguish | typed `thiserror` enum/struct |
+| Application top-level plumbing | often a context-oriented dynamic error |
+| Library internals with one obvious source | small custom error or transparent wrapper |
+| Failure needing operation/path/query context | explicit variant with `#[source]` |
+
+Avoid turning “libraries use thiserror, applications use anyhow” into a hard law. A binary can benefit from typed domain errors, and a library may use dynamic errors internally while keeping its public boundary typed.
 
 ## See Also
 
-- [err-anyhow-app](err-anyhow-app.md) - Use anyhow for applications
-- [err-from-impl](err-from-impl.md) - Use #[from] for automatic conversion
-- [err-source-chain](err-source-chain.md) - Use #[source] to chain errors
+- [err-custom-type](./err-custom-type.md) — designing domain errors
+- [err-anyhow-app](./err-anyhow-app.md) — application error context
+- [err-from-impl](./err-from-impl.md) — error conversions
+- [err-source-chain](./err-source-chain.md) — preserving causes
+- [err-diagnostic-do-not-recommend](./err-diagnostic-do-not-recommend.md) — diagnostic hints

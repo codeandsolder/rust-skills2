@@ -1,163 +1,146 @@
 # doc-safety-section
 
-> Include `# Safety` section for unsafe functions
+> Document caller obligations with `# Safety`; justify local unsafe operations with `// SAFETY:` proofs
 
 ## Why It Matters
 
-Unsafe functions require callers to uphold invariants that the compiler cannot verify. The `# Safety` section documents exactly what the caller must guarantee for the function to be sound. Without this, users cannot safely call the function.
+An `unsafe fn` moves part of Rust's safety proof from the compiler to the caller. Its documentation must state the conditions a caller has to uphold so that calling the function is sound.
 
-This is not optional—it's a requirement for sound unsafe code.
+That public contract is different from the proof inside an `unsafe { ... }` block. A local `// SAFETY:` comment should explain why the code at that point satisfies the relevant unsafe operation's preconditions.
 
-## Bad
+## Good: State the Caller's Preconditions
 
 ```rust
-/// Reads a value from a raw pointer.
-pub unsafe fn read_ptr<T>(ptr: *const T) -> T {
-    // What guarantees must the caller provide? Unknown!
-    ptr.read()
+/// Reads one byte from `ptr`.
+///
+/// # Safety
+///
+/// The caller must ensure that `ptr`:
+/// - is non-null and valid for reading one initialized `u8`;
+/// - remains valid for the duration of this call; and
+/// - is not involved in a concurrent conflicting access.
+pub unsafe fn read_byte(ptr: *const u8) -> u8 {
+    // SAFETY: these are exactly the preconditions required from the caller.
+    unsafe { ptr.read() }
 }
 
-/// Creates a string from raw parts.
-pub unsafe fn string_from_raw(ptr: *mut u8, len: usize, cap: usize) -> String {
-    String::from_raw_parts(ptr, len, cap)
+fn main() {
+    let byte = 7_u8;
+    // SAFETY: `&byte` provides a valid initialized address for this call.
+    assert_eq!(unsafe { read_byte(&byte) }, 7);
 }
 ```
 
-## Good
+Do not merely write “caller must call this safely.” Name the validity, lifetime, aliasing, initialization, layout, or protocol requirements that cannot be checked by the type system.
+
+## Unsafe Blocks in Safe APIs Need Local Proofs
+
+A safe function must not require hidden caller preconditions. Its unsafe block is an implementation detail whose proof follows from safe inputs and checks performed by the function.
 
 ```rust
-/// Reads a value from a raw pointer.
-///
-/// # Safety
-///
-/// The caller must ensure that:
-/// - `ptr` is valid for reads of `size_of::<T>()` bytes
-/// - `ptr` is properly aligned for type `T`
-/// - `ptr` points to a properly initialized value of type `T`
-/// - The memory referenced by `ptr` is not mutated during this call
-pub unsafe fn read_ptr<T>(ptr: *const T) -> T {
-    ptr.read()
+pub fn get<T>(slice: &[T], index: usize) -> Option<&T> {
+    if index < slice.len() {
+        // SAFETY: the bounds check above proves `index < slice.len()`.
+        Some(unsafe { slice.get_unchecked(index) })
+    } else {
+        None
+    }
 }
 
-/// Creates a `String` from raw parts.
-///
-/// # Safety
-///
-/// The caller must guarantee that:
-/// - `ptr` was allocated by the same allocator that `String` uses
-/// - `len` is less than or equal to `cap`
-/// - The first `len` bytes at `ptr` are valid UTF-8
-/// - `cap` is the capacity that `ptr` was allocated with
-/// - No other code will use `ptr` after this call (ownership is transferred)
-///
-/// Violating these requirements leads to undefined behavior including
-/// memory corruption, use-after-free, or invalid UTF-8 in strings.
-pub unsafe fn string_from_raw(ptr: *mut u8, len: usize, cap: usize) -> String {
-    String::from_raw_parts(ptr, len, cap)
+fn main() {
+    assert_eq!(get(&[10, 20], 1), Some(&20));
+    assert_eq!(get(&[10, 20], 2), None);
 }
 ```
 
-## Key Elements of Safety Documentation
+A public `# Safety` section would be misleading here because callers have no unsafe obligation.
 
-| Element | Description |
-|---------|-------------|
-| **Preconditions** | What must be true before calling |
-| **Pointer validity** | Alignment, null-ness, lifetime |
-| **Memory ownership** | Who owns what, transfer semantics |
-| **Invariants** | Type invariants that must hold |
-| **Consequences** | What happens if violated |
+## Unsafe Traits Document Implementor Obligations
 
-## Pattern: Unsafe Trait Implementations
+For an unsafe trait, document what an `unsafe impl` promises. Then justify each implementation where the proof is not self-evident.
 
 ```rust
-/// A type that can be safely zeroed.
+/// Types for which the all-zero bit pattern is a valid value.
 ///
 /// # Safety
 ///
-/// Implementing this trait guarantees that:
-/// - All bit patterns of zeros represent a valid value of this type
-/// - The type has no padding bytes that could leak data
-/// - The type contains no references or pointers
-pub unsafe trait Zeroable {
+/// Implementors must guarantee that a value consisting entirely of zero bits
+/// is a valid initialized instance of `Self`.
+pub unsafe trait Zeroable: Sized {
     fn zeroed() -> Self;
 }
 
-// SAFETY: u32 is a primitive integer type where all zero bits
-// represent a valid value (0).
+// SAFETY: every bit pattern is valid for `u32`, including all-zero bits.
 unsafe impl Zeroable for u32 {
     fn zeroed() -> Self {
         0
     }
 }
-```
 
-## Pattern: Unsafe Blocks in Safe Functions
-
-When a safe function contains unsafe blocks, document the invariants:
-
-```rust
-/// Returns a reference to the element at the given index.
-///
-/// Returns `None` if the index is out of bounds.
-pub fn get(&self, index: usize) -> Option<&T> {
-    if index < self.len {
-        // SAFETY: We just verified that index < len, so this
-        // access is within bounds.
-        Some(unsafe { self.data.get_unchecked(index) })
-    } else {
-        None
-    }
+fn main() {
+    assert_eq!(u32::zeroed(), 0);
 }
 ```
 
-## Common Safety Requirements
+Do not invent extra requirements such as “contains no pointers” or “has no padding” unless the abstraction actually depends on those properties. Safety documentation should state the minimal real invariant.
+
+## Edition 2024: `unsafe extern` Applies to External Blocks
+
+Edition 2024 requires **external declaration blocks** to be written `unsafe extern`. The `unsafe` marks the author's responsibility for declaring the foreign signatures correctly.
 
 ```rust
-/// # Safety
-///
-/// - Pointer must be non-null
-/// - Pointer must be aligned to `align_of::<T>()`
-/// - Pointer must be valid for reads/writes of `size_of::<T>()` bytes
-/// - Pointer must point to an initialized value of `T`
-/// - The referenced memory must not be accessed through any other pointer
-///   for the duration of the returned reference
-/// - The total size must not exceed `isize::MAX`
-```
+use core::ffi::{c_char, c_int};
 
-## Edition 2024: unsafe extern Syntax
+unsafe extern "C" {
+    /// Absolute value from the C runtime.
+    pub safe fn abs(value: c_int) -> c_int;
 
-In Edition 2024, use `unsafe extern` instead of `extern` for FFI functions
-that are inherently unsafe:
-
-```rust
-/// Allocates memory of the given size.
-///
-/// # Safety
-///
-/// - `size` must be greater than zero
-/// - The returned pointer must later be freed with [`dealloc`]
-/// - The pointer is not guaranteed to be initialized
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn alloc(size: usize) -> *mut u8 {
-    // ...
+    /// Returns the length of a NUL-terminated C string.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must point to a valid NUL-terminated byte string readable through
+    /// the terminating NUL byte.
+    pub unsafe fn strlen(ptr: *const c_char) -> usize;
 }
 ```
 
-Every `unsafe extern` function requires a `# Safety` section.
+Items in an unsafe extern block are unsafe to call by default. Edition 2024 also allows an item whose declaration is genuinely safe for all Rust values to be marked `safe`, as with `abs` above.
 
-## Lints
+This is separate from defining a Rust function with a foreign ABI:
 
 ```rust
-#![warn(clippy::missing_safety_doc)]      // Missing # Safety on unsafe fn
-#![warn(clippy::undocumented_unsafe_blocks)]  // Missing SAFETY comment on unsafe blocks
+/// Adds one to `value` using the C ABI.
+//
+// SAFETY: this crate owns the exported symbol name `rust_add_one`.
+#[unsafe(export_name = "rust_add_one")]
+pub extern "C" fn add_one(value: i32) -> i32 {
+    value.saturating_add(1)
+}
 ```
 
-- **`missing_safety_doc`**: warns when an `unsafe fn` lacks a `# Safety` section
-- **`undocumented_unsafe_blocks`**: warns when an `unsafe {}` block lacks a
-  `// SAFETY:` comment explaining why the invariants hold
+`pub unsafe extern "C" fn ...` remains the syntax for a **defined unsafe function** using a foreign ABI. `unsafe extern "C" { ... }` is the syntax for an **external declaration block**. Do not conflate the two.
+
+## Edition 2024 Unsafe Attributes
+
+`no_mangle`, `export_name`, and `link_section` are unsafe attributes in Edition 2024 and must use the `#[unsafe(...)]` syntax. Their obligation belongs to the item author: for example, exported symbol names share a process-wide/link-wide namespace and must not collide incompatibly.
+
+The unsafe attribute does not by itself make the function unsafe to call. Whether a function is `unsafe fn` depends on its caller-visible preconditions.
+
+## Useful Lints
+
+```rust
+#![warn(clippy::missing_safety_doc)]
+#![warn(clippy::undocumented_unsafe_blocks)]
+```
+
+- `missing_safety_doc` checks public unsafe APIs for caller-facing safety documentation.
+- `undocumented_unsafe_blocks` checks for local explanations around unsafe operations.
+
+Treat the comments as proofs, not ceremony. A stale or circular `SAFETY` comment is worse than a compiler warning because it gives reviewers false confidence.
 
 ## See Also
 
-- [doc-panics-section](./doc-panics-section.md) - Documenting panics
-- [lint-unsafe-doc](./lint-unsafe-doc.md) - Enforcing unsafe documentation
-- [doc-errors-section](./doc-errors-section.md) - Documenting errors
+- [lint-unsafe-doc](./lint-unsafe-doc.md) — unsafe contracts and proof comments
+- [doc-panics-section](./doc-panics-section.md) — documenting panics
+- [doc-errors-section](./doc-errors-section.md) — documenting recoverable errors

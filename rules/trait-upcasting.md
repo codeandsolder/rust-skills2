@@ -1,128 +1,169 @@
 # trait-upcasting
 
-> Prefer implicit trait object upcasting over hand-written `as_supertrait` helpers (Rust 1.86+)
+> Use trait-object upcasting for dyn-compatible supertrait relationships (Rust 1.86+)
 
 ## Why It Matters
 
-Before Rust 1.86, converting `&dyn Sub` to `&dyn Super` (where `Sub: Super`) required either manual boilerplate — every trait with supertraits needed a hand-written upcast method — or a macro. The compiler can now perform this coercion implicitly, making trait hierarchies ergonomic to work with as trait objects. This eliminates a long-standing papercut that often drove library authors to avoid trait objects in multi-level hierarchies, or to use `Any` and downcasting as a workaround.
+Rust 1.86 stabilized trait-object upcasting coercions: when `Sub: Super`, a `dyn Sub` trait object can coerce to `dyn Super` as long as the relevant traits are dyn-compatible.
 
-## Bad
+This removes many hand-written `as_supertrait` helpers. It does **not** make non-dyn-compatible traits usable as trait objects, and it does not change ordinary generic trait bounds.
+
+## Good: Reference Upcasting
 
 ```rust
-trait Super {
-    fn super_op(&self) -> &str;
-}
-trait Sub: Super {
-    fn sub_op(&self) -> &str;
+trait Named {
+    fn name(&self) -> &str;
 }
 
-// Hand-written upcast required before Rust 1.86.
-trait Sub: Super {
-    fn as_super(&self) -> &dyn Super;
-    fn sub_op(&self) -> &str;
+trait Widget: Named {
+    fn width(&self) -> u32;
 }
 
-struct MyStruct;
-impl Super for MyStruct {
-    fn super_op(&self) -> &str { "super" }
-}
-impl Sub for MyStruct {
-    fn as_super(&self) -> &dyn Super { self }
-    fn sub_op(&self) -> &str { "sub" }
+struct Button;
+
+impl Named for Button {
+    fn name(&self) -> &str {
+        "button"
+    }
 }
 
-fn use_sub(x: &dyn Sub) {
-    // Must call the explicit upcast method.
-    let s: &dyn Super = x.as_super();
-    println!("{}", s.super_op());
+impl Widget for Button {
+    fn width(&self) -> u32 {
+        80
+    }
+}
+
+fn named(value: &dyn Widget) -> &dyn Named {
+    value
+}
+
+fn main() {
+    let button = Button;
+    let widget: &dyn Widget = &button;
+    assert_eq!(named(widget).name(), "button");
+    assert_eq!(widget.width(), 80);
 }
 ```
 
-## Good
+The conversion is a coercion; there is no `.into()` method or runtime downcast involved.
+
+## Owning Trait Objects Can Upcast Too
+
+Pointer-like owners that support the corresponding unsizing coercion can carry the trait-object upcast through the pointer.
 
 ```rust
-trait Super {
-    fn super_op(&self) -> &str;
-}
-trait Sub: Super {
-    fn sub_op(&self) -> &str;
+trait Base {
+    fn value(&self) -> u32;
 }
 
-struct MyStruct;
-impl Super for MyStruct {
-    fn super_op(&self) -> &str { "super" }
-}
-impl Sub for MyStruct {
-    fn sub_op(&self) -> &str { "sub" }
-}
+trait Derived: Base {}
 
-// ----- Implicit upcasting (Rust 1.86+) -----
+struct Item(u32);
 
-fn use_sub(x: &dyn Sub) {
-    // Implicit coercion — no hand-written method needed.
-    let s: &dyn Super = x;
-    println!("{}", s.super_op());
+impl Base for Item {
+    fn value(&self) -> u32 {
+        self.0
+    }
 }
+impl Derived for Item {}
 
-// Works with Box<dyn> and Arc<dyn> too.
-fn box_upcast(x: Box<dyn Sub>) -> Box<dyn Super> {
-    x
+fn upcast(value: Box<dyn Derived>) -> Box<dyn Base> {
+    value
 }
 
-use std::sync::Arc;
-fn arc_upcast(x: Arc<dyn Sub>) -> Arc<dyn Super> {
-    x
+fn main() {
+    let value: Box<dyn Derived> = Box::new(Item(7));
+    assert_eq!(upcast(value).value(), 7);
 }
 ```
 
-## Common Use Cases
+The same general coercion machinery is used by standard smart pointers such as `Arc` where the pointer type supports unsizing.
 
-### Enabling `dyn Any` downcasting on custom trait hierarchies
-
-The `Any` trait is a common supertrait to enable `downcast_ref` on trait objects. Upcasting makes this trivial:
+## `Any` Supertraits Become Easier to Use
 
 ```rust
 use std::any::Any;
 
 trait Component: Any {
-    fn name(&self) -> &str;
+    fn kind(&self) -> &'static str;
 }
 
 impl dyn Component {
-    fn downcast_ref<T: Any>(&self) -> Option<&T> {
-        (self as &dyn Any).downcast_ref::<T>()
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
+
+struct Counter;
+impl Component for Counter {
+    fn kind(&self) -> &'static str {
+        "counter"
+    }
+}
+
+fn main() {
+    let component: &dyn Component = &Counter;
+    assert!(component.as_any().is::<Counter>());
+}
 ```
 
-### Working with standard library trait hierarchies
+This is an upcast from `dyn Component` to its `Any` supertrait, followed by `Any`'s normal downcasting API.
 
-Standard traits that form hierarchies benefit immediately:
+## Standard-Library Supertraits Still Need Dyn Compatibility
+
+Do not infer that every familiar trait hierarchy is a usable trait-object hierarchy. A trait must already satisfy Rust's dyn-compatibility rules before `dyn Trait` exists.
+
+For example, examples such as these are invalid:
+
+<!-- rust-check: compile_fail; reason=demonstrates that trait upcasting does not make non-dyn-compatible standard traits into trait objects -->
+```rust
+fn bad(_: &dyn Eq) {}
+```
+
+`Eq`, `Ord`, and `Copy` are not suitable examples for trait-object upcasting because their trait definitions are not dyn-compatible in the required way. Stabilizing upcasting did not change that.
+
+A dyn-compatible standard hierarchy does work. `std::error::Error` has dyn-compatible `Debug` and `Display` supertraits:
 
 ```rust
-fn eq_to_partial_eq(e: &dyn Eq) -> &dyn PartialEq {
-    e  // Eq: PartialEq
-}
+use std::fmt::Display;
 
-fn ord_to_partial_ord(o: &dyn Ord) -> &dyn PartialOrd {
-    o  // Ord: PartialOrd
-}
-
-fn copy_to_clone(c: &dyn Copy) -> &dyn Clone {
-    c  // Copy: Clone
+fn as_display(error: &dyn std::error::Error) -> &dyn Display {
+    error
 }
 ```
 
-## Key Points
+## Upcasting Is Not Downcasting
 
-- Upcasting is an **implicit coercion**, not a conversion method — it requires no `.into()` or `.as_ref()` call.
-- Works for all pointer-to-trait-object types: `&dyn`, `Box<dyn>`, `Arc<dyn>`, `*const dyn`, `*mut dyn`.
-- Does **not** change object safety: a trait must already be dyn-compatible to be used as `dyn Trait` before upcasting applies.
-- Not transitive for associated types — upcasting only applies to supertrait relationships, not to type parameters.
-- Replaces the pattern of defining an `fn as_super(&self) -> &dyn Super` method on every subtrait.
+Upcasting forgets capabilities: `dyn Derived -> dyn Base`. It is guaranteed by the declared supertrait relationship.
+
+Going the other direction (`dyn Base -> dyn Derived`) is a downcast and cannot be inferred from the base trait alone. Use a deliberate mechanism such as `Any`, an enum, or an application-specific registry when you actually need runtime type recovery.
+
+## Dyn Compatibility Still Applies
+
+A trait used as `dyn Trait` must satisfy the language's dyn-compatibility rules. Among other restrictions, all of its supertraits must themselves be dyn-compatible, and the trait cannot require `Self: Sized` as a supertrait.
+
+```rust
+trait Base {
+    fn id(&self) -> u32;
+}
+
+trait NotDyn: Base + Sized {
+    fn consume(self);
+}
+
+// `dyn NotDyn` is invalid because the trait requires `Sized`.
+```
+
+Upcasting is useful only after the trait-object design is valid in the first place.
+
+## Migration Guidance
+
+If a pre-1.86 API has an `as_super(&self) -> &dyn Super` method solely to work around the old language limitation, consider removing or deprecating that helper when your MSRV is 1.86 or newer.
+
+Keep a named helper if it has additional semantics, is part of a compatibility promise, or is clearer at a public API boundary. Language support removes the technical necessity, not every possible reason for an explicit method.
 
 ## See Also
 
-- [trait-object-safety](trait-object-safety.md) — keep traits dyn-compatible when you need `dyn Trait`
-- [trait-dyn-vs-generic](trait-dyn-vs-generic.md) — choose between static and dynamic dispatch deliberately
-- [anti-type-erasure](anti-type-erasure.md) — don't use `Box<dyn Trait>` when `impl Trait` works
+- [trait-object-safety](./trait-object-safety.md) — dyn-compatible trait design
+- [trait-dyn-vs-generic](./trait-dyn-vs-generic.md) — dynamic versus static dispatch
+- [anti-type-erasure](./anti-type-erasure.md) — avoid unnecessary type erasure
