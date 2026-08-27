@@ -99,17 +99,17 @@ Reference these guidelines when:
 - [`err-context-chain`](rules/err-context-chain.md) - Add context with `.context()` or `.with_context()`
 - [`err-no-unwrap-prod`](rules/err-no-unwrap-prod.md) - Avoid `unwrap()` in production code; use `?`, `expect()`, or handle errors
 - [`err-expect-bugs-only`](rules/err-expect-bugs-only.md) - Use `expect()` only for invariants that indicate bugs, not user errors
-- [`err-question-mark`](rules/err-question-mark.md) - Use `?` operator for clean propagation
+- [`err-question-mark`](rules/err-question-mark.md) - Use `?` when a fallible operation should short-circuit through the surrounding error context
 - [`err-from-impl`](rules/err-from-impl.md) - Implement `From<E>` for error conversions to enable `?` operator
 - [`err-source-chain`](rules/err-source-chain.md) - Preserve error chains with `#[source]` or `source()` method
 - [`err-lowercase-msg`](rules/err-lowercase-msg.md) - Start error messages lowercase, no trailing punctuation
-- [`err-doc-errors`](rules/err-doc-errors.md) - Document error conditions with `# Errors` section in doc comments
+- [`err-doc-errors`](rules/err-doc-errors.md) - Document meaningful `Err` conditions in a `# Errors` section
 - [`err-custom-type`](rules/err-custom-type.md) - Define custom error types for domain-specific failures
 - [`err-clippy-unwrap-types`](rules/err-clippy-unwrap-types.md) - Configure `allow-unwrap-types` to whitelist safe `unwrap()` calls while keeping real `unwrap_used` violations
-- [`err-diagnostic-do-not-recommend`](rules/err-diagnostic-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` to hide blanket error conversion impls from compiler suggestions
+- [`err-diagnostic-do-not-recommend`](rules/err-diagnostic-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` on trait impls whose appearance in diagnostics would mislead users
 - [`err-expect-not-allow`](rules/err-expect-not-allow.md) - Prefer `#[expect(...)]` over `#[allow(...)]` for suppressing lint warnings
 - [`err-no-std-error`](rules/err-no-std-error.md) - Use `core::error::Error` for `no_std` error types with thiserror 2.0+
-- [`err-try-block-experimental`](rules/err-try-block-experimental.md) - `try {}` blocks are experimental — consider use cases, prefer `?` for now
+- [`err-try-block-experimental`](rules/err-try-block-experimental.md) - `try {}` blocks remain nightly-only; prefer stable `Result`/`Option` contexts unless the scoped expression is worth the nightly dependency
 
 ### 3. Memory Optimization (CRITICAL)
 
@@ -368,7 +368,7 @@ Reference these guidelines when:
 - [`doc-errors-section`](rules/doc-errors-section.md) - Include `# Errors` section for fallible functions
 - [`doc-panics-section`](rules/doc-panics-section.md) - Include `# Panics` section for functions that can panic
 - [`doc-safety-section`](rules/doc-safety-section.md) - Include `# Safety` section for unsafe functions
-- [`doc-question-mark`](rules/doc-question-mark.md) - Use `?` in examples, not `.unwrap()`
+- [`doc-question-mark`](rules/doc-question-mark.md) - Give doctests a `Result`-returning context when demonstrating `?`
 - [`doc-hidden-setup`](rules/doc-hidden-setup.md) - Use `# ` prefix to hide example setup code
 - [`doc-intra-links`](rules/doc-intra-links.md) - Use intra-doc links to reference types and items
 - [`doc-link-types`](rules/doc-link-types.md) - Use intra-doc links to connect related types and functions
