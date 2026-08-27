@@ -212,7 +212,7 @@ Reference these guidelines when:
 - [`opt-codegen-units`](rules/opt-codegen-units.md) - Set `codegen-units = 1` for maximum optimization in release builds
 - [`opt-pgo-profile`](rules/opt-pgo-profile.md) - Use Profile-Guided Optimization (PGO) for maximum performance
 - [`opt-target-cpu`](rules/opt-target-cpu.md) - Use `target-cpu=native` (or `x86-64-v3`) for maximum performance on known deployment targets
-- [`opt-bounds-check`](rules/opt-bounds-check.md) - Use iterators and patterns that eliminate bounds checks in hot paths
+- [`opt-bounds-check`](rules/opt-bounds-check.md) - Structure hot loops so bounds are easy to prove; verify optimized code before using unchecked indexing
 - [`opt-simd-portable`](rules/opt-simd-portable.md) - Start with autovectorization; use stable SIMD crates or carefully dispatched `#[target_feature]` code when measurement justifies it.
 - [`opt-cache-friendly`](rules/opt-cache-friendly.md) - Organize data for cache-efficient access patterns
 - [`opt-cold-path`](rules/opt-cold-path.md) - Use `core::hint::cold_path()` to mark unlikely inline paths (Rust 1.95+)
@@ -391,7 +391,7 @@ Reference these guidelines when:
 
 ### 23. Performance Patterns (MEDIUM)
 
-- [`perf-iter-over-index`](rules/perf-iter-over-index.md) - Prefer iterators over manual indexing
+- [`perf-iter-over-index`](rules/perf-iter-over-index.md) - Prefer direct iteration when you are traversing values; use indexing when the index is part of the algorithm
 - [`perf-iter-lazy`](rules/perf-iter-lazy.md) - Keep iterator pipelines lazy when streaming or short-circuiting is useful; collect only when ownership, reuse, sorting, indexing, or another concrete requirement needs a collection
 - [`perf-collect-once`](rules/perf-collect-once.md) - Don't collect intermediate iterators
 - [`perf-entry-api`](rules/perf-entry-api.md) - Use entry API for map insert-or-update
@@ -404,7 +404,7 @@ Reference these guidelines when:
 - [`perf-profile-first`](rules/perf-profile-first.md) - Profile before optimizing
 - [`perf-ahash`](rules/perf-ahash.md) - Use a faster hasher (`ahash` / `FxHashMap`) when DoS resistance is not needed
 - [`perf-io-buffering`](rules/perf-io-buffering.md) - Wrap `Read`/`Write` in `BufReader`/`BufWriter` for many small operations
-- [`perf-array-windows`](rules/perf-array-windows.md) - Use `<[T]>::array_windows` and `<[T]>::as_chunks` for compile-time-size windows
+- [`perf-array-windows`](rules/perf-array-windows.md) - Use `<[T]>::array_windows` and `<[T]>::as_chunks` when a compile-time window or chunk size is useful
 - [`perf-atomic-update`](rules/perf-atomic-update.md) - Use `Atomic*::update` and `try_update` for cleaner compare-and-update loops
 - [`perf-copy-range`](rules/perf-copy-range.md) - Treat `Copy` ranges as an ownership and ergonomics choice, not an automatic performance optimization
 - [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` for conditional extraction when you need to keep both removed and retained elements
@@ -436,7 +436,7 @@ Reference these guidelines when:
 - [`lint-warn-suspicious`](rules/lint-warn-suspicious.md) - Enable clippy::suspicious for likely bugs
 - [`lint-warn-style`](rules/lint-warn-style.md) - Enable clippy::style for idiomatic code
 - [`lint-warn-complexity`](rules/lint-warn-complexity.md) - Enable clippy::complexity for simpler code
-- [`lint-warn-perf`](rules/lint-warn-perf.md) - Enable clippy::perf for performance improvements
+- [`lint-warn-perf`](rules/lint-warn-perf.md) - Enable `clippy::perf` for established performance anti-patterns; measure before adding optimizer hints
 - [`lint-pedantic-selective`](rules/lint-pedantic-selective.md) - Enable clippy::pedantic selectively
 - [`lint-missing-docs`](rules/lint-missing-docs.md) - Warn on missing documentation for public items
 - [`lint-unsafe-doc`](rules/lint-unsafe-doc.md) - Document every unsafe operation with the invariant that makes it sound
