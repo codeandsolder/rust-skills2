@@ -2,7 +2,6 @@
 # Format: file :: section :: block N :: sorted(error-tokens)
 # Migration debt only; new, changed, and stale signatures fail CI.
 
-anti-arc-mutex-everything.md :: Alternative 4: Actor Model with `tokio::spawn` :: block 5 :: E0599
 anti-clone-excessive.md :: Counter-Pattern: Premature Clone Avoidance :: block 3 :: E0428
 anti-clone-excessive.md :: Pattern: clone_from() to Reuse Allocation :: block 6 :: E0424
 anti-collect-intermediate.md :: Pattern: collect_into() (Rust 1.85+) :: block 5 :: E0061,E0428
@@ -15,16 +14,6 @@ anti-over-abstraction.md :: Special Case: Deref Overuse :: block 5 :: E0308
 anti-type-erasure.md :: impl Trait Positions :: block 4 :: E0107
 anti-unsafe-send-sync.md :: Pattern: Use Existing Safe Types :: block 6 :: E0428
 anti-vec-for-slice.md :: Mutable Slices :: block 4 :: E0428
-async-cancellation-token.md :: CancellationToken API :: block 3 :: E0069
-async-cancellation-token.md :: Graceful Shutdown Pattern :: block 5 :: E0107,E0752
-async-cancellation-token.md :: Hierarchical Cancellation :: block 4 :: E0277
-async-fn-in-trait.md :: Caveats :: block 3 :: P:expected one of `!` or
-async-joinset-structured.md :: Abort on Drop :: block 11 :: E0069
-async-mpsc-queue.md :: PollSender for Stream Integration :: block 8 :: E0599
-async-runtime-metrics.md :: Metrics Loop Pattern :: block 8 :: E0599
-async-runtime-metrics.md :: Task Health :: block 2 :: E0599
-async-select-racing.md :: Racing Multiple of Same Type :: block 7 :: E0107
-async-watch-latest.md :: Configuration Reload Pattern :: block 4 :: E0308,E0369
 doc-examples-section.md :: Shared Examples with include_str :: block 8 :: P:couldn't read `examples/../examples/basic_usage.md`: no such
 doc-hidden-public.md :: What NOT to Hide :: block 3 :: E0428
 doc-hidden-setup.md :: Shared Setup with include_str :: block 9 :: P:expected statement after outer attribute
