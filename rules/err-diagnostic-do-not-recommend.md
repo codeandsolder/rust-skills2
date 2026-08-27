@@ -1,127 +1,100 @@
 # err-diagnostic-do-not-recommend
 
-> Use `#[diagnostic::do_not_recommend]` to hide blanket error conversion impls from compiler suggestions
+> Use `#[diagnostic::do_not_recommend]` on trait impls whose appearance in diagnostics would mislead users
 
 ## Why It Matters
 
-When you implement blanket `From<...>` for your error type, the compiler may suggest using those conversions in error messages — even when they're not what the user wants. `#[diagnostic::do_not_recommend]` (Rust 1.85+) tells the compiler to suppress its suggestion for that impl, producing cleaner, more actionable diagnostics.
+Rust 1.85 added `#[diagnostic::do_not_recommend]` as a library-author hint for compiler diagnostics. It tells rustc not to present the annotated **trait implementation** as a suggested path when explaining an unsatisfied trait bound.
+
+This is useful for broad blanket impls, internal adapter impls, or impls whose bounds are usually not something the caller should try to satisfy. It is not specific to errors or `From`, and it does not change trait resolution, coherence, or program semantics.
 
 ## Bad
 
 ```rust
-use thiserror::Error;
+trait Serialize {}
+trait WireFormat {}
 
-#[derive(Error, Debug)]
-pub enum AppError {
-    #[error("io error")]
-    Io(#[from] std::io::Error),
+// Suppose this is an internal convenience blanket impl. If a user's type does
+// not implement WireFormat, diagnostics may point at the Serialize bound and
+// make implementing Serialize look like the intended fix.
+impl<T: Serialize> WireFormat for T {}
 
-    #[error("config error: {0}")]
-    Config(String),
-}
+struct Packet;
+impl WireFormat for Packet {}
 
-// The user writes this:
-fn load_config() -> Result<(), AppError> {
-    std::fs::read_to_string("config.toml")?;
-    // Compiler suggests: "help: consider using `Box<dyn std::error::Error>`"
-    // or suggests importing AppError::Io variant
-    // These suggestions are noisy and not helpful
-    Ok(())
-}
-
-// Blanket impl that causes noisy suggestions:
-impl<T: std::error::Error + 'static> From<T> for Box<dyn std::error::Error> {
-    fn from(err: T) -> Self {
-        Box::new(err)
-    }
-}
+fn main() {}
 ```
+
+The blanket impl may be perfectly valid, but exposing it in a diagnostic can send users toward an implementation detail rather than the public trait they actually need.
 
 ## Good
 
 ```rust
-use thiserror::Error;
+trait Serialize {}
+trait WireFormat {}
 
-#[derive(Error, Debug)]
-pub enum AppError {
-    #[error("io error")]
-    Io(#[from] std::io::Error),
+#[diagnostic::do_not_recommend]
+impl<T: Serialize> WireFormat for T {}
 
-    #[error("config error: {0}")]
-    Config(String),
+// Direct implementations remain ordinary trait implementations.
+struct Packet;
+impl WireFormat for Packet {}
+
+fn require_wire<T: WireFormat>(_: T) {}
+
+fn main() {
+    require_wire(Packet);
 }
+```
 
-// Hide blanket impls from compiler suggestions
+The attribute only changes how rustc may explain relevant failures. The blanket impl still exists and participates in trait solving exactly as before.
+
+## What the Attribute Actually Does
+
+The Rust Reference describes this as a hint to omit the annotated trait impl from diagnostic recommendations. The compiler is not required to use diagnostic hints in every situation.
+
+Use it when all of the following are true:
+
+- the item is a trait `impl`;
+- the impl is technically relevant to trait solving;
+- surfacing that impl commonly suggests the wrong repair, exposes an internal detail, or points at bounds callers cannot reasonably satisfy.
+
+Do not add it merely because an impl is generic. Useful diagnostics are part of an API, and hiding a genuinely actionable impl makes errors worse.
+
+## It Is Not an Error-Conversion Feature
+
+This attribute is often useful on blanket trait impls, but there is nothing special about `From` or error types. In particular, do not copy examples such as:
+
+<!-- rust-check: compile_fail; reason=demonstrates that the diagnostic attribute does not bypass orphan/coherence rules -->
+```rust
+// Illegal regardless of the diagnostic attribute: both the trait and target
+// type are foreign, so this violates Rust's orphan/coherence rules.
 #[diagnostic::do_not_recommend]
 impl<T: std::error::Error + 'static> From<T> for Box<dyn std::error::Error> {
     fn from(err: T) -> Self {
         Box::new(err)
     }
 }
-
-// Now the compiler won't suggest this conversion in error messages
 ```
 
-## With thiserror and Custom From Impls
+If you own the trait or the target type and have a legal impl whose diagnostic is misleading, the attribute may be appropriate. It never makes an otherwise-illegal impl legal.
+
+## Placement
+
+`#[diagnostic::do_not_recommend]` belongs on a trait implementation and takes no arguments. Rustc warns about misplaced or malformed uses.
 
 ```rust
-use thiserror::Error;
+trait InternalAdapter {}
+trait PublicTrait {}
 
-#[derive(Error, Debug)]
-pub enum ParseError {
-    #[error("invalid token at position {pos}")]
-    InvalidToken { pos: usize },
-}
-
-// A conversion that exists for convenience but should not appear in suggestions
 #[diagnostic::do_not_recommend]
-impl From<&str> for ParseError {
-    fn from(msg: &str) -> Self {
-        ParseError::InvalidToken { pos: 0 }
-    }
-}
+impl<T: InternalAdapter> PublicTrait for T {}
+
+fn main() {}
 ```
-
-## Effect on Compiler Diagnostics
-
-Without `#[diagnostic::do_not_recommend]`:
-
-```
-error[E0277]: the trait bound `MyType: From<SomeError>` is not satisfied
-  --> src/main.rs:42:5
-   |
-42 |     let x: MyType = some_error.into();
-   |                    ^^^^^^^^ the trait `From<SomeError>` is not implemented for `MyType`
-   |
-   = help: consider using `Box<dyn std::error::Error>` instead
-   = help: or consider importing `some_crate::SomeError`
-```
-
-With `#[diagnostic::do_not_recommend]`:
-
-```
-error[E0277]: the trait bound `MyType: From<SomeError>` is not satisfied
-  --> src/main.rs:42:5
-   |
-42 |     let x: MyType = some_error.into();
-   |                    ^^^^^^^^ the trait `From<SomeError>` is not implemented for `MyType`
-   |
-   = help: note: a conversion from `SomeError` to `MyType` requires implementing `From<SomeError>`
-```
-
-The noisy suggestion for `Box<dyn std::error::Error>` is gone.
-
-## When to Apply
-
-| Situation | Apply `#[diagnostic::do_not_recommend]`? |
-|-----------|----------------------------------------|
-| Blanket `From<E> for Box<dyn Error>` | Yes |
-| Convenience `From<&str>` for error types | Yes |
-| Core domain `From` impls that users should use | No |
-| `#[from]` on thiserror enum variants | No (already concrete) |
 
 ## See Also
 
-- [err-from-impl](./err-from-impl.md) — From implementations for ?
+- [err-from-impl](./err-from-impl.md) — `From` implementations for error propagation
 - [err-custom-type](./err-custom-type.md) — Custom error types
-- [err-question-mark](./err-question-mark.md) — The ? operator
+- [err-question-mark](./err-question-mark.md) — The `?` operator
