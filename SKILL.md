@@ -455,24 +455,24 @@ Reference these guidelines when:
 
 - [`anti-unwrap-abuse`](rules/anti-unwrap-abuse.md) - Avoid `unwrap()` for recoverable production errors; reserve panics for proven invariants and bugs
 - [`anti-expect-lazy`](rules/anti-expect-lazy.md) - Don't use expect for recoverable errors
-- [`anti-clone-excessive`](rules/anti-clone-excessive.md) - Don't clone when borrowing works
+- [`anti-clone-excessive`](rules/anti-clone-excessive.md) - Do not clone merely to satisfy ownership when borrowing, moving, or deliberate sharing better matches the API
 - [`anti-lock-across-await`](rules/anti-lock-across-await.md) - Avoid holding blocking lock guards across `.await`; async mutex guards may cross `.await` when resource serialization requires it
 - [`anti-string-for-str`](rules/anti-string-for-str.md) - Don't accept &String when &str works
-- [`anti-vec-for-slice`](rules/anti-vec-for-slice.md) - Don't accept &Vec<T> when &[T] works
+- [`anti-vec-for-slice`](rules/anti-vec-for-slice.md) - Accept slices when an API only needs element access; accept `Vec` references when vector-specific capacity or length-changing operations are genuinely part of the contract
 - [`anti-index-over-iter`](rules/anti-index-over-iter.md) - Don't use indexing when iterators work
 - [`anti-panic-expected`](rules/anti-panic-expected.md) - Don't panic on expected or recoverable errors
 - [`anti-empty-catch`](rules/anti-empty-catch.md) - Don't silently ignore errors
-- [`anti-over-abstraction`](rules/anti-over-abstraction.md) - Don't over-abstract with excessive generics
+- [`anti-over-abstraction`](rules/anti-over-abstraction.md) - Introduce generics and traits when they express a stable semantic boundary; do not generalize code solely for hypothetical flexibility
 - [`anti-premature-optimize`](rules/anti-premature-optimize.md) - Don't optimize before profiling
-- [`anti-type-erasure`](rules/anti-type-erasure.md) - Don't use Box<dyn Trait> when impl Trait works
-- [`anti-format-hot-path`](rules/anti-format-hot-path.md) - Don't use format! in hot paths
-- [`anti-collect-intermediate`](rules/anti-collect-intermediate.md) - Don't collect intermediate iterators
+- [`anti-type-erasure`](rules/anti-type-erasure.md) - Prefer static polymorphism when one concrete type is sufficient; use `dyn Trait` deliberately when runtime type erasure and heterogeneous implementations are part of the design
+- [`anti-format-hot-path`](rules/anti-format-hot-path.md) - Avoid unnecessary intermediate formatting allocations in measured hot paths; keep `format!` when a new owned `String` is the actual result you need
+- [`anti-collect-intermediate`](rules/anti-collect-intermediate.md) - Keep iterator pipelines lazy when materialization adds no semantic value; collect only when you need owned storage, reordering, repeated access, or another collection operation
 - [`anti-stringly-typed`](rules/anti-stringly-typed.md) - Don't use strings where enums or newtypes provide a meaningful domain type
 - [`anti-arc-mutex-everything`](rules/anti-arc-mutex-everything.md) - Do not default to `Arc<Mutex<T>>` when ownership, channels, atomics, or another synchronization primitive better matches the state
 - [`anti-blocking-async-drop`](rules/anti-blocking-async-drop.md) - Don't block or depend on asynchronous work completing from `Drop` of async types
 - [`anti-block-on-async`](rules/anti-block-on-async.md) - Don't call `block_on` from code that is already running asynchronously
 - [`anti-deref-overuse`](rules/anti-deref-overuse.md) - Don't use `Deref<Target = InnerType>` for newtype method delegation
-- [`anti-unsafe-send-sync`](rules/anti-unsafe-send-sync.md) - Don't use `unsafe impl Send` / `Sync` as a thread-safety shortcut
+- [`anti-unsafe-send-sync`](rules/anti-unsafe-send-sync.md) - Never use `unsafe impl Send` or `unsafe impl Sync` merely to silence auto-trait errors; each impl is a safety contract that other unsafe code may rely on
 
 ---
 
