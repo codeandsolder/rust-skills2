@@ -94,20 +94,20 @@ Reference these guidelines when:
 ### 2. Error Handling (CRITICAL)
 
 - [`err-thiserror-lib`](rules/err-thiserror-lib.md) - Use `thiserror` to derive typed library errors when it removes boilerplate without hiding the API
-- [`err-anyhow-app`](rules/err-anyhow-app.md) - Use `anyhow` for application error handling
-- [`err-result-over-panic`](rules/err-result-over-panic.md) - Return `Result<T, E>` instead of panicking for recoverable errors
-- [`err-context-chain`](rules/err-context-chain.md) - Add context with `.context()` or `.with_context()`
+- [`err-anyhow-app`](rules/err-anyhow-app.md) - Use `anyhow` at application boundaries when callers need context and reporting more than a stable typed error API
+- [`err-result-over-panic`](rules/err-result-over-panic.md) - Use `Result<T, E>` for anticipated runtime failure; use panic for violated assumptions, bugs, and APIs whose documented contract chooses to panic
+- [`err-context-chain`](rules/err-context-chain.md) - Add context at abstraction boundaries so an error says what operation failed as well as why
 - [`err-no-unwrap-prod`](rules/err-no-unwrap-prod.md) - Avoid `unwrap()` in production code; use `?`, `expect()`, or handle errors
-- [`err-expect-bugs-only`](rules/err-expect-bugs-only.md) - Use `expect()` only for invariants that indicate bugs, not user errors
+- [`err-expect-bugs-only`](rules/err-expect-bugs-only.md) - Use `expect()` when failure violates a justified assumption; return or handle errors for anticipated runtime failures
 - [`err-question-mark`](rules/err-question-mark.md) - Use `?` when a fallible operation should short-circuit through the surrounding error context
-- [`err-from-impl`](rules/err-from-impl.md) - Implement `From<E>` for error conversions to enable `?` operator
+- [`err-from-impl`](rules/err-from-impl.md) - Implement specific `From<SourceError>` conversions when the conversion is unconditional, unambiguous, and preserves the information callers need
 - [`err-source-chain`](rules/err-source-chain.md) - Preserve error chains with `#[source]` or `source()` method
-- [`err-lowercase-msg`](rules/err-lowercase-msg.md) - Start error messages lowercase, no trailing punctuation
+- [`err-lowercase-msg`](rules/err-lowercase-msg.md) - Keep `Error` display messages concise, usually lowercase, and usually without trailing punctuation so they compose cleanly
 - [`err-doc-errors`](rules/err-doc-errors.md) - Document meaningful `Err` conditions in a `# Errors` section
 - [`err-custom-type`](rules/err-custom-type.md) - Define domain error types when callers benefit from knowing what failed
 - [`err-clippy-unwrap-types`](rules/err-clippy-unwrap-types.md) - Configure `allow-unwrap-types` to whitelist safe `unwrap()` calls while keeping real `unwrap_used` violations
 - [`err-diagnostic-do-not-recommend`](rules/err-diagnostic-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` on trait impls whose appearance in diagnostics would mislead users
-- [`err-expect-not-allow`](rules/err-expect-not-allow.md) - Prefer `#[expect(...)]` over `#[allow(...)]` for suppressing lint warnings
+- [`err-expect-not-allow`](rules/err-expect-not-allow.md) - Prefer `#[expect(...)]` when you are suppressing a lint that should currently fire and want stale suppressions detected
 - [`err-no-std-error`](rules/err-no-std-error.md) - Use `core::error::Error` for `no_std` error types with thiserror 2.0+
 - [`err-try-block-experimental`](rules/err-try-block-experimental.md) - `try {}` blocks remain nightly-only; prefer stable `Result`/`Option` contexts unless the scoped expression is worth the nightly dependency
 

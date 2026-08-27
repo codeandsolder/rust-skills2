@@ -14,17 +14,6 @@ anti-over-abstraction.md :: Special Case: Deref Overuse :: block 5 :: E0308
 anti-type-erasure.md :: impl Trait Positions :: block 4 :: E0107
 anti-unsafe-send-sync.md :: Pattern: Use Existing Safe Types :: block 6 :: E0428
 anti-vec-for-slice.md :: Mutable Slices :: block 4 :: E0428
-err-anyhow-app.md :: Main Function Pattern :: block 4 :: E0428
-err-context-chain.md :: Building Context Chains :: block 4 :: E0107
-err-expect-bugs-only.md :: expect() Message Guidelines :: block 3 :: P:expected expression, found `.`
-err-expect-not-allow.md :: Lint Categories Supported :: block 3 :: P:expected statement after outer attribute
-err-expect-not-allow.md :: Migration from #[allow] :: block 5 :: E0428
-err-expect-not-allow.md :: What Happens When an Expect is Stale :: block 4 :: E0428
-err-from-impl.md :: Blanket From Implementations :: block 5 :: P:non-item in item list
-err-from-impl.md :: From with Context :: block 4 :: E0428
-err-lowercase-msg.md :: Rust Standard Library Convention :: block 3 :: P:expected `;`, found `"connection refused"`,P:expected `;`, found `"invalid digit,P:expected `;`, found `"invalid utf-8,P:expected `;`, found `"permission denied"`
-err-lowercase-msg.md :: When to Use Capitals :: block 6 :: P:expected statement after outer attribute
-err-result-over-panic.md :: When Panic IS Appropriate :: block 5 :: E0428
 lint-edition-2024.md :: `strict_module_headers` :: block 4 :: P:couldn't read `examples/other.rs`: no such
 lint-edition-2024.md :: `unsafe_op_in_unsafe_fn` Detail :: block 1 :: E0428
 lint-warn-complexity.md :: Examples :: block 5 :: E0428
