@@ -1,123 +1,108 @@
 # mem-smallvec
 
-> Use `SmallVec` for usually-small collections
+> Use `SmallVec` when collections are usually small but may grow
 
 ## Why It Matters
 
-`SmallVec<[T; N]>` stores up to N elements inline (on the stack), only allocating on the heap when the size exceeds N. This eliminates heap allocations for the common case while still allowing growth when needed. **SmallVec 1.15.2** is the current stable release; **SmallVec 2.0 alpha.12** (November 2025) uses union tagging for reduced space overhead.
+`SmallVec<[T; N]>` stores up to `N` elements inline in the `SmallVec` value and spills to a heap allocation when it grows beyond that inline capacity. This can avoid allocations for the common small case while preserving a Vec-like growable API.
+
+The trade-off is not free: inline storage makes every `SmallVec` value larger, moves can copy that inline storage, and operations must support both inline and spilled representations. Choose `N` from real workload data rather than folklore, and benchmark when this sits on a hot path.
+
+As of August 2026, the stable 1.x release is SmallVec 1.15.2; a 2.0 alpha line also exists. Do not write production guidance against an alpha API unless the project intentionally depends on it.
 
 ## Bad
 
-<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding data collection context -->
+<!-- rust-check: compile -->
 ```rust
-// Always heap-allocates, even for 1-2 elements
-fn get_path_components(path: &str) -> Vec<&str> {
-    path.split('/').collect()  // Usually 2-4 components
+#[derive(Debug)]
+struct ValidationError;
+struct Input;
+
+// A Vec is perfectly correct, but it allocates when the result is non-empty.
+fn validate(_input: &Input) -> Vec<ValidationError> {
+    let mut errors = Vec::new();
+    errors.push(ValidationError);
+    errors
 }
 
-// Always heap-allocates for error list
-fn validate(input: &Input) -> Vec<ValidationError> {
-    let mut errors = Vec::new();  // Usually 0-3 errors
-    // validation logic...
-    errors
+fn get_path_components(path: &str) -> Vec<&str> {
+    path.split('/').collect()
 }
 ```
 
 ## Good
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+<!-- rust-check: compile -->
 ```rust
 use smallvec::{smallvec, SmallVec};
 
-// Stack-allocated for typical paths (1-8 components)
+#[derive(Debug)]
+struct ValidationError;
+struct Input;
+
 fn get_path_components(path: &str) -> SmallVec<[&str; 8]> {
     path.split('/').collect()
 }
 
-// Stack-allocated for typical error counts
-fn validate(input: &Input) -> SmallVec<[ValidationError; 4]> {
+fn validate(_input: &Input) -> SmallVec<[ValidationError; 4]> {
     let mut errors = SmallVec::new();
-    // validation logic...
+    errors.push(ValidationError);
     errors
 }
 
-// Using smallvec! macro
 let v: SmallVec<[i32; 4]> = smallvec![1, 2, 3];
+assert!(!v.spilled());
 ```
 
-## Choosing Capacity N
+The point is the workload distribution: if most values fit inline, the common case avoids a heap allocation. If many values spill, the larger inline representation may buy little.
+
+## Choosing Inline Capacity
+
+Prefer measurements or domain bounds:
 
 ```rust
-// Measure your actual data distribution!
-// Guidelines:
+use smallvec::SmallVec;
 
-// Path components: 4-8 (most paths are shallow)
-type PathParts<'a> = SmallVec<[&'a str; 8]>;
+// A protocol allows at most four short routing tags in the common case, but
+// forward-compatible inputs may contain more.
+type RoutingTags<'a> = SmallVec<[&'a str; 4]>;
 
-// Function arguments: 4-8 (most functions have few args)  
-type Args = SmallVec<[Arg; 8]>;
-
-// AST children: 2-4 (binary ops, if/else, etc.)
-type Children = SmallVec<[Node; 4]>;
-
-// Error accumulation: 2-4 (most inputs have few errors)
-type Errors = SmallVec<[Error; 4]>;
-
-// Attribute lists: 4-8 (most items have few attributes)
-type Attrs = SmallVec<[Attribute; 8]>;
+fn tags(input: &str) -> RoutingTags<'_> {
+    input.split(',').filter(|s| !s.is_empty()).collect()
+}
 ```
 
-## TinyVec (No Unsafe)
+A type alias does not make `4` universally optimal; it documents the capacity chosen for this workload.
 
-For projects that forbid `unsafe` code, `tinyvec` provides a 100%-safe alternative:
+## Inspect Whether a Value Spilled
 
 ```rust
-use tinyvec::{tiny_vec, TinyVec};
+use smallvec::SmallVec;
 
-// Same concept as SmallVec but 100% safe code
-let v: TinyVec<[i32; 4]> = tiny_vec![1, 2, 3];
+let mut values: SmallVec<[u8; 4]> = SmallVec::new();
+values.extend([1, 2, 3]);
+assert!(!values.spilled());
+
+values.extend([4, 5]);
+assert!(values.spilled());
 ```
 
-## SmallVec 2.0 (Alpha)
+This is often more useful than relying on assumed struct sizes: actual representation size depends on element type, inline capacity, crate configuration, and target.
 
-SmallVec 2.0 alpha uses union tagging to reduce per-instance overhead:
+## When to Use Alternatives
 
-```rust
-// SmallVec 1.x: separate discriminant + inline storage
-// SmallVec 2.0: union-tagged, less overhead per instance
-// Track at: https://github.com/servo/rust-smallvec
-```
+| Situation | Prefer |
+|-----------|--------|
+| Usually small, occasionally larger | `SmallVec<[T; N]>` |
+| Hard maximum, no heap fallback | `ArrayVec<T, N>` |
+| Variable/unbounded and allocation is fine | `Vec<T>` |
+| Known approximate final length | `Vec::with_capacity(...)` |
 
-## Trade-offs
-
-```rust
-use std::mem::size_of;
-// Vec<i32>: 24 bytes (ptr + len + cap)
-// SmallVec<[i32; 4]>: 32 bytes (inline storage + len + discriminant)
-
-// SmallVec has branching overhead on every operation
-// (must check if inline or heap)
-
-// Profile to verify benefit!
-```
-
-## When to Use SmallVec vs Alternatives
-
-| Situation | Use |
-|-----------|-----|
-| Usually small, sometimes large | `SmallVec<[T; N]>` |
-| Always small, fixed max | `ArrayVec<T, N>` |
-| Rarely grows past initial | `Vec::with_capacity` |
-| No `unsafe` allowed | `TinyVec` |
-| Often empty | `ThinVec` |
-
-## ArrayVec Alternative
+## Fixed-Capacity Alternative
 
 ```rust
 use arrayvec::ArrayVec;
 
-// Fixed maximum capacity, never heap allocates
-// Panics if you exceed capacity
 fn parse_rgb(s: &str) -> ArrayVec<u8, 3> {
     let mut components = ArrayVec::new();
     for part in s.split(',').take(3) {
@@ -125,6 +110,8 @@ fn parse_rgb(s: &str) -> ArrayVec<u8, 3> {
     }
     components
 }
+
+assert_eq!(&parse_rgb("10,20,30")[..], &[10, 20, 30]);
 ```
 
 ## Cargo.toml
@@ -132,12 +119,10 @@ fn parse_rgb(s: &str) -> ArrayVec<u8, 3> {
 ```toml
 [dependencies]
 smallvec = "1.15"
-# or for 100%-safe alternative
-tinyvec = "1.11"
 ```
 
 ## See Also
 
 - [mem-arrayvec](mem-arrayvec.md) - Use ArrayVec for fixed-max collections
 - [mem-with-capacity](mem-with-capacity.md) - Pre-allocate when size is known
-- [mem-thinvec](mem-thinvec.md) - Use ThinVec for often-empty vectors
+- [mem-thinvec](mem-thinvec.md) - Pointer-sized collection handles
