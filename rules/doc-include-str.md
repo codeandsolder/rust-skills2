@@ -70,14 +70,12 @@ This avoids reading the external documentation file unless the `doc` cfg is acti
 
 ## Edition 2024: Nested Includes Inside Included Markdown Doctests
 
-Edition 2024 changed a specific doctest path-resolution case. Suppose `src/lib.rs` includes `docs/guide.md` as documentation, and that Markdown contains a Rust doctest like:
+Edition 2024 changed a specific doctest path-resolution case. Suppose `src/lib.rs` includes `docs/guide.md` as documentation, and that Markdown contains a Rust doctest whose body is:
 
-````text
-```rust
+```text
 let text = include_str!("fixture.txt");
 assert!(!text.is_empty());
 ```
-````
 
 In Edition 2024, the doctest's `include_str!("fixture.txt")` is resolved relative to `docs/guide.md`. In earlier editions, such nested doctest includes were resolved relative to the Rust source file that carried the outer doc attribute.
 
