@@ -1,134 +1,205 @@
 # doc-errors-section
 
-> Include `# Errors` section for fallible functions
+> Document meaningful failure conditions in a `# Errors` section
 
 ## Why It Matters
 
-Functions returning `Result` can fail in specific, documented ways. The `# Errors` section tells users exactly when and why a function might return an error, enabling them to handle failures appropriately without reading source code.
+A `Result` type says that an operation can fail; it usually does not tell callers which conditions produce which errors. Public fallible APIs should document the failure modes callers need to reason about, especially when several error variants or propagated failures are possible.
 
-This is especially critical for library code where users cannot easily inspect implementation details.
+A useful `# Errors` section describes **conditions**, not merely “returns an error on failure.”
 
 ## Bad
 
-<!-- rust-check: fragment; reason=documentation anti-pattern fragment omits surrounding error types -->
+<!-- rust-check: compile -->
 ```rust
+use std::path::Path;
+
+pub struct Connection;
+pub struct DbError;
+
 /// Opens a file and reads its contents.
-pub fn read_file(path: &Path) -> Result<String, Error> {
-    // Users have no idea what errors to expect
+pub fn read_file(path: &Path) -> Result<String, std::io::Error> {
+    std::fs::read_to_string(path)
 }
 
 /// Connects to the database.
-pub async fn connect(url: &str) -> Result<Connection, DbError> {
-    // Multiple failure modes, none documented
+pub async fn connect(_url: &str) -> Result<Connection, DbError> {
+    Ok(Connection)
 }
 ```
+
+Both functions are valid, but their public documentation leaves callers to infer the failure conditions from implementation details or error types.
 
 ## Good
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+<!-- rust-check: compile -->
 ```rust
-/// Opens a file and reads its contents as a UTF-8 string.
+use std::path::Path;
+
+/// Opens a file and reads its contents as UTF-8 text.
 ///
 /// # Errors
 ///
-/// Returns an error if:
-/// - The file does not exist ([`Error::NotFound`])
-/// - The process lacks permission to read the file ([`Error::PermissionDenied`])
-/// - The file contains invalid UTF-8 ([`Error::InvalidUtf8`])
-pub fn read_file(path: &Path) -> Result<String, Error> {
-    // ...
+/// Returns an I/O error if the file cannot be opened or read. Invalid UTF-8
+/// is reported as [`std::io::ErrorKind::InvalidData`].
+pub fn read_file(path: &Path) -> Result<String, std::io::Error> {
+    std::fs::read_to_string(path)
 }
 
-/// Establishes a connection to the database.
+/// An established database connection.
+pub struct Connection;
+
+/// Failures that can occur while establishing a connection.
+pub enum DbError {
+    /// `url` does not identify a supported database endpoint.
+    InvalidUrl,
+    /// The endpoint could not be reached.
+    ConnectionFailed,
+    /// The supplied credentials were rejected.
+    AuthenticationFailed,
+    /// No connection slot is currently available.
+    PoolExhausted,
+}
+
+/// Establishes a database connection.
 ///
 /// # Errors
 ///
-/// This function will return an error if:
-/// - The URL is malformed ([`DbError::InvalidUrl`])
-/// - The database server is unreachable ([`DbError::ConnectionFailed`])
-/// - Authentication fails ([`DbError::AuthenticationFailed`])
-/// - The connection pool is exhausted ([`DbError::PoolExhausted`])
+/// Returns:
+/// - [`DbError::InvalidUrl`] for an empty URL,
+/// - [`DbError::ConnectionFailed`] for an unreachable endpoint,
+/// - [`DbError::AuthenticationFailed`] when authentication fails, or
+/// - [`DbError::PoolExhausted`] when no connection slot is available.
 pub async fn connect(url: &str) -> Result<Connection, DbError> {
-    // ...
+    match url {
+        "" => Err(DbError::InvalidUrl),
+        "offline" => Err(DbError::ConnectionFailed),
+        "unauthorized" => Err(DbError::AuthenticationFailed),
+        "pool-full" => Err(DbError::PoolExhausted),
+        _ => Ok(Connection),
+    }
 }
 ```
 
-## Error Documentation Patterns
+## Simple Single Error
 
-### Simple Single Error
+When the error type already carries the details, keep the section concise:
 
 ```rust
-/// Parses a string as an integer.
+use std::num::ParseIntError;
+
+/// Parses a decimal integer.
 ///
 /// # Errors
 ///
-/// Returns [`ParseIntError`] if the string is not a valid integer.
-pub fn parse_int(s: &str) -> Result<i64, ParseIntError> {
-    s.parse()
+/// Returns [`ParseIntError`] if `text` is not a valid `i64`.
+pub fn parse_int(text: &str) -> Result<i64, ParseIntError> {
+    text.parse()
 }
 ```
 
-### Multiple Error Variants
+## Multiple Variants
+
+Tables or lists work well when callers need to map variants to conditions:
 
 ```rust
-/// Sends an HTTP request and returns the response.
+pub struct Request {
+    pub url: String,
+}
+
+pub struct Response;
+
+pub enum HttpError {
+    Timeout,
+    InvalidUrl,
+    ConnectionRefused,
+    TlsError,
+}
+
+/// Sends `request` and returns the response.
 ///
 /// # Errors
 ///
 /// | Error | Condition |
 /// |-------|-----------|
-/// | [`HttpError::Timeout`] | Request exceeded timeout duration |
-/// | [`HttpError::InvalidUrl`] | URL could not be parsed |
-/// | [`HttpError::ConnectionRefused`] | Server refused connection |
-/// | [`HttpError::TlsError`] | TLS handshake failed |
+/// | [`HttpError::Timeout`] | The request exceeded its deadline |
+/// | [`HttpError::InvalidUrl`] | The URL is empty or malformed |
+/// | [`HttpError::ConnectionRefused`] | The peer refused the connection |
+/// | [`HttpError::TlsError`] | TLS setup failed |
 pub fn send(request: Request) -> Result<Response, HttpError> {
-    // ...
+    if request.url.is_empty() {
+        Err(HttpError::InvalidUrl)
+    } else {
+        Ok(Response)
+    }
 }
 ```
 
-### Propagated Errors
+The implementation may delegate these checks to lower layers; the documentation should still describe the caller-visible contract rather than every internal branch.
+
+## Propagated Errors
+
+If a function transparently propagates another API's errors, describe the relevant source and add context when it helps callers understand the operation that failed.
 
 ```rust
-/// Loads configuration from a file.
+use std::fs;
+use std::io;
+use std::path::Path;
+
+/// Loads configuration text from `path`.
 ///
 /// # Errors
 ///
-/// Returns an error if:
-/// - The configuration file cannot be read (IO error)
-/// - The file contains invalid TOML syntax
-/// - Required fields are missing from the configuration
-///
-/// The underlying error is wrapped with context about which
-/// configuration file failed to load.
-pub fn load_config(path: &Path) -> Result<Config, anyhow::Error> {
-    // ...
+/// Returns the underlying [`io::Error`] if the configuration file cannot be
+/// opened or read.
+pub fn load_config(path: &Path) -> Result<String, io::Error> {
+    fs::read_to_string(path)
 }
 ```
 
-## Linking to Error Types
+Do not promise specific variants that the implementation does not actually preserve. If an error is wrapped or erased, document the stable failure semantics callers can rely on.
 
-Use intra-doc links to connect error variants to their definitions:
+## Link Error Types and Variants
+
+Intra-doc links make variant-heavy error documentation easier to navigate:
 
 ```rust
+pub enum ValidationError {
+    TooShort,
+    InvalidChars,
+}
+
+/// Validates `input`.
+///
 /// # Errors
 ///
-/// Returns [`ValidationError::TooShort`] if the input is less than
-/// the minimum length, or [`ValidationError::InvalidChars`] if it
-/// contains forbidden characters.
+/// Returns [`ValidationError::TooShort`] for fewer than three characters and
+/// [`ValidationError::InvalidChars`] when non-ASCII characters are present.
+pub fn validate(input: &str) -> Result<(), ValidationError> {
+    if input.len() < 3 {
+        Err(ValidationError::TooShort)
+    } else if !input.is_ascii() {
+        Err(ValidationError::InvalidChars)
+    } else {
+        Ok(())
+    }
+}
 ```
 
-## Lints
+## Clippy Enforcement
 
-Enable `clippy::missing_errors_doc` to catch missing `# Errors` sections:
+`clippy::missing_errors_doc` is a pedantic, allow-by-default lint that checks publicly visible functions returning `Result` and warns when their doc comments lack a `# Errors` section:
 
 ```rust
 #![warn(clippy::missing_errors_doc)]
 ```
 
-This warns on any public function returning `Result` without a `# Errors` section.
+Its `check-private-items` configuration can extend the check to private items when a project deliberately wants that policy.
+
+A lint can detect a missing section; it cannot determine whether the section accurately describes the implementation. Keep error documentation synchronized with behavior and error conversions.
 
 ## See Also
 
 - [doc-panics-section](./doc-panics-section.md) - Documenting panics
 - [err-doc-errors](./err-doc-errors.md) - Error documentation patterns
-- [doc-intra-links](./doc-intra-links.md) - Linking to types
+- [doc-intra-links](./doc-intra-links.md) - Linking to types and variants
