@@ -1,168 +1,167 @@
 # mem-boxed-slice
 
-> Use `Box<[T]>` instead of `Vec<T>` for fixed-size heap data
+> Use `Box<[T]>` when owned heap data has a fixed length and you do not need spare capacity or growth operations
 
 ## Why It Matters
 
-`Vec<T>` stores three words: pointer, length, and capacity. When you know a collection won't grow, `Box<[T]>` stores only pointer and length (2 words), saving 8 bytes per instance. More importantly, it communicates intent: "this data is fixed-size." For large numbers of fixed collections, this adds up.
+`Vec<T>` represents an owned growable sequence and therefore tracks pointer, length, and capacity. `Box<[T]>` represents an owned fixed-length slice and tracks only the fat-pointer metadata needed for the allocation and length. On common 64-bit targets that often means one fewer machine word in the owner value, but portable code should not assume exact byte counts without checking the target.
 
-**Rust 1.87+** guarantees that `Vec::with_capacity(N).capacity() == N` exactly, making `into_boxed_slice()` more predictable — you know the exact allocation size before shrinking.
+The stronger reason to choose `Box<[T]>` is semantic: once construction is complete, the type says that changing the number of elements is not part of the API.
 
-## Bad
+## Basic Conversion
 
 ```rust
-struct Document {
-    // Vec signals "might grow" but we never push after creation
-    paragraphs: Vec<Paragraph>,  // 24 bytes: ptr + len + capacity
+fn freeze(values: Vec<u32>) -> Box<[u32]> {
+    values.into_boxed_slice()
 }
 
-fn load_document(data: &[u8]) -> Document {
-    let paragraphs: Vec<Paragraph> = parse_paragraphs(data);
-    // paragraphs has capacity >= len, wasting the capacity field
-    Document { paragraphs }
+fn main() {
+    let values = freeze(vec![10, 20, 30]);
+    assert_eq!(&*values, &[10, 20, 30]);
 }
 ```
 
-## Good
+`Vec::into_boxed_slice()` discards excess capacity like `shrink_to_fit` before producing the boxed slice. You do **not** need to call `shrink_to_fit()` first.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Do Not Assume Exact `Vec` Capacity
+
+`Vec::with_capacity(n)` guarantees capacity of **at least** `n`. The standard library guarantees that it requests allocation space for exactly `n` elements, but the allocator may return a larger allocation and `Vec::capacity()` is allowed to exceed the request. Zero-sized element types are a special case as well.
+
 ```rust
-struct Document {
-    // Box<[T]> signals "fixed size" - clear intent
-    paragraphs: Box<[Paragraph]>,  // 16 bytes: ptr + len (as fat pointer)
-}
-
-fn load_document(data: &[u8]) -> Document {
-    let paragraphs: Vec<Paragraph> = parse_paragraphs(data);
-    Document { 
-        paragraphs: paragraphs.into_boxed_slice()  // Shrinks + converts
-    }
+fn main() {
+    let values = Vec::<u8>::with_capacity(128);
+    assert!(values.capacity() >= 128);
 }
 ```
 
-## Memory Layout
+Do not teach `Vec::with_capacity(n).capacity() == n` as a language or library guarantee.
+
+## Layout Is Target-Dependent
 
 ```rust
 use std::mem::size_of;
 
-// Vec: 24 bytes on 64-bit
-assert_eq!(size_of::<Vec<u8>>(), 24);  // ptr(8) + len(8) + cap(8)
-
-// Box<[T]>: 16 bytes (fat pointer)
-assert_eq!(size_of::<Box<[u8]>>(), 16);  // ptr(8) + len(8)
-
-// Savings per instance: 8 bytes
-// For 1 million instances: 8 MB saved
+fn main() {
+    assert!(size_of::<Box<[u8]>>() <= size_of::<Vec<u8>>());
+}
 ```
 
-## Conversion Patterns
+On ordinary 64-bit targets, `Vec<T>` is commonly three words and `Box<[T]>` two words, but pointer width and ABI matter. If the exact owner size is important, measure the targets you support rather than hard-coding a portable assertion such as `24` or `16` bytes.
+
+The allocation containing the elements is separate from this owner metadata; converting to `Box<[T]>` does not somehow compress the elements themselves.
+
+## Construct Once, Then Freeze
+
+A common pattern is to use `Vec<T>` while building and convert at the storage boundary:
 
 ```rust
-// Vec to Box<[T]>
-let vec: Vec<i32> = vec![1, 2, 3, 4, 5];
-let boxed: Box<[i32]> = vec.into_boxed_slice();
+fn squares(count: u32) -> Box<[u32]> {
+    let mut values = Vec::with_capacity(count as usize);
+    for value in 0..count {
+        values.push(value * value);
+    }
+    values.into_boxed_slice()
+}
 
-// Box<[T]> back to Vec (if you need to grow)
-let vec_again: Vec<i32> = boxed.into_vec();
-
-// From iterator
-let boxed: Box<[i32]> = (0..100).collect::<Vec<_>>().into_boxed_slice();
-
-// Shrink Vec first if it has excess capacity
-let mut vec = Vec::with_capacity(1000);
-vec.extend(0..10);
-vec.shrink_to_fit();  // Reduce capacity to length
-let boxed = vec.into_boxed_slice();  // Now no wasted allocation
+fn main() {
+    assert_eq!(&*squares(4), &[0, 1, 4, 9]);
+}
 ```
 
-## Anti-Pattern: Vec Round-Trip
+This keeps convenient growable construction while exposing a fixed-length representation afterward.
 
-Avoid converting `Box<[T]>` back to `Vec<T>` just for temporary mutation:
+## Fixed Length Does Not Mean Immutable Elements
+
+`Box<[T]>` prevents changing the slice length, not changing elements:
 
 ```rust
-// ❌ Bad: converts back and forth, wastes allocation
-fn update(boxed: &mut Box<[i32]>, add: i32) {
-    let mut vec = boxed.clone().into_vec();  // allocates + copies
-    vec.push(add);
-    *boxed = vec.into_boxed_slice();         // allocates again
-}
-
-// ✅ Better: collect into a new Box<[T]> directly
-fn update(boxed: &[i32], add: i32) -> Box<[i32]> {
-    let mut vec = boxed.to_vec();  // must copy, but one allocation
-    vec.push(add);
-    vec.into_boxed_slice()
-}
-
-// ✅ Best: use Vec when you need mutation
-struct Document {
-    paragraphs: Vec<Paragraph>,  // Use Vec directly if you'll modify
+fn main() {
+    let mut values: Box<[u32]> = vec![1, 2, 3].into_boxed_slice();
+    values[1] = 20;
+    assert_eq!(&*values, &[1, 20, 3]);
 }
 ```
+
+If the elements themselves must not be mutated, enforce that through ownership/borrowing/API design rather than assuming the boxed slice type does it.
+
+## Converting Back to `Vec`
+
+If requirements change and the collection must grow again, conversion back is supported:
+
+```rust
+fn append(mut values: Box<[u32]>, value: u32) -> Vec<u32> {
+    let mut values = values.into_vec();
+    values.push(value);
+    values
+}
+
+fn main() {
+    let boxed = vec![1, 2].into_boxed_slice();
+    assert_eq!(append(boxed, 3), vec![1, 2, 3]);
+}
+```
+
+Whether growth reallocates depends on the capacity of the resulting vector and implementation details. If repeated length changes are normal, keep a `Vec<T>` instead of repeatedly switching representations.
+
+## Avoid Clone-and-Round-Trip Mutation
+
+Do not clone a boxed slice into a vector just to perform ordinary repeated growth:
+
+```rust
+fn with_extra(values: &[u32], extra: u32) -> Box<[u32]> {
+    let mut result = Vec::with_capacity(values.len() + 1);
+    result.extend_from_slice(values);
+    result.push(extra);
+    result.into_boxed_slice()
+}
+
+fn main() {
+    assert_eq!(&*with_extra(&[1, 2], 3), &[1, 2, 3]);
+}
+```
+
+This is reasonable when you intentionally create a new fixed sequence. If the same owned collection is modified repeatedly, `Vec<T>` better expresses the workload.
+
+## `Box<str>` Uses the Same Fixed-Size Idea
+
+For an owned string that will not grow, `Box<str>` removes spare-capacity semantics from the owner:
+
+```rust
+fn normalize(name: String) -> Box<str> {
+    name.trim().to_owned().into_boxed_str()
+}
+
+fn main() {
+    assert_eq!(&*normalize(" Ada ".to_owned()), "Ada");
+}
+```
+
+As with `Box<[T]>`, exact metadata-size savings are target-dependent. `Box<str>` also still owns a heap allocation; small-string optimized representations may be better when allocation count is the real issue.
 
 ## When to Use What
 
-| Type | Use When |
-|------|----------|
-| `Vec<T>` | Collection may grow/shrink |
-| `Box<[T]>` | Fixed-size, heap-allocated, many instances |
-| `[T; N]` | Fixed-size, stack-allocated, size known at compile time |
-| `&[T]` | Borrowed view, don't need ownership |
+| Type | Good fit |
+|---|---|
+| `Vec<T>` | owned sequence that may grow/shrink or benefits from spare capacity |
+| `Box<[T]>` | owned fixed-length heap sequence |
+| `[T; N]` | fixed length known in the type, with inline storage wherever the value lives |
+| `&[T]` | borrowed view; no ownership needed |
+| `Arc<[T]>` | fixed-length owned data shared across threads/owners |
 
-## Box<str> for Immutable Strings
+Do not describe `[T; N]` as necessarily “stack allocated”: arrays are stored inline in their containing value, which itself may live on the stack, heap, static storage, or elsewhere.
 
-Same principle applies to strings:
+## Practical Guidance
 
-```rust
-use std::mem::size_of;
-
-// String: 24 bytes (like Vec<u8>)
-assert_eq!(size_of::<String>(), 24);
-
-// Box<str>: 16 bytes
-assert_eq!(size_of::<Box<str>>(), 16);
-
-// For immutable strings
-struct Name {
-    value: Box<str>,  // Saves 8 bytes vs String
-}
-
-impl Name {
-    fn new(s: &str) -> Self {
-        Name { value: s.into() }  // &str -> Box<str>
-    }
-}
-
-// Or from String
-let s = String::from("hello");
-let boxed: Box<str> = s.into_boxed_str();
-```
-
-## Real-World Example
-
-```rust
-// Cache with millions of entries
-struct Cache {
-    // 8 bytes saved per entry adds up
-    entries: HashMap<Key, Box<[u8]>>,
-}
-
-impl Cache {
-    fn insert(&mut self, key: Key, data: Vec<u8>) {
-        // Convert to boxed slice for storage
-        self.entries.insert(key, data.into_boxed_slice());
-    }
-    
-    fn get(&self, key: &Key) -> Option<&[u8]> {
-        // Returns regular slice reference
-        self.entries.get(key).map(|b| b.as_ref())
-    }
-}
-```
+- Build with `Vec<T>` when growth is useful, then freeze with `into_boxed_slice()` when the length becomes fixed.
+- Do not pre-call `shrink_to_fit()` solely for `into_boxed_slice()`.
+- Do not assume `Vec::with_capacity(n)` reports capacity exactly `n`.
+- Measure owner layout on supported targets if the metadata bytes matter.
+- Keep `Vec<T>` when repeated growth/shrink is part of normal use.
+- Use the fixed-length type mainly because it matches semantics; memory savings are workload- and target-dependent.
 
 ## See Also
 
-- [mem-with-capacity](./mem-with-capacity.md) - Pre-allocating when size is known
-- [mem-arc-str](./mem-arc-str.md) — `Arc<str>` over `Arc<String>` (same rationale, thread-safe)
-- [own-slice-over-vec](./own-slice-over-vec.md) - Using slices in function parameters
-- [mem-compact-string](./mem-compact-string.md) - Compact string alternatives
+- [mem-with-capacity](./mem-with-capacity.md) - Reserving vector capacity
+- [mem-arc-str](./mem-arc-str.md) - Shared fixed strings
+- [own-slice-over-vec](./own-slice-over-vec.md) - Borrowed slice APIs
+- [mem-compact-string](./mem-compact-string.md) - Small/compact owned strings
