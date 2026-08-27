@@ -76,7 +76,7 @@ Reference these guidelines when:
 
 - [`own-borrow-over-clone`](rules/own-borrow-over-clone.md) - Borrow when a callee only needs temporary access; clone when the API genuinely needs an independent owned value
 - [`own-slice-over-vec`](rules/own-slice-over-vec.md) - Accept borrowed views such as `&[T]`, `&str`, and `&Path` when the implementation only needs a view
-- [`own-cow-conditional`](rules/own-cow-conditional.md) - Use `Cow<'a, T>` for conditional ownership
+- [`own-cow-conditional`](rules/own-cow-conditional.md) - Use `Cow<'a, B>` when an API can usually borrow data but sometimes needs an owned value
 - [`own-arc-shared`](rules/own-arc-shared.md) - Use `Arc<T>` when multiple owners may cross thread boundaries; add synchronization only for mutation that actually requires it
 - [`own-rc-single-thread`](rules/own-rc-single-thread.md) - Use `Rc<T>` for shared ownership that is confined to one thread
 - [`own-refcell-interior`](rules/own-refcell-interior.md) - Use `RefCell<T>` when thread-local shared access genuinely needs runtime-checked interior mutability
@@ -87,7 +87,7 @@ Reference these guidelines when:
 - [`own-move-large`](rules/own-move-large.md) - Borrow large values when ownership transfer is unnecessary; use indirection when it solves a real layout, location, or ownership problem—not from a fixed byte threshold
 - [`own-lifetime-elision`](rules/own-lifetime-elision.md) - Rely on ordinary lifetime elision where it applies; treat Edition-2024 RPIT capture as a separate rule
 - [`own-cell-update`](rules/own-cell-update.md) - Use `Cell::update` (Rust 1.88+) for concise single-threaded read-transform-write updates on `Copy` values
-- [`own-cow-rpit-edition2024`](rules/own-cow-rpit-edition2024.md) - Edition 2024 RPIT lifetime capture makes `Cow<'_, T>` returns from methods borrowing `&self` dramatically more ergonomic
+- [`own-cow-rpit-edition2024`](rules/own-cow-rpit-edition2024.md) - Edition 2024 simplifies RPIT returns whose hidden type borrows; it does not change ordinary `Cow<'_, T>` return elision
 - [`own-range-copy`](rules/own-range-copy.md) - Use `core::range::Range` (Rust 1.96+) when `Copy` range values are useful; keep `core::ops::Range` for legacy iterator and API interoperability
 - [`own-lazy-init`](rules/own-lazy-init.md) - Use `LazyLock` for thread-safe lazy statics and `LazyCell` for local or thread-local lazy values; use `OnceLock`/`OnceCell` when initialization is imperative rather than tied to one initializer
 
@@ -167,7 +167,7 @@ Reference these guidelines when:
 - [`api-impl-fromiterator`](rules/api-impl-fromiterator.md) - Implement `FromIterator` and `Extend` for collection types, and `IntoIterator` for all three reference forms
 - [`api-operator-overload`](rules/api-operator-overload.md) - Overload operators only when the semantics are natural and unsurprising
 - [`api-bon-builder`](rules/api-bon-builder.md) - Use `bon` when typestate builders for structs or functions improve the API; account for proc-macro and typestate compile cost
-- [`api-do-not-recommend`](rules/api-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` (Rust 1.85.0) to hide blanket impls from compiler diagnostics
+- [`api-do-not-recommend`](rules/api-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` on legal trait impls whose appearance in diagnostics would usually mislead callers
 - [`api-nutype-validated`](rules/api-nutype-validated.md) - Use `nutype` when generated sanitization, validation, and invariant-preserving trait impls materially simplify a public newtype API
 
 ### 6. Async/Await (HIGH)
