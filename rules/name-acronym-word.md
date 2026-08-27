@@ -1,137 +1,136 @@
 # name-acronym-word
 
-> Treat acronyms as words in identifiers: `HttpServer`, not `HTTPServer`
+> In `UpperCamelCase`, treat acronyms as ordinary words: `HttpServer`, `Uuid`, `TcpStream`
 
 ## Why It Matters
 
-When acronyms are written in ALL CAPS within identifiers, word boundaries become unclear: is `HTTPSHandler` "HTTPS Handler" or "HTTP SHandler"? Treating acronyms as words (`HttpsHandler`) maintains clear word boundaries and follows Rust convention. The standard library uses this consistently.
+Rust's naming convention treats acronyms and contractions as words when forming `UpperCamelCase`. That gives predictable word boundaries and matches the standard library: `TcpStream`, `UdpSocket`, `IpAddr`, `Ipv4Addr`, `TypeId`.
 
-## Bad
+In `snake_case`, acronym words are simply lowercase: `parse_json`, `http_status`, `user_id`.
 
-```rust
-// ALL CAPS acronyms - unclear word boundaries
-struct HTTPServer { ... }      // HTTP + Server or H + TTP + Server?
-struct TCPIPConnection { ... } // TCP + IP? Or other splits?
-struct JSONParser { ... }
-struct XMLHTTPRequest { ... }  // Very confusing
+This is a casing convention, not a rule that every abbreviation must be expanded or that every identifier must avoid single-letter domain terms.
 
-fn parseJSON(input: &str) { ... }
-fn connectTCP(addr: &str) { ... }
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
-```rust
-// Acronyms as words - clear boundaries
-struct HttpServer { ... }      // Http + Server
-struct TcpIpConnection { ... } // Tcp + Ip + Connection
-struct JsonParser { ... }
-struct XmlHttpRequest { ... }
-
-fn parse_json(input: &str) { ... }
-fn connect_tcp(addr: &str) { ... }
-
-// More examples
-struct Uuid { ... }            // Not UUID
-struct Uri { ... }             // Not URI
-struct Url { ... }             // Not URL
-struct Html { ... }            // Not HTML
-struct Css { ... }             // Not CSS
-struct Api { ... }             // Not API
-```
-
-## Standard Library Examples
+## UpperCamelCase
 
 ```rust
-// std uses acronyms as words
-std::net::TcpStream            // Not TCPStream
-std::net::TcpListener          // Not TCPListener
-std::net::UdpSocket            // Not UDPSocket
-std::net::IpAddr               // Not IPAddr
-std::net::Ipv4Addr             // Not IPv4Addr
+struct HttpServer;
+struct TcpIpConnection;
+struct JsonParser;
+struct XmlHttpRequest;
+struct Uuid;
+struct TypeId;
+struct Ipv4Addr;
+
+fn main() {
+    let _ = HttpServer;
+    let _ = TcpIpConnection;
+    let _ = JsonParser;
+    let _ = XmlHttpRequest;
+    let _ = Uuid;
+    let _ = TypeId;
+    let _ = Ipv4Addr;
+}
 ```
 
-## Two-Letter Acronyms
+Prefer these over spellings such as `HTTPServer`, `JSONParser`, or `UUID` when you control the API.
+
+## snake_case
 
 ```rust
-// Two-letter acronyms: strongly prefer treating as word
-struct Io { ... }            // Preferred
-struct Id { ... }            // Preferred
-struct IoHandler { ... }     // Preferred
-struct IdGenerator { ... }   // Preferred
+fn parse_json() {}
+fn connect_tcp() {}
+fn generate_uuid() {}
+fn fetch_http_status() {}
 
-// Against: IO, ID - now considered outdated style
+fn main() {
+    parse_json();
+    connect_tcp();
+    generate_uuid();
+    fetch_http_status();
+}
 ```
 
-## Compound Words
+Do not preserve all-caps acronym spelling inside a `snake_case` identifier.
+
+## Standard-Library Shapes
+
+The standard library provides useful examples of the convention:
+
+```text
+std::net::TcpStream
+std::net::TcpListener
+std::net::UdpSocket
+std::net::IpAddr
+std::net::Ipv4Addr
+std::any::TypeId
+std::io::IoSlice
+```
+
+These are examples of names, not code that should be pasted as standalone expressions.
+
+## Numbers Stay Part of the Word
+
+Names such as `Utf8`, `Ipv4`, and `Base64` naturally combine letters and digits:
 
 ```rust
-// Contractions of compound words count as one word
-struct Stdin { ... }         // Not StdIn
-struct Usize { ... }         // Not USize
-struct CString { ... }       // Not CString (c-string, not c string)
-struct CStr { ... }          // Not CStr
-struct Uuid { ... }          // Not UUID
+struct Utf8Decoder;
+struct Ipv6Route;
+struct Base64Encoder;
+
+fn main() {
+    let _ = Utf8Decoder;
+    let _ = Ipv6Route;
+    let _ = Base64Encoder;
+}
 ```
+
+Do not mechanically turn these into `UTF8Decoder`, `IPV6Route`, or `BASE64Encoder`.
+
+## Single-Letter Domain Prefixes Can Still Be Valid
+
+The acronym-as-word rule does not imply that every single-letter term must become a lowercase word. Standard names such as `CString` and `CStr` represent the established term “C string”:
+
+```rust
+use std::ffi::{CStr, CString};
+
+fn main() {
+    let value = CString::new("hello").unwrap();
+    let borrowed: &CStr = value.as_c_str();
+    assert_eq!(borrowed.to_bytes(), b"hello");
+}
+```
+
+Follow established domain terminology and nearby APIs rather than applying acronym normalization mechanically.
 
 ## Clippy Enforcement
 
-Enable `clippy::upper_case_acronyms` (style, since 1.51) to catch all-caps acronyms. For stricter enforcement, enable the aggressive option:
+Enable Clippy's style lint in `Cargo.toml` if you want automated enforcement:
 
-```rust
-#![warn(clippy::upper_case_acronyms)]
-
-// Aggressive mode (config): catches more edge cases like HTTP → Http
-// In .cargo/config.toml:
-// [lints.rust]
-// clippy.upper_case_acronyms.upper-case-acronyms-aggressive = true
+```toml
+[lints.clippy]
+upper_case_acronyms = "warn"
 ```
 
-## Anti-Patterns
+Clippy also supports a more aggressive mode in **`clippy.toml`** (or `.clippy.toml`):
 
-```rust
-// Bad: ALL-CAPS acronyms in identifiers
-struct HTTPResponse { ... }   // Should be HttpResponse
-struct JSONParser { ... }     // Should be JsonParser
-struct TCPConnection { ... }  // Should be TcpConnection
-struct XMLDocument { ... }    // Should be XmlDocument
-
-// Good: acronyms as words
-struct HttpResponse { ... }
-struct JsonParser { ... }
-struct TcpConnection { ... }
-struct XmlDocument { ... }
+```toml
+upper-case-acronyms-aggressive = true
 ```
 
-## In snake_case
+The aggressive option makes the lint trigger on more adjacent-uppercase cases. It is not a nested `[lints.rust]` setting in `.cargo/config.toml`.
 
-```rust
-// Acronyms become lowercase in snake_case
-fn parse_json() { ... }
-fn connect_tcp() { ... }
-fn generate_uuid() { ... }
-fn fetch_http() { ... }
-fn encode_url() { ... }
+## Public Compatibility Matters
 
-// Variables
-let json_response = fetch_json();
-let tcp_connection = connect_tcp();
-let user_id = generate_uuid();
-```
+Renaming `HTTPServer` to `HttpServer` is a breaking API change. Clippy's style guidance should not be used to churn an established public API without a migration plan. For new APIs, choose conventional casing from the start.
 
-## Mixed Cases
+## Practical Guidance
 
-```rust
-// When acronym is part of compound
-struct HttpsConnection { ... }   // Https (not HTTPS)
-struct Utf8String { ... }        // Utf8 (not UTF8)
-struct Base64Encoder { ... }     // Base64 as word
-
-// Multiple acronyms
-struct JsonApiClient { ... }     // Json + Api + Client
-struct RestApiHandler { ... }    // Rest + Api + Handler
-```
+- In `UpperCamelCase`, write acronym words like ordinary words: `Http`, `Json`, `Uuid`, `Tcp`.
+- In `snake_case`, lowercase them normally: `http`, `json`, `uuid`, `tcp`.
+- Keep numbers naturally attached: `Utf8`, `Ipv4`, `Base64`.
+- Preserve established domain terms such as `CStr` when they are the conventional name.
+- Put `upper-case-acronyms-aggressive` in `clippy.toml` if you opt into aggressive Clippy enforcement.
+- Avoid gratuitous renames of already-public APIs solely for style.
 
 ## See Also
 
