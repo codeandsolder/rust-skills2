@@ -14,6 +14,9 @@ echo "==> structure, links, and index parity"
 python3 "$ROOT/checks/validate.py"
 python3 "$ROOT/checks/gen_index.py" --check
 
+echo "==> verifier metadata regression tests"
+python3 "$ROOT/checks/test_gen_metadata.py"
+
 echo "==> generating example files from rules"
 cd "$ROOT/checks"
 python3 gen.py
