@@ -1,16 +1,87 @@
 # async-runtime-metrics
 
-> Use `RuntimeMetrics` for task health, blocking thread pressure, and starvation detection
-
-**Rule**: `async-runtime-metrics`
+> Use Tokio runtime metrics as scheduler telemetry, and distinguish stable metrics from `tokio_unstable` instrumentation
 
 ## Why It Matters
 
-Production async systems fail silently more often than they crash. Tasks can be starved, the blocking pool can saturate, and cross-thread scheduling can degrade—all without any `Err` return. `RuntimeMetrics` exposes these internal states, turning invisible degradation into observable signals. Without metrics, you are flying blind.
+`tokio::runtime::RuntimeMetrics` exposes observations about a runtime such as worker count, alive-task count, queue depth, and cumulative worker busy time. These signals can help explain scheduler load, but they are not direct diagnoses of “starvation,” “healthy,” or “overloaded.” Interpret them as time series alongside application latency, throughput, errors, and workload information.
 
-## Usage Prerequisites
+The original rule incorrectly treated the entire API as `tokio_unstable`. On current Tokio, several useful metrics are stable, while many detailed scheduler/blocking-pool metrics still require `--cfg tokio_unstable`.
 
-RuntimeMetrics requires the `tokio_unstable` cfg flag:
+## Good: Stable Runtime Metrics
+
+```rust
+use tokio::runtime::Handle;
+
+#[tokio::main]
+async fn main() {
+    let metrics = Handle::current().metrics();
+
+    let workers = metrics.num_workers();
+    let alive = metrics.num_alive_tasks();
+    let global_queue = metrics.global_queue_depth();
+
+    println!(
+        "workers={workers} alive_tasks={alive} global_queue_depth={global_queue}"
+    );
+}
+```
+
+These methods do not require `tokio_unstable`:
+
+- `num_workers()` — configured runtime worker count;
+- `num_alive_tasks()` — current alive task count, with documented weak consistency on the multithreaded runtime;
+- `global_queue_depth()` — tasks currently in the runtime's global/injection queue;
+- per-worker cumulative metrics such as `worker_total_busy_duration()` on supported targets.
+
+## Good: Measure Deltas, Not Raw Cumulative Counters
+
+Many runtime counters are cumulative. To understand activity over an interval, compare snapshots rather than alerting on the absolute number.
+
+```rust
+use std::time::Duration;
+use tokio::runtime::Handle;
+
+#[tokio::main]
+async fn main() {
+    let metrics = Handle::current().metrics();
+    let before = metrics.worker_total_busy_duration(0);
+
+    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    let after = metrics.worker_total_busy_duration(0);
+    let busy_delta = after.saturating_sub(before);
+    println!("worker 0 busy during interval: {busy_delta:?}");
+}
+```
+
+A busy-time delta can indicate worker load. It does not, by itself, tell you why the worker was busy or whether user-visible latency is acceptable.
+
+## Do Not Invent Universal Health Thresholds
+
+This style of rule is not portable:
+
+```rust
+fn classify_queue(depth: usize) -> &'static str {
+    match depth {
+        0 => "healthy",
+        1..=10 => "warning",
+        _ => "critical",
+    }
+}
+
+fn main() {
+    assert_eq!(classify_queue(11), "critical");
+}
+```
+
+A queue depth of 11 might be trivial in one service and catastrophic in another. Thresholds should come from latency objectives, arrival/service rates, capacity tests, and observed baselines.
+
+## `tokio_unstable` Metrics
+
+Detailed metrics including blocking-pool queue depth, blocking thread counts, worker poll counts, worker-local queue depth, remote scheduling counts, and several scheduler counters remain behind `tokio_unstable` in current Tokio.
+
+To use those APIs, Tokio must be compiled with the cfg enabled, for example:
 
 ```toml
 # .cargo/config.toml
@@ -18,218 +89,105 @@ RuntimeMetrics requires the `tokio_unstable` cfg flag:
 rustflags = ["--cfg", "tokio_unstable"]
 ```
 
-```toml
-# Cargo.toml
-[dependencies]
-tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
+Do not present unstable-only methods in ordinary stable examples without stating this requirement.
+
+<!-- rust-check: ignore; reason=requires tokio_unstable cfg, which is intentionally not enabled in the corpus harness -->
+```rust
+use tokio::runtime::Handle;
+
+fn report_unstable_metrics() {
+    let metrics = Handle::current().metrics();
+    println!("blocking queue: {}", metrics.blocking_queue_depth());
+    println!("blocking threads: {}", metrics.num_blocking_threads());
+    println!("worker 0 polls: {}", metrics.worker_poll_count(0));
+}
 ```
 
-## Accessing Metrics
+`tokio_unstable` is a Tokio cfg contract, not a stable Rust language feature. Treat these metrics as potentially changing across Tokio releases.
+
+## Poll Count Does Not Directly Detect Starvation
+
+A low poll-count delta can mean many things: the runtime may simply be idle, tasks may be waiting on I/O, work may happen on other workers, or a worker may genuinely be blocked. Conversely, a high poll count does not prove healthy latency.
+
+A useful starvation/blocking investigation combines evidence such as:
+
+- application request/operation latency;
+- worker busy-time deltas;
+- queue-depth trends;
+- runtime task/resource instrumentation;
+- profiles or traces showing long synchronous sections;
+- blocking-pool metrics when `tokio_unstable` is an acceptable dependency.
+
+Do not encode `if polls < N { starvation }` as general guidance.
+
+## Stable Monitoring Loop
 
 ```rust
-use tokio::runtime::Runtime;
-
-let runtime = Runtime::new()?;
-let metrics = runtime.metrics();
-
-// Monitor from another task
-runtime.spawn(async {
-    let mut interval = tokio::time::interval(Duration::from_secs(10));
-    loop {
-        interval.tick().await;
-        report_metrics(&metrics);
-    }
-});
-```
-
-## Key Metrics
-
-### Task Health
-
-```rust
+use std::time::Duration;
 use tokio::runtime::RuntimeMetrics;
+use tokio::sync::mpsc;
 
-fn report_task_health(metrics: &RuntimeMetrics) {
-    // Active tasks currently being polled
-    let active = metrics.num_alive_tasks();
-    
-    // Remote schedule count: tasks spawned from other worker threads
-    // High values indicate cross-thread scheduling overhead
-    let remote = metrics.remote_schedule_count();
-    
-    // Total poll count across all workers: can detect task starvation
-    let num_workers = metrics.num_workers();
-    let total_polls: u64 = (0..num_workers).map(|w| metrics.worker_poll_count(w)).sum();
-    
-    info!("Tasks: active={}, remote_scheduled={}, total_polls={}",
-        active, remote, total_polls);
-}
-```
-
-### Blocking Pool Pressure
-
-```rust
-fn check_blocking_pool(metrics: &RuntimeMetrics) -> HealthStatus {
-    let queue_depth = metrics.blocking_queue_depth();
-    let num_threads = metrics.num_blocking_threads();
-    
-    match queue_depth {
-        0 => HealthStatus::Healthy,
-        1..=10 => HealthStatus::Warning,
-        11..=50 => HealthStatus::Critical,
-        _ => HealthStatus::Overloaded,
-    }
-    
-    // Metrics also expose max values
-    // metrics.max_num_blocking_threads() - peak blocking threads
-    // (available when tokio_unstable is enabled)
-}
-```
-
-### Starvation Detection
-
-```rust
-async fn detect_starvation(metrics: &RuntimeMetrics) {
-    let num_workers = metrics.num_workers();
-    let mut prev_polls: u64 = (0..num_workers).map(|w| metrics.worker_poll_count(w)).sum();
-    
-    loop {
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        let current_polls: u64 = (0..num_workers).map(|w| metrics.worker_poll_count(w)).sum();
-        let delta = current_polls - prev_polls;
-        prev_polls = current_polls;
-        
-        // If poll count doesn't increase, tasks are starving
-        if delta < 10 && metrics.num_alive_tasks() > 0 {
-            warn!("Potential task starvation: only {} polls in 1s", delta);
-        }
-    }
-}
-```
-
-## Bad
-
-```rust
-use tokio::runtime::Runtime;
-
-fn main() {
-    let rt = Runtime::new().unwrap();
-    rt.block_on(async {
-        loop {
-            // Heavy CPU work blocks async tasks
-            std::thread::sleep(Duration::from_millis(100)); // Blocks!
-        }
-    });
-}
-// Not observable: no metrics, no logging, no alerting
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-use tokio::runtime::{Runtime, RuntimeMetrics};
-
-fn main() {
-    let rt = Builder::new_multi_thread()
-        .worker_threads(4)
-        .build()
-        .unwrap();
-    
-    let metrics = rt.metrics();
-    
-    // Spawn a health monitor
-    rt.spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(5));
-        loop {
-            interval.tick().await;
-            
-            let blocking_depth = metrics.blocking_queue_depth();
-            if blocking_depth > 5 {
-                // Observable: we know blocking is happening
-                warn!("Blocking pool pressure: {} queued", blocking_depth);
-            }
-        }
-    });
-    
-    rt.block_on(async { /* application */ });
-}
-```
-
-## tokio-console Integration
-
-For richer diagnostics, integrate with [`tokio-console`](https://github.com/tokio-rs/console):
-
-```toml
-# Cargo.toml
-[dependencies]
-tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
-console-subscriber = "0.4"
-```
-
-```rust
-// Initialize console subscriber early
-#[tokio::main]
-async fn main() {
-    console_subscriber::init();
-    // Run your app...
-}
-```
-
-Then run `tokio-console` in a terminal:
-```bash
-cargo install tokio-console
-tokio-console
-```
-
-This provides real-time visualization of tasks, resources, and async operations.
-
-## Metrics Loop Pattern
-
-```rust
-use tokio::runtime::RuntimeMetrics;
-
-struct HealthReport {
-    active_tasks: usize,
-    blocking_queue_depth: usize,
-    total_poll_count: u64,
-    remote_schedule_count: u64,
+#[derive(Debug)]
+struct Snapshot {
+    alive_tasks: usize,
+    global_queue_depth: usize,
 }
 
-async fn metrics_collector(metrics: RuntimeMetrics) -> mpsc::Receiver<HealthReport> {
-    let (tx, rx) = mpsc::channel::<HealthReport>(100);
-    
+fn spawn_metrics_collector(metrics: RuntimeMetrics) -> mpsc::Receiver<Snapshot> {
+    let (tx, rx) = mpsc::channel(16);
+
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
         loop {
             interval.tick().await;
-            let num_workers = metrics.num_workers();
-            let total_polls: u64 = (0..num_workers).map(|w| metrics.worker_poll_count(w)).sum();
-            let report = HealthReport {
-                active_tasks: metrics.num_alive_tasks(),
-                blocking_queue_depth: metrics.blocking_queue_depth(),
-                total_poll_count: total_polls,
-                remote_schedule_count: metrics.remote_schedule_count(),
+            let snapshot = Snapshot {
+                alive_tasks: metrics.num_alive_tasks(),
+                global_queue_depth: metrics.global_queue_depth(),
             };
-            if tx.send(report).await.is_err() {
-                break; // Receiver dropped
+
+            if tx.send(snapshot).await.is_err() {
+                break;
             }
         }
     });
-    
+
     rx
+}
+
+#[tokio::main]
+async fn main() {
+    let metrics = tokio::runtime::Handle::current().metrics();
+    let mut snapshots = spawn_metrics_collector(metrics);
+
+    if let Some(snapshot) = snapshots.recv().await {
+        println!(
+            "alive={} queued={}",
+            snapshot.alive_tasks,
+            snapshot.global_queue_depth
+        );
+    }
 }
 ```
 
+`RuntimeMetrics` is a clonable handle, so it can be moved into a monitoring task without borrowing the `Runtime` itself.
+
+## `tokio-console`
+
+For per-task/resource diagnostics, `tokio-console`/`console-subscriber` can provide much richer instrumentation than aggregate runtime counters. It has its own instrumentation and `tokio_unstable` setup requirements; follow the current console documentation rather than assuming that enabling `RuntimeMetrics` automatically enables console data.
+
+Aggregate metrics and task-level tracing serve different purposes and can be used together.
+
+## Practical Guidance
+
+- Start with stable metrics when they answer the operational question.
+- Treat runtime metrics as observations, not diagnoses.
+- Compare cumulative counters over intervals.
+- Derive alert thresholds from service objectives and measured workload behavior.
+- Gate `tokio_unstable` metrics explicitly and expect API churn.
+- Correlate scheduler telemetry with application latency, throughput, and traces.
+
 ## See Also
 
-- [async-blocking-detection](./async-blocking-detection.md) — Detect blocking in async code
+- [async-blocking-detection](./async-blocking-detection.md) — Finding blocking async work
 - [async-tokio-runtime](./async-tokio-runtime.md) — Runtime configuration
-- [async-joinset-structured](./async-joinset-structured.md) — Structured concurrency with JoinSet
-
-## References
-
-- [RuntimeMetrics docs](https://docs.rs/tokio/latest/tokio/runtime/struct.RuntimeMetrics.html)
-- [tokio-console](https://github.com/tokio-rs/console)
-- [async-tokio-runtime](./async-tokio-runtime.md) - Runtime configuration
-- [async-blocking-detection](./async-blocking-detection.md) - Detecting blocking in async
+- [async-joinset-structured](./async-joinset-structured.md) — Task lifecycle management
