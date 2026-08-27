@@ -1,201 +1,215 @@
 # api-typestate
 
-> Use typestate pattern to encode state machine invariants in the type system
+> Use typestate when compile-time state transitions materially simplify or strengthen an API
 
 ## Why It Matters
 
-State machines with runtime state checks ("are we connected?", "is the transaction started?") can have invalid transitions. The typestate pattern uses different types for each state, making invalid state transitions compile errors. The compiler enforces your state machine.
+Typestate represents important runtime states as different Rust types. Methods can then exist only for states where they are valid, so some invalid operation sequences become compile-time errors instead of runtime checks.
 
-## Bad
+That guarantee is valuable for protocols, staged resource initialization, transactions, and builders with important required fields. It is not free: state-specific types can complicate storage, trait bounds, type inference, error paths, and APIs that need to choose or erase state dynamically.
+
+Use typestate when the state transition is an important API invariant, not merely because a value happens to have modes.
+
+## Good: Operations Exist Only in Valid States
 
 ```rust
-struct Connection {
-    state: ConnectionState,
-    socket: Option<TcpStream>,
-}
-
-enum ConnectionState {
-    Disconnected,
-    Connected,
-    Authenticated,
-}
-
-impl Connection {
-    fn send(&mut self, data: &[u8]) -> Result<(), Error> {
-        // Runtime check - can fail if called in wrong state
-        if self.state != ConnectionState::Authenticated {
-            return Err(Error::NotAuthenticated);
-        }
-        self.socket.as_mut().unwrap().write_all(data)?;
-        Ok(())
-    }
-    
-    fn authenticate(&mut self, password: &str) -> Result<(), Error> {
-        // Runtime check - can fail
-        if self.state != ConnectionState::Connected {
-            return Err(Error::NotConnected);
-        }
-        // ...
-    }
-}
-
-// Bug: forgot to authenticate
-let mut conn = Connection::new();
-conn.connect()?;
-conn.send(b"data")?;  // Runtime error: NotAuthenticated
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-// Different types for each state
+#[derive(Debug)]
 struct Disconnected;
-struct Connected { socket: TcpStream }
-struct Authenticated { socket: TcpStream, session: Session }
 
+#[derive(Debug)]
+struct Connected {
+    endpoint: String,
+}
+
+#[derive(Debug)]
 struct Connection<State> {
     state: State,
 }
 
 impl Connection<Disconnected> {
     fn new() -> Self {
-        Connection { state: Disconnected }
+        Self { state: Disconnected }
     }
-    
-    fn connect(self, addr: &str) -> Result<Connection<Connected>, Error> {
-        let socket = TcpStream::connect(addr)?;
-        Ok(Connection { state: Connected { socket } })
+
+    fn connect(self, endpoint: impl Into<String>) -> Connection<Connected> {
+        Connection {
+            state: Connected {
+                endpoint: endpoint.into(),
+            },
+        }
     }
 }
 
 impl Connection<Connected> {
-    fn authenticate(self, password: &str) -> Result<Connection<Authenticated>, Error> {
-        let session = do_auth(&self.state.socket, password)?;
-        Ok(Connection {
-            state: Authenticated { socket: self.state.socket, session }
-        })
+    fn send(&self, payload: &[u8]) -> usize {
+        let _endpoint = &self.state.endpoint;
+        payload.len()
     }
 }
 
-impl Connection<Authenticated> {
-    fn send(&mut self, data: &[u8]) -> Result<(), Error> {
-        // No runtime check needed - type guarantees we're authenticated
-        self.state.socket.write_all(data)?;
-        Ok(())
-    }
+fn main() {
+    let connection = Connection::new().connect("server.example");
+    assert_eq!(connection.send(b"hello"), 5);
 }
-
-// Bug: forgot to authenticate
-let conn = Connection::new();
-let conn = conn.connect("server:8080")?;
-conn.send(b"data");  // Compile error! send() not available on Connection<Connected>
-
-// Correct usage
-let conn = Connection::new();
-let conn = conn.connect("server:8080")?;
-let mut conn = conn.authenticate("secret")?;
-conn.send(b"data")?;  // Works - type is Connection<Authenticated>
 ```
 
-## Builder Typestate
+There is no `send` method on `Connection<Disconnected>`. The type transition produced by `connect` makes the valid sequence explicit.
+
+## Good: Builder Typestate for a Required Field
 
 ```rust
-// Enforce required fields via typestate
-struct BuilderNoUrl;
-struct BuilderWithUrl { url: String }
+#[derive(Debug)]
+struct MissingUrl;
 
+#[derive(Debug)]
+struct HasUrl(String);
+
+#[derive(Debug)]
+struct Request {
+    url: String,
+    timeout_secs: u64,
+}
+
+#[derive(Debug)]
 struct RequestBuilder<State> {
     state: State,
-    timeout: Option<Duration>,
+    timeout_secs: u64,
 }
 
-impl RequestBuilder<BuilderNoUrl> {
+impl RequestBuilder<MissingUrl> {
     fn new() -> Self {
-        RequestBuilder {
-            state: BuilderNoUrl,
-            timeout: None,
+        Self {
+            state: MissingUrl,
+            timeout_secs: 30,
         }
     }
-    
-    fn url(self, url: &str) -> RequestBuilder<BuilderWithUrl> {
+
+    fn url(self, url: impl Into<String>) -> RequestBuilder<HasUrl> {
         RequestBuilder {
-            state: BuilderWithUrl { url: url.to_string() },
-            timeout: self.timeout,
+            state: HasUrl(url.into()),
+            timeout_secs: self.timeout_secs,
         }
     }
 }
 
-impl RequestBuilder<BuilderWithUrl> {
-    fn timeout(mut self, t: Duration) -> Self {
-        self.timeout = Some(t);
+impl<State> RequestBuilder<State> {
+    fn timeout_secs(mut self, timeout_secs: u64) -> Self {
+        self.timeout_secs = timeout_secs;
         self
     }
-    
-    // Only available once URL is set
+}
+
+impl RequestBuilder<HasUrl> {
     fn build(self) -> Request {
         Request {
-            url: self.state.url,
-            timeout: self.timeout,
+            url: self.state.0,
+            timeout_secs: self.timeout_secs,
         }
     }
 }
 
-// Compile error: build() not available
-let bad = RequestBuilder::new().build();
+fn main() {
+    let request = RequestBuilder::new()
+        .timeout_secs(10)
+        .url("https://example.com")
+        .build();
 
-// Correct: must set URL first
-let good = RequestBuilder::new()
-    .url("https://example.com")
-    .timeout(Duration::from_secs(30))
-    .build();
+    assert_eq!(request.url, "https://example.com");
+    assert_eq!(request.timeout_secs, 10);
+}
 ```
 
-## Transaction Example
+`build()` is available only after `url()` changes the state type. This can be worthwhile when a missing required field should be impossible by construction.
+
+## Runtime Validation Can Be Simpler
+
+For many builders, storing required fields as `Option<T>` and returning an error from `build()` is easier to understand and maintain.
 
 ```rust
-struct NotStarted;
-struct InProgress { tx_id: u64 }
-struct Committed;
+#[derive(Debug)]
+struct Request {
+    url: String,
+}
 
-struct Transaction<State> {
-    conn: Connection,
+#[derive(Default)]
+struct RequestBuilder {
+    url: Option<String>,
+}
+
+impl RequestBuilder {
+    fn url(mut self, url: impl Into<String>) -> Self {
+        self.url = Some(url.into());
+        self
+    }
+
+    fn build(self) -> Result<Request, &'static str> {
+        Ok(Request {
+            url: self.url.ok_or("url is required")?,
+        })
+    }
+}
+
+fn main() {
+    assert!(RequestBuilder::default().build().is_err());
+    assert!(RequestBuilder::default().url("https://example.com").build().is_ok());
+}
+```
+
+Prefer this simpler design when a runtime construction error is acceptable and typestate would mostly expose generic machinery to users.
+
+## State Transitions That Can Fail
+
+A typestate transition can still return `Result`. The type system can express which transition is being attempted without pretending the operation itself cannot fail.
+
+```rust
+#[derive(Debug)]
+struct Closed;
+
+#[derive(Debug)]
+struct Open;
+
+#[derive(Debug)]
+struct File<State> {
+    name: String,
     state: State,
 }
 
-impl Transaction<NotStarted> {
-    fn begin(conn: Connection) -> Result<Transaction<InProgress>, Error> {
-        let tx_id = conn.execute("BEGIN")?;
-        Ok(Transaction {
-            conn,
-            state: InProgress { tx_id },
+impl File<Closed> {
+    fn open(self) -> Result<File<Open>, &'static str> {
+        if self.name.is_empty() {
+            return Err("empty file name");
+        }
+
+        Ok(File {
+            name: self.name,
+            state: Open,
         })
     }
 }
 
-impl Transaction<InProgress> {
-    fn execute(&mut self, sql: &str) -> Result<(), Error> {
-        self.conn.execute(sql)
+impl File<Open> {
+    fn read(&self) -> &[u8] {
+        let _ = &self.state;
+        b"contents"
     }
-    
-    fn commit(self) -> Result<Transaction<Committed>, Error> {
-        self.conn.execute("COMMIT")?;
-        Ok(Transaction {
-            conn: self.conn,
-            state: Committed,
-        })
-    }
-    
-    fn rollback(self) -> Connection {
-        let _ = self.conn.execute("ROLLBACK");
-        self.conn
-    }
+}
+
+fn main() {
+    let file = File {
+        name: "data.txt".to_owned(),
+        state: Closed,
+    };
+
+    let file = file.open().unwrap();
+    assert_eq!(file.read(), b"contents");
 }
 ```
 
-## bon: Practical Production Typestate
+Typestate prevents calling `read` before a successful transition, while `Result` still models I/O or validation failure.
 
-The `bon` crate implements typestate using human-readable trait names, making it the most practical way to get compile-time safety for builders in 2025-2026.
+## Generated Builder Typestate
+
+Builder crates can hide most of the state-marker machinery. For example, `bon` generates a typestate builder in which required members must be supplied before `build()` is available.
 
 ```rust
 use bon::Builder;
@@ -203,59 +217,46 @@ use bon::Builder;
 #[derive(Builder)]
 struct Query {
     #[builder(into)]
-    table: String,       // required — enforced at compile time
+    table: String,
     #[builder(into)]
-    filter: Option<String>,  // optional
+    filter: Option<String>,
     #[builder(default = 100)]
     limit: usize,
 }
 
-// Typestate guarantees `table` is set before building:
-let query = Query::builder()
-    .table("users")      // required
-    .filter("active")    // optional
-    .limit(50)           // optional
-    .build();
+fn main() {
+    let query = Query::builder()
+        .table("users")
+        .filter("active")
+        .limit(50)
+        .build();
 
-// Query::builder().filter("x").build();
-// Compile error: `table` is missing — bon's typestate catches it
-```
-
-Unlike hand-rolled typestate (which requires phantom types, separate state structs, and complex impl blocks per state), `bon` generates descriptive, human-readable types automatically.
-
-## Trait Object Upcasting (Rust 1.86)
-
-Rust 1.86.0 (April 2025) stabilized implicit upcasting of trait objects. This simplifies some typestate designs where you return `Box<dyn State>` or `&dyn State`:
-
-```rust
-trait Base {}
-trait Derived: Base {}
-// &dyn Derived now implicitly coerces to &dyn Base (no feature gate needed since Rust 1.86)
-```
-
-## Anti-pattern: Hand-rolling Typestate for Simple Builders
-
-```rust
-// ❌ Over-engineering: hand-rolled typestate when bon suffices
-struct Builder<State> { /* phantom types */ }
-struct NoUrl;
-struct HasUrl;
-impl Builder<NoUrl> { fn url(self, ...) -> Builder<HasUrl> { ... } }
-impl Builder<HasUrl> { fn build(self) -> Request { ... } }
-
-// ✅ Better: let bon generate the typestate
-#[derive(Bon::Builder)]
-struct Request {
-    #[builder(into)]
-    url: String,
+    assert_eq!(query.table, "users");
+    assert_eq!(query.filter.as_deref(), Some("active"));
+    assert_eq!(query.limit, 50);
 }
 ```
 
-For complex state machines beyond builders, hand-rolled typestate is still appropriate.
+Generated typestate is often a good fit for builders because callers interact mostly with ordinary setter methods rather than naming the generated state types directly.
+
+## Costs and Escape Hatches
+
+Typestate becomes awkward when code must store values in several states in one homogeneous collection, select a state at runtime, or pass partially progressed values through generic infrastructure. At that point an enum, runtime state field, trait object, or another form of type erasure may be clearer.
+
+Do not force typestate through those boundaries merely to eliminate every runtime check. Compile-time guarantees are useful when they make the API easier to use correctly overall.
+
+## Practical Guidance
+
+- Use typestate for important ordered transitions and state-specific capabilities.
+- Let state-changing methods consume `self` when the old state should no longer be usable.
+- Returning `Result<NextState, E>` is normal when the transition itself can fail.
+- Prefer runtime validation when typestate adds more public complexity than safety or usability.
+- Generated typestate is especially useful for builders with required fields.
+- Avoid unrelated feature claims: trait-object upcasting and other language features do not by themselves make an API a typestate design.
 
 ## See Also
 
-- [api-bon-builder](./api-bon-builder.md) - bon crate builder (practical typestate)
-- [api-builder-pattern](./api-builder-pattern.md) - Basic builder pattern
+- [api-bon-builder](./api-bon-builder.md) - Generated builder typestate
+- [api-builder-pattern](./api-builder-pattern.md) - Builder tradeoffs
 - [api-parse-dont-validate](./api-parse-dont-validate.md) - Type-driven invariants
 - [api-sealed-trait](./api-sealed-trait.md) - Restricting trait implementations
