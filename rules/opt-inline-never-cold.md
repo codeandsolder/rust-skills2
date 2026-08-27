@@ -1,198 +1,160 @@
 # opt-inline-never-cold
 
-> Use `#[inline(never)]` and `#[cold]` for error paths and rarely-executed code
+> Use cold-path and inlining annotations as measured optimization hints, not source-level guarantees
 
 ## Why It Matters
 
-Inlining error handling code into hot paths wastes instruction cache space and can prevent other optimizations. `#[inline(never)]` keeps cold code out of the hot path. `#[cold]` tells the compiler this branch is unlikely, enabling better branch prediction hints and code layout.
+Large or expensive error paths can increase the amount of code near a hot path. Rust provides `#[cold]`, `#[inline(never)]`, and `core::hint::cold_path()` to communicate optimization intent, but these are **hints**. They do not guarantee a particular branch instruction, section layout, cache behavior, or final machine-code shape.
 
-## Bad
+Start with clear control flow. Add annotations when profiling or generated-code inspection shows that outlining a rare path matters.
+
+## Extract Expensive Rare Work
+
+A helper can keep the common path visually small and gives the compiler a separate function to optimize:
 
 ```rust
-fn process_data(data: &[u8]) -> Result<Output, Error> {
-    if data.is_empty() {
-        // Error path inlined into hot function
-        return Err(Error::Empty {
-            context: format!("Expected data, got empty slice"),
-            suggestions: vec!["Check input", "Validate before calling"],
-        });
-    }
-    
-    // Hot path - now polluted with error construction code
-    do_processing(data)
+#[derive(Debug, PartialEq)]
+enum DecodeError {
+    Empty(String),
 }
-```
 
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-fn process_data(data: &[u8]) -> Result<Output, Error> {
-    if data.is_empty() {
-        return Err(empty_data_error());  // Cold path stays small
-    }
-    
-    do_processing(data)
+fn decode(data: &[u8]) -> Result<u8, DecodeError> {
+    let Some(&first) = data.first() else {
+        return Err(empty_error());
+    };
+    Ok(first)
 }
 
 #[cold]
 #[inline(never)]
-fn empty_data_error() -> Error {
-    Error::Empty {
-        context: format!("Expected data, got empty slice"),
-        suggestions: vec!["Check input", "Validate before calling"],
-    }
+fn empty_error() -> DecodeError {
+    DecodeError::Empty("expected at least one byte".to_owned())
+}
+
+fn main() {
+    assert_eq!(decode(&[7]), Ok(7));
+    assert!(matches!(decode(&[]), Err(DecodeError::Empty(_))));
 }
 ```
 
-## #[cold] for Unlikely Branches
+`#[cold]` tells the compiler the function is unlikely to be called. `#[inline(never)]` asks it not to inline the function. The Reference defines all forms of `#[inline]` as hints, so do not describe `#[inline(never)]` as an absolute promise that the body can never be duplicated or otherwise transformed.
+
+## `#[cold]` Is Useful for Rare Functions
+
+Error construction and reporting are common candidates when they are genuinely uncommon:
 
 ```rust
-fn parse_value(input: &str) -> Result<i32, ParseError> {
-    match input.parse() {
-        Ok(n) => Ok(n),
-        Err(e) => cold_parse_error(input, e),
+#[derive(Debug)]
+struct ParseFailure {
+    input: String,
+    message: String,
+}
+
+fn parse_positive(input: &str) -> Result<u32, ParseFailure> {
+    match input.parse::<u32>() {
+        Ok(value) if value > 0 => Ok(value),
+        _ => Err(parse_failure(input)),
     }
 }
 
 #[cold]
-fn cold_parse_error(input: &str, e: std::num::ParseIntError) -> Result<i32, ParseError> {
-    Err(ParseError {
-        input: input.to_string(),
-        source: e,
-    })
-}
-```
-
-## Panic Paths
-
-```rust
-fn get_index(&self, idx: usize) -> &T {
-    if idx >= self.len {
-        cold_out_of_bounds(idx, self.len);
-    }
-    unsafe { self.ptr.add(idx).as_ref().unwrap() }
-}
-
-#[cold]
-#[inline(never)]
-fn cold_out_of_bounds(idx: usize, len: usize) -> ! {
-    panic!("index {} out of bounds for length {}", idx, len);
-}
-```
-
-## Error Construction Functions
-
-```rust
-// Keep error construction out of hot path
-impl MyError {
-    #[cold]
-    pub fn io_error(source: std::io::Error, path: &Path) -> Self {
-        MyError::Io {
-            source,
-            path: path.to_path_buf(),
-            context: get_context(),
-        }
-    }
-    
-    #[cold]
-    pub fn validation_error(msg: &str, field: &str) -> Self {
-        MyError::Validation {
-            message: msg.to_string(),
-            field: field.to_string(),
-        }
+fn parse_failure(input: &str) -> ParseFailure {
+    ParseFailure {
+        input: input.to_owned(),
+        message: "expected a positive integer".to_owned(),
     }
 }
 
-fn read_config(path: &Path) -> Result<Config, MyError> {
-    std::fs::read_to_string(path)
-        .map_err(|e| MyError::io_error(e, path))?
-        .parse()
-        .map_err(|e| MyError::parse_error(e))
+fn main() {
+    assert_eq!(parse_positive("8").unwrap(), 8);
+    let err = parse_positive("0").unwrap_err();
+    assert_eq!(err.input, "0");
+    assert!(err.message.contains("positive"));
 }
 ```
 
-## Stable Branch Hints with cold_path() (Rust 1.95+)
+Do not annotate a path as cold merely because it represents an error. In some workloads, parse failures, cache misses, retries, or validation errors are common enough to be performance-relevant hot paths themselves.
 
-Since Rust 1.95.0, `core::hint::cold_path()` provides the canonical stable way to hint branch probabilities without nightly or external crates:
+## `cold_path()` Hints About the Current Path
+
+Rust 1.95 stabilized `core::hint::cold_path()`. Calling it tells the compiler that the path containing the call is unlikely to be taken:
 
 ```rust
 use core::hint::cold_path;
 
-fn process(data: Option<&Data>) -> Result<Output, Error> {
-    // cold_path() replaces nightly unlikely() / likely() intrinsics
-    if data.is_none() {
-        cold_path();  // Hint: this path is unlikely
-        return cold_none_error();
+fn checked_get(values: &[u8], index: usize) -> Option<u8> {
+    if index >= values.len() {
+        cold_path();
+        return None;
     }
-    
-    let data = data.unwrap();
-    fast_process(data)
+
+    Some(values[index])
 }
 
-// Wrapper: stable likely() without nightly
-#[inline(always)]
-pub fn likely(b: bool) -> bool {
-    if !b { core::hint::cold_path(); }
-    b
-}
-
-// Wrapper: stable unlikely() without nightly
-#[inline(always)]
-pub fn unlikely(b: bool) -> bool {
-    if b { core::hint::cold_path(); }
-    b
+fn main() {
+    assert_eq!(checked_get(&[10, 20], 1), Some(20));
+    assert_eq!(checked_get(&[10, 20], 4), None);
 }
 ```
 
-### Stable alternative: code structure
+This is an optimization hint, not a correctness primitive. The result must be correct even if the compiler ignores the hint or the branch is frequently taken at runtime.
 
-Even without `cold_path()`, you can structure code so the hot path is the "fall through":
+## Do Not Invent `likely()` Semantics
 
-```rust
-fn process(data: Option<&Data>) -> Result<Output, Error> {
-    let data = match data {
-        Some(d) => d,
-        None => return cold_none_error(),  // Early return = unlikely hint
-    };
-    
-    // Compiler assumes code after early returns is "hot"
-    fast_process(data)
-}
-```
+A wrapper built from `cold_path()` can express local intent, but it is not a standardized replacement for every `likely`/`unlikely` intrinsic from other languages. Prefer putting `cold_path()` directly in the genuinely cold branch so the meaning is visible at the call site.
 
-## Pattern: Extract Cold Code
+Similarly, an early return is often good code structure, but Rust does not specify that “early return means unlikely.” Do not rely on control-flow shape as a formal branch-probability annotation.
+
+## Panic and Bounds-Error Helpers
+
+Outlining a panic path can be useful in a measured low-level routine:
 
 ```rust
-// Before: cold code inline
-fn hot_function(x: i32) -> i32 {
-    if x < 0 {
-        log::error!("Negative value: {}", x);
-        eprintln!("Debug info: {:?}", std::backtrace::Backtrace::capture());
-        return 0;
+fn byte_at(values: &[u8], index: usize) -> u8 {
+    match values.get(index) {
+        Some(&value) => value,
+        None => out_of_bounds(index, values.len()),
     }
-    x * 2
-}
-
-// After: cold code extracted
-fn hot_function(x: i32) -> i32 {
-    if x < 0 {
-        return handle_negative(x);
-    }
-    x * 2
 }
 
 #[cold]
 #[inline(never)]
-fn handle_negative(x: i32) -> i32 {
-    log::error!("Negative value: {}", x);
-    eprintln!("Debug info: {:?}", std::backtrace::Backtrace::capture());
-    0
+fn out_of_bounds(index: usize, len: usize) -> ! {
+    panic!("index {index} out of bounds for length {len}");
+}
+
+fn main() {
+    assert_eq!(byte_at(&[3, 4], 0), 3);
 }
 ```
 
+For ordinary indexing, prefer the standard library's existing checked/indexing behavior. A custom helper is worthwhile only when it serves an actual API or measured code-generation goal.
+
+## When Not to Annotate
+
+Avoid scattering `#[cold]` or `#[inline(never)]` over code when:
+
+- the path frequency is unknown;
+- the function is tiny and the compiler already optimizes it well;
+- the code is not performance-sensitive;
+- the annotation makes generated code worse on important targets;
+- a clearer algorithmic or allocation fix has much larger impact.
+
+## Verify the Result
+
+For optimization work, compare representative benchmarks and inspect generated assembly/IR when necessary. Attribute semantics are intentionally weaker than “this exact machine-code transformation will happen.”
+
+## Practical Guidance
+
+- Keep rare expensive work in a separate helper when that improves clarity or measured code layout.
+- Use `#[cold]` to mark a genuinely rarely called function.
+- Use `#[inline(never)]` sparingly and remember it is a hint.
+- Use `core::hint::cold_path()` for a stable path-level cold hint on Rust 1.95+.
+- Never make correctness depend on a branch or inlining hint.
+- Measure before and after; remove annotations that do not help.
+
 ## See Also
 
-- [opt-inline-small](./opt-inline-small.md) - Inlining for hot code
-- [opt-inline-always-rare](./opt-inline-always-rare.md) - Forced inlining
-- [err-result-over-panic](./err-result-over-panic.md) - Error handling patterns
+- [opt-inline-small](./opt-inline-small.md) - Inlining small hot functions
+- [opt-inline-always-rare](./opt-inline-always-rare.md) - Forced-inlining trade-offs
+- [perf-profile-first](./perf-profile-first.md) - Profile before optimizing
