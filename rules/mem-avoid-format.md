@@ -1,172 +1,176 @@
 # mem-avoid-format
 
-> Avoid `format!()` when string literals work
+> Avoid creating an intermediate `String` with `format!` when the caller can use a literal, formatting arguments, or an existing output buffer directly
 
 ## Why It Matters
 
-`format!()` always allocates a new String, even for constant text. In hot paths, these allocations add up. Use string literals, `write!()`, or pre-allocated buffers instead. For clone-heavy workloads, `EcoString` (from `ecow` 0.3.0) makes `clone()` O(1), reducing the cost of defensive copies.
+`format!(...)` produces an owned `String`. That is exactly right when you need an owned formatted string. It is unnecessary when the surrounding API can consume a string literal or formatting arguments directly, or when you already have a reusable destination buffer.
 
-## Bad
+The optimization target is the **intermediate owned string**, not formatting syntax itself. Do not replace clear one-off `format!` calls with complicated machinery unless allocation actually matters.
+
+## Static Text: Borrow It When Ownership Is Unnecessary
+
+If every result is static text, return a static string instead of allocating an owned `String`:
 
 ```rust
-// Allocates every time, even for static text
-fn get_error_message() -> String {
-    format!("An error occurred")  // Unnecessary allocation!
-}
-
-// Allocates in a loop
-for item in items {
-    log::info!("{}", format!("Processing item: {}", item));  // Double work!
-}
-
-// format! in hot path
-fn classify(n: i32) -> String {
-    if n > 0 {
-        format!("positive")  // Allocates!
-    } else if n < 0 {
-        format!("negative")  // Allocates!
+fn classification(value: i32) -> &'static str {
+    if value > 0 {
+        "positive"
+    } else if value < 0 {
+        "negative"
     } else {
-        format!("zero")      // Allocates!
-    }
-}
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-// Return &'static str for constants
-fn get_error_message() -> &'static str {
-    "An error occurred"  // No allocation
-}
-
-// Use format args directly
-for item in items {
-    log::info!("Processing item: {}", item);  // No intermediate String
-}
-
-// Return Cow for mixed static/dynamic
-use std::borrow::Cow;
-
-fn classify(n: i32) -> Cow<'static, str> {
-    if n > 0 {
-        Cow::Borrowed("positive")  // No allocation
-    } else if n < 0 {
-        Cow::Borrowed("negative")  // No allocation
-    } else {
-        Cow::Borrowed("zero")      // No allocation
+        "zero"
     }
 }
 
-// Or just &'static str if always static
-fn classify_str(n: i32) -> &'static str {
-    if n > 0 { "positive" }
-    else if n < 0 { "negative" }
-    else { "zero" }
+fn main() {
+    assert_eq!(classification(-1), "negative");
 }
 ```
 
-## Use write!() for Output
+If the API requires ownership, an owned string is still required. Changing `format!("positive")` to `"positive".to_owned()` removes formatting overhead but does not remove the allocation required by the return type.
+
+## Pass Formatting Arguments Directly to Formatting-Aware APIs
+
+Logging and printing macros already accept formatting arguments:
 
 ```rust
-use std::io::Write;
-
-// Bad: Allocate then write
-fn bad_log(writer: &mut impl Write, msg: &str, code: u32) {
-    let formatted = format!("[ERROR {}] {}", code, msg);  // Allocation!
-    writer.write_all(formatted.as_bytes()).unwrap();
-}
-
-// Good: Write directly
-fn good_log(writer: &mut impl Write, msg: &str, code: u32) {
-    write!(writer, "[ERROR {}] {}", code, msg).unwrap();  // No allocation!
+fn main() {
+    let item = 7;
+    println!("processing item: {item}");
 }
 ```
 
-## Pre-allocate for Multiple Appends
+Avoid this intermediate allocation:
 
 ```rust
-// Bad: Multiple allocations
+fn main() {
+    let item = 7;
+    println!("{}", format!("processing item: {item}"));
+}
+```
+
+The direct form is both clearer and avoids constructing a temporary `String` solely to format it again.
+
+## Write Into an Existing `String`
+
+When building one output incrementally, reuse the same destination:
+
+```rust
+use std::fmt::Write as _;
+
 fn build_message(parts: &[&str]) -> String {
-    let mut result = String::new();
+    let capacity: usize = parts.iter().map(|part| part.len() + 1).sum();
+    let mut output = String::with_capacity(capacity);
+
     for part in parts {
-        result = format!("{}{}\n", result, part);  // Allocates each iteration!
+        writeln!(&mut output, "{part}").unwrap();
     }
-    result
+
+    output
 }
 
-// Good: Pre-allocate
-fn build_message(parts: &[&str]) -> String {
-    let total_len: usize = parts.iter().map(|p| p.len() + 1).sum();
-    let mut result = String::with_capacity(total_len);
-    for part in parts {
-        result.push_str(part);
-        result.push('\n');
-    }
-    result
+fn main() {
+    assert_eq!(build_message(&["a", "bb"]), "a\nbb\n");
 }
+```
 
-// Good: Use join
-fn build_message(parts: &[&str]) -> String {
+The estimated capacity is exact for this specific byte-oriented construction because `str::len()` is a byte length and `\n` is one byte. In less predictable formatting code, reserve only when you have a useful estimate; a bad capacity guess is not automatically better than growing normally.
+
+## `join` Is Not Always Equivalent
+
+For separators **between** items, `join` is concise:
+
+```rust
+fn join_lines(parts: &[&str]) -> String {
     parts.join("\n")
 }
+
+fn main() {
+    assert_eq!(join_lines(&["a", "b"]), "a\nb");
+}
 ```
 
-## CompactString for Small Strings
+This deliberately has no trailing newline. It is not equivalent to a loop that appends `\n` after every element. Choose the semantics you actually need.
+
+## Write Directly to an I/O Sink
+
+If the final destination implements `std::io::Write`, avoid formatting into a temporary `String` first:
 
 ```rust
-use compact_str::{CompactString, ToCompactString, format_compact};
+use std::io::{self, Write};
 
-// Stack-allocated for strings <= 24 bytes (compact_str 0.9.0+ branchless)
-fn format_code(code: u32) -> CompactString {
-    format_compact!("ERR-{:04}", code)
-    // Stack-allocated if result is small enough
+fn write_record(output: &mut impl Write, code: u32, message: &str) -> io::Result<()> {
+    writeln!(output, "[{code}] {message}")
 }
 
-// ToCompactString trait for any Display type
-let s: CompactString = 42.to_compact_string();
-let t: CompactString = format_compact!("value: {}", 42);
+fn main() -> io::Result<()> {
+    let mut bytes = Vec::new();
+    write_record(&mut bytes, 404, "missing")?;
+    assert_eq!(bytes, b"[404] missing\n");
+    Ok(())
+}
 ```
 
-## EcoString for Clone-Heavy Workloads
+This lets the sink own buffering/error behavior instead of forcing an intermediate allocation.
+
+## When `format!` Is the Right Tool
+
+When an API needs an owned `String`, `format!` is direct and idiomatic:
 
 ```rust
-use ecow::EcoString;
-
-// 16 bytes, O(1) clone — ideal for caches, templates, shared config
-fn build_template(values: &[&str]) -> Vec<EcoString> {
-    values.iter().map(|&v| EcoString::from(v)).collect()
+fn greeting(name: &str) -> String {
+    format!("hello, {name}!")
 }
 
-fn process(items: Vec<EcoString>) {
-    for item in &items {
-        let cloned = item.clone();  // O(1) — just bump refcount
-        spawn_worker(cloned);
+fn main() {
+    assert_eq!(greeting("Ada"), "hello, Ada!");
+}
+```
+
+There is no benefit in replacing this with a hand-managed buffer unless profiling shows repeated formatting into reused storage would matter.
+
+Likewise, cold diagnostics and setup code usually favor clarity over allocation micro-optimization.
+
+## Mixed Borrowed and Owned Results
+
+`Cow<'static, str>` is useful when some branches are literals and others genuinely need owned formatting:
+
+```rust
+use std::borrow::Cow;
+
+fn describe(value: i32) -> Cow<'static, str> {
+    match value {
+        0 => Cow::Borrowed("zero"),
+        1 => Cow::Borrowed("one"),
+        other => Cow::Owned(format!("value {other}")),
     }
 }
+
+fn main() {
+    assert!(matches!(describe(0), Cow::Borrowed(_)));
+    assert_eq!(describe(8), "value 8");
+}
 ```
 
-## When format!() Is Fine
+Do not introduce `Cow` when every branch is static or every branch is owned; use the simpler type.
 
-```rust
-// Rare/cold paths - clarity over micro-optimization
-fn log_startup_message() {
-    println!("{}", format!("Starting {} v{}", APP_NAME, VERSION));
-}
+## Compact String Types Are a Separate Decision
 
-// When you need an owned String anyway
-fn create_user_greeting(name: &str) -> String {
-    format!("Hello, {}!", name)  // Need owned String
-}
+A compact-string crate can change the representation of an **owned** string, but it does not make unnecessary formatting disappear. Whether `CompactString`, `EcoString`, `SmartString`, `Box<str>`, or ordinary `String` is appropriate depends on string lengths, mutation/clone patterns, target layout, and interoperability. See [mem-compact-string](./mem-compact-string.md) rather than mixing that storage decision into every formatting rule.
 
-// Error messages (already on error path)
-return Err(format!("Invalid value: {}", value).into());
-```
+## Practical Guidance
+
+- Use `&'static str` or `&str` when ownership is not needed.
+- Pass formatting arguments directly to logging/printing APIs.
+- Use `write!`/`writeln!` when an existing `String` or I/O sink is the real destination.
+- Remember that `join("\n")` omits a trailing newline.
+- Use `format!` when an owned formatted `String` is exactly the desired result.
+- Optimize repeated formatting only after measuring allocation or throughput pressure.
 
 ## See Also
 
-- [mem-write-over-format](mem-write-over-format.md) - Use write!() instead of format!()
-- [mem-with-capacity](mem-with-capacity.md) - Pre-allocate strings
-- [mem-compact-string](mem-compact-string.md) — Compact string alternatives
-- [mem-ecow-clone-heavy](mem-ecow-clone-heavy.md) — EcoString for clone-heavy workloads
-- [own-cow-conditional](own-cow-conditional.md) - Use Cow for mixed static/dynamic
+- [mem-write-over-format](./mem-write-over-format.md) - Reusing formatting buffers
+- [mem-with-capacity](./mem-with-capacity.md) - Reserving destination capacity
+- [mem-compact-string](./mem-compact-string.md) - Alternative owned-string representations
+- [own-cow-conditional](./own-cow-conditional.md) - Borrow-or-own return values
