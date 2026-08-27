@@ -1,125 +1,135 @@
 # perf-array-windows
 
-> Use `<[T]>::array_windows` and `<[T]>::as_chunks` for compile-time-size windows
+> Use `<[T]>::array_windows` and `<[T]>::as_chunks` when a compile-time window or chunk size is useful
 
 **Rule**: `perf-array-windows`
 
 ## Why It Matters
 
-Standard `.windows(N)` and `.chunks(N)` return `&[T]` slices, which carry runtime bounds-check and length-dynamic overhead. `<[T]>::array_windows` (Rust 1.94+) and `<[T]>::as_chunks` (Rust 1.88+) produce `&[T; N]` references at compile time, eliminating bounds checks entirely and enabling the compiler to auto-vectorize more aggressively.
+`slice::windows` and `slice::chunks` yield dynamically sized slices (`&[T]`). When the size is known at compile time, newer APIs can expose that fact in the type system:
 
-## Bad
+- `<[T]>::array_windows::<N>()` (Rust 1.94+) yields overlapping `&[T; N]` windows;
+- `<[T]>::as_chunks::<N>()` (Rust 1.88+) returns `(&[[T; N]], &[T])` for non-overlapping chunks plus a remainder.
+
+That can make code clearer and can give the optimizer more static information. It does **not** guarantee a particular number of machine-level bounds checks or automatic vectorization.
+
+## Good: Use the Fixed Shape When the Algorithm Has One
 
 ```rust
-// .windows(N) returns &[T] — bounds-checked every access
-fn sliding_sum(data: &[i32]) -> Vec<i32> {
-    data.windows(3)
-        .map(|w| w[0] + w[1] + w[2])  // Each index: bounds check
+fn differences(data: &[i32]) -> Vec<i32> {
+    data.array_windows::<2>()
+        .map(|&[left, right]| right - left)
         .collect()
 }
 
-// .chunks(N) returns &[T] — same problem
-fn batch_process(data: &[f64]) -> f64 {
-    data.chunks(4)
-        .map(|c| c.iter().sum())
-        .sum()
-}
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: type inference needs surrounding context -->
-```rust
-// array_windows::<3>() returns &[i32; 3] — zero bounds checks
-fn sliding_sum(data: &[i32]) -> Vec<i32> {
-    data.array_windows::<3>()
-        .map(|&[a, b, c]| a + b + c)  // Destructuring is free
-        .collect()
-}
-
-// as_chunks::<4>() returns &[f64; 4] — zero bounds checks
-fn batch_process(data: &[f64]) -> f64 {
+fn sum_four_wide(data: &[i32]) -> i32 {
     let (chunks, remainder) = data.as_chunks::<4>();
-    let sum: f64 = chunks.iter().map(|c| c.iter().sum()).sum();
-    // Handle remaining elements if necessary
-    let tail_sum: f64 = remainder.iter().sum();
-    sum + tail_sum
+    let chunk_sum: i32 = chunks
+        .iter()
+        .map(|chunk| chunk.iter().sum::<i32>())
+        .sum();
+    chunk_sum + remainder.iter().sum::<i32>()
+}
+
+fn main() {
+    assert_eq!(differences(&[2, 5, 9]), vec![3, 4]);
+    assert_eq!(sum_four_wide(&[1, 2, 3, 4, 5]), 15);
 }
 ```
 
-## API Comparison
+The benefit here is explicit shape: destructuring `&[T; N]` states that every yielded item has exactly `N` elements.
 
-| Method | Since | Returns | Bounds Checks | Overlap |
-|--------|-------|---------|---------------|---------|
-| `.windows(N)` | 1.0 | `&[T]` | Every access | Yes (sliding) |
-| `.chunks(N)` | 1.0 | `&[T]` | Every access | No (non-overlapping) |
-| `.array_windows::<N>()` | 1.94 | `&[T; N]` | None | Yes (sliding) |
-| `.as_chunks::<N>()` | 1.88 | `(&[T; N], &[T])` | None | No (non-overlapping) |
-| `.rchunks(N)` | 1.0 | `&[T]` | Every access | No (reverse) |
-
-## Examples
-
-### Sliding Window (array_windows)
+## `array_windows::<N>`: Overlapping Fixed-Size Windows
 
 ```rust
-// Moving average with compile-time window size
 fn moving_average(data: &[f64]) -> Vec<f64> {
     data.array_windows::<3>()
         .map(|&[a, b, c]| (a + b + c) / 3.0)
         .collect()
 }
 
-// Difference array
-fn differences(data: &[i32]) -> Vec<i32> {
-    data.array_windows::<2>()
-        .map(|&[a, b]| b - a)
-        .collect()
+fn main() {
+    assert_eq!(moving_average(&[1.0, 2.0, 3.0, 4.0]), vec![2.0, 3.0]);
 }
 ```
 
-### Non-overlapping Chunks (as_chunks)
+`array_windows::<N>()`:
+
+- overlaps adjacent windows;
+- yields no items when `N` is larger than the slice;
+- panics when `N == 0`;
+- returns array references, so callers can destructure the fixed shape directly.
+
+The older `windows(N)` remains appropriate when `N` is chosen at runtime.
+
+## `as_chunks::<N>`: Non-Overlapping Fixed-Size Chunks
 
 ```rust
-// Process 4-element blocks, handle remainder
-fn process_blocks(data: &[u8]) -> Vec<u32> {
-    let (blocks, remainder) = data.as_chunks::<4>();
-    let mut result: Vec<u32> = blocks.iter()
-        .map(|&[a, b, c, d]| u32::from_le_bytes([a, b, c, d]))
+fn decode_words(data: &[u8]) -> (Vec<u32>, &[u8]) {
+    let (words, remainder) = data.as_chunks::<4>();
+    let decoded = words
+        .iter()
+        .map(|&bytes| u32::from_le_bytes(bytes))
         .collect();
-    
-    // Handle remaining 0-3 bytes
-    if !remainder.is_empty() {
-        let mut buf = [0u8; 4];
-        buf[..remainder.len()].copy_from_slice(remainder);
-        result.push(u32::from_le_bytes(buf));
-    }
-    result
+    (decoded, remainder)
+}
+
+fn main() {
+    let bytes = [1, 0, 0, 0, 2, 0, 0, 0, 9];
+    let (words, remainder) = decode_words(&bytes);
+    assert_eq!(words, vec![1, 2]);
+    assert_eq!(remainder, &[9]);
 }
 ```
 
-### Combination with Other Iterators
+The return type is `(&[[T; N]], &[T])`: a slice of fixed-size arrays plus the tail that did not fill a complete chunk. `N == 0` panics.
+
+Use `chunks_exact(N)` instead when the size is runtime data rather than a const generic.
+
+## API Comparison
+
+| Method | Stable | Item/return shape | Overlap | Size source |
+|---|---:|---|---|---|
+| `windows(n)` | 1.0 | iterator of `&[T]` | Yes | runtime |
+| `chunks(n)` | 1.0 | iterator of `&[T]` | No | runtime |
+| `chunks_exact(n)` | 1.31 | iterator of `&[T]` + remainder API | No | runtime |
+| `array_windows::<N>()` | 1.94 | iterator of `&[T; N]` | Yes | const generic |
+| `as_chunks::<N>()` | 1.88 | `(&[[T; N]], &[T])` | No | const generic |
+
+Choose based on semantics and type shape first, not on an assumed performance ranking.
+
+## Bounds Checks Are Not Countable from Syntax Alone
+
+It is tempting to claim that `windows(3)` performs three bounds checks per window while `array_windows::<3>()` performs zero. That is not a reliable source-level statement. The optimizer can prove bounds in many dynamic-slice patterns, while an iterator implementation can still contain control-flow checks unrelated to indexing.
+
+The fixed-size APIs are useful because the length invariant is represented by the type. If a hot loop matters enough for machine-level differences to matter, inspect optimized code or benchmark it.
+
+## Fixed Shape Can Improve Ergonomics Even Without a Speedup
 
 ```rust
-// array_windows chains naturally with other iterator adapters
-let result: Vec<_> = data.array_windows::<2>()
-    .enumerate()
-    .filter(|(_, &[a, b])| a < b)
-    .map(|(i, _)| i)
-    .collect();
+fn has_rising_pair(data: &[i32]) -> bool {
+    data.array_windows::<2>()
+        .any(|&[left, right]| left < right)
+}
+
+fn main() {
+    assert!(has_rising_pair(&[3, 5, 4]));
+}
 ```
 
-## Performance
+Destructuring communicates the invariant without `window[0]` / `window[1]` indexing and without a conversion such as `try_into::<&[T; N]>()` inside the loop.
 
-| Method | Bounds Checks | Auto-Vectorization | Memory Layout |
-|--------|---------------|-------------------|---------------|
-| `windows(3)` | 3 per window | Hindered | `&[T]` dynamic |
-| `array_windows::<3>()` | 0 per window | Enabled | `&[T; 3]` fixed |
-| `chunks(4)` | Per access | Hindered | `&[T]` dynamic |
-| `as_chunks::<4>()` | 0 | Enabled | `&[T; 4]` fixed |
+## Practical Guidance
+
+- Use `array_windows::<N>` for overlapping windows when `N` is a compile-time constant.
+- Use `as_chunks::<N>` for non-overlapping fixed-size blocks plus a remainder.
+- Keep `windows`, `chunks`, and `chunks_exact` for runtime sizes or when their API is otherwise clearer.
+- Do not promise exact bounds-check counts or SIMD from any source form.
+- Benchmark or inspect optimized output before calling one equivalent implementation faster.
 
 ## See Also
 
-- [perf-iter-over-index](./perf-iter-over-index.md) - Prefer iterators over indexing
+- [perf-iter-over-index](./perf-iter-over-index.md) - Iteration versus indexing
 - [perf-collect-once](./perf-collect-once.md) - Avoid intermediate collections
-- [perf-iter-lazy](./perf-iter-lazy.md) - Keep iterators lazy
-- [opt-bounds-check](./opt-bounds-check.md) - Bounds check elimination
+- [perf-iter-lazy](./perf-iter-lazy.md) - Keep iterator pipelines lazy where appropriate
+- [opt-bounds-check](./opt-bounds-check.md) - Bounds-check-sensitive hot loops
