@@ -1,21 +1,24 @@
 # mem-ecow-clone-heavy
 
-> Use `EcoString` for clone-heavy string workloads
+> Consider `EcoString` for clone-heavy immutable-or-COW strings
 
 **Rule**: `mem-ecow-clone-heavy`
 
 ## Why It Matters
 
-Standard `String::clone()` is O(n) — it allocates new heap memory and copies every byte. For clone-heavy workloads (caches, templates, shared config), this dominates the allocator budget. `EcoString` from `ecow` 0.3.0 (May 2026, Typst team) is only 16 bytes (vs 24 for `String`), stores up to 15 bytes inline without heap allocation, and **clone() is O(1)** — just a refcount bump.
+`EcoString` from `ecow` combines small-string inline storage with clone-on-write heap storage. Short strings fit directly in the value. Longer strings spill into a reference-counted `EcoVec<u8>` allocation; cloning a spilled string shares that allocation, and mutation copies only when the allocation is shared.
+
+This can be attractive for parsers, caches, syntax trees, templates, or configuration structures where strings are cloned frequently and mutated relatively rarely. It is a workload trade-off, not a blanket replacement for `String`.
+
+As of August 2026, `ecow` 0.3.0 is current.
 
 ## Bad
 
-<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding string collection context -->
+<!-- rust-check: compile -->
 ```rust
 use std::collections::HashMap;
-use std::sync::Arc;
 
-// Template system with many clones
+#[derive(Clone)]
 struct Template {
     name: String,
     content: String,
@@ -25,97 +28,95 @@ struct TemplateCache {
     templates: HashMap<String, Template>,
 }
 
-fn render(cache: &TemplateCache, name: &str) -> String {
-    let template = cache.templates.get(name).unwrap();
-    // Each clone allocates! O(n) copies
-    let name = template.name.clone();
-    let content = template.content.clone();
-    format!("Rendering: {} with {}", name, content)
-}
+fn render_copy(cache: &TemplateCache, name: &str) -> Option<String> {
+    let template = cache.templates.get(name)?;
 
-// Clone-heavy config sharing
-struct SharedConfig {
-    host: String,
-    token: String,
-}
-
-// Every clone of SharedConfig copies both strings
-let config = Arc::new(SharedConfig {
-    host: "api.example.com".into(),
-    token: "s3cr3t".into(),
-});
-
-// Spawning 1000 workers: 1000 String clones = 1000 heap allocations
-for _ in 0..1000 {
-    let c = config.clone();
-    spawn_worker(move || { let h = c.host.clone(); });
+    // These String clones duplicate the owned string contents.
+    let copied_name = template.name.clone();
+    let copied_content = template.content.clone();
+    Some(format!("Rendering: {copied_name} with {copied_content}"))
 }
 ```
 
+This is not inherently wrong. If the caller really needs independent mutable `String`s, ordinary `String` may be the simpler representation.
+
 ## Good
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+<!-- rust-check: compile -->
 ```rust
 use ecow::EcoString;
 use std::collections::HashMap;
 
+#[derive(Clone)]
 struct Template {
-    name: EcoString,      // 16 bytes, inline if ≤ 15 chars
-    content: EcoString,   // Clone is O(1)
+    name: EcoString,
+    content: EcoString,
 }
 
 struct TemplateCache {
     templates: HashMap<EcoString, Template>,
 }
 
-fn render(cache: &TemplateCache, name: &str) -> String {
-    let template = cache.templates.get(name).unwrap();
-    // Both clones are O(1) — just bump refcounts
-    let name = template.name.clone();
-    let content = template.content.clone();
-    format!("Rendering: {} with {}", name, content)
+fn clone_template(cache: &TemplateCache, name: &str) -> Option<Template> {
+    // Inline strings copy their bounded inline representation. Spilled strings
+    // share their reference-counted allocation until one copy is mutated.
+    cache.templates.get(name).cloned()
 }
 
-// Thread-safe config sharing
-struct SharedConfig {
-    host: EcoString,   // O(1) clone, no allocator pressure
-    token: EcoString,
-}
+let mut cache = TemplateCache { templates: HashMap::new() };
+cache.templates.insert(
+    EcoString::from("welcome"),
+    Template {
+        name: EcoString::from("welcome"),
+        content: EcoString::from("Welcome to a sufficiently long shared template body"),
+    },
+);
 
-let config = Arc::new(SharedConfig {
-    host: EcoString::from("api.example.com"),
-    token: EcoString::from("s3cr3t"),
-});
-
-// 1000 workers: zero heap allocations from cloning
-for _ in 0..1000 {
-    let c = config.clone();
-    spawn_worker(move || {
-        let _ = c.host.clone();  // Refcount bump only
-        let _ = c.token.clone(); // Refcount bump only
-    });
-}
+let cloned = clone_template(&cache, "welcome").unwrap();
+assert_eq!(cloned.name, "welcome");
 ```
 
-## Size Comparison
+## Clone-on-Write Behavior
 
 ```rust
+use ecow::EcoString;
+
+let original = EcoString::from("a string long enough to use shared heap storage");
+let mut copy = original.clone();
+assert_eq!(copy, original);
+
+// Mutating one shared heap-backed copy detaches it as needed.
+copy.push('!');
+assert_ne!(copy, original);
+assert_eq!(original, "a string long enough to use shared heap storage");
+```
+
+Do not describe every `EcoString::clone()` as a refcount bump. Inline values are copied inline; heap-backed values share reference-counted storage. Both are cheap, but for different reasons.
+
+## Layout Is Target-Dependent
+
+```rust
+use ecow::EcoString;
 use std::mem::size_of;
 
-assert_eq!(size_of::<String>(), 24);     // 24 bytes, always heap
-assert_eq!(size_of::<EcoString>(), 16);  // 16 bytes, 15 inline
+let value_size = size_of::<EcoString>();
+let inline_limit = EcoString::INLINE_LIMIT;
+assert!(value_size > 0);
+assert!(inline_limit > 0);
 ```
+
+On ordinary 32-bit and 64-bit little-endian targets, the current crate documents a 16-byte `EcoString` with 15 bytes of inline storage. The crate also documents different values on 64-bit big-endian systems, and `INLINE_LIMIT` is semver-exempt. Prefer `EcoString::INLINE_LIMIT` when code genuinely needs the current inline threshold instead of hard-coding 15.
 
 ## When to Reach for EcoString
 
-| Scenario | `String` | `EcoString` |
+| Workload | `String` | `EcoString` |
 |----------|----------|-------------|
-| Clone frequently | O(n), allocates | O(1), refcount |
-| Cache values | High allocator pressure | Minimal overhead |
-| Shared templates | Arc<String> overhead | Inline + refcount |
-| Short strings (< 16 bytes) | Heap allocates | Inline, no alloc |
-| Hot path mutation | Mutate in place | Copy-on-write alloc |
-| FFI / C interop | Works directly | Need `.as_str()` |
+| Frequent cloning of long strings | Duplicates owned contents | Heap-backed clones share storage |
+| Many short strings | Simple standard type | Inline storage may avoid allocation |
+| Heavy in-place mutation | Usually straightforward | COW may detach shared storage |
+| Public API interoperability | Ubiquitous | Often expose `&str` at boundaries |
+
+Measure real memory/allocation behavior when the choice matters. Representation size, string-length distribution, clone rate, and mutation rate all affect the result.
 
 ## Cargo.toml
 
@@ -126,6 +127,6 @@ ecow = "0.3"
 
 ## See Also
 
-- [mem-compact-string](mem-compact-string.md) — Full compact string trade-off table
-- [mem-clone-from](mem-clone-from.md) — `clone_from()` reuse (less critical with EcoString)
-- [mem-arc-str](mem-arc-str.md) — `Arc<str>` for thread-shared immutable strings
+- [mem-compact-string](mem-compact-string.md) - Compact string trade-offs
+- [mem-clone-from](mem-clone-from.md) - Reusing owned buffers
+- [mem-arc-str](mem-arc-str.md) - `Arc<str>` for immutable shared strings
