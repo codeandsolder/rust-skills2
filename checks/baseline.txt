@@ -48,10 +48,8 @@ doc-include-str.md :: Shared Examples Across Items :: block 4 :: P:couldn't read
 doc-intra-links.md :: Linking to Trait Items :: block 4 :: E0046
 doc-link-types.md :: Linking to Trait Items :: block 5 :: E0046
 doc-module-inner.md :: Feature Flags Section :: block 7 :: E0658
-doc-safety-section.md :: Edition 2024: unsafe extern Syntax :: block 6 :: E0308
 err-anyhow-app.md :: Main Function Pattern :: block 4 :: E0428
 err-context-chain.md :: Building Context Chains :: block 4 :: E0107
-err-custom-type.md :: #[diagnostic::do_not_recommend] (Rust 1.85+) :: block 7 :: E0210
 err-expect-bugs-only.md :: expect() Message Guidelines :: block 3 :: P:expected expression, found `.`
 err-expect-not-allow.md :: Lint Categories Supported :: block 3 :: P:expected statement after outer attribute
 err-expect-not-allow.md :: Migration from #[allow] :: block 5 :: E0428
@@ -61,7 +59,6 @@ err-from-impl.md :: From with Context :: block 4 :: E0428
 err-lowercase-msg.md :: Rust Standard Library Convention :: block 3 :: P:expected `;`, found `"connection refused"`,P:expected `;`, found `"invalid digit,P:expected `;`, found `"invalid utf-8,P:expected `;`, found `"permission denied"`
 err-lowercase-msg.md :: When to Use Capitals :: block 6 :: P:expected statement after outer attribute
 err-result-over-panic.md :: When Panic IS Appropriate :: block 5 :: E0428
-err-thiserror-lib.md :: #[diagnostic::do_not_recommend] (Rust 1.85+) :: block 7 :: E0210
 lint-edition-2024.md :: `strict_module_headers` :: block 4 :: P:couldn't read `examples/other.rs`: no such
 lint-edition-2024.md :: `unsafe_op_in_unsafe_fn` Detail :: block 1 :: E0428
 lint-warn-complexity.md :: Examples :: block 5 :: E0428
@@ -111,8 +108,4 @@ own-lifetime-elision.md :: `'_` in `impl Trait` Positions (Edition 2024) :: bloc
 perf-chain-avoid.md :: When Chain Is Fine :: block 4 :: E0106
 perf-collect-once.md :: Anti-Pattern: HashMap::values().collect() Then Iterate :: block 5 :: E0428
 perf-iter-over-index.md :: Fixed-Size Windows with array_windows (Rust 1.94+) :: block 3 :: E0428
-proj-mod-rs-dir.md :: Consistency Rule :: block 5 :: P:expected `;`, found `mod_module_files`,P:expected one of `.`, `;`,
-proj-mod-rs-dir.md :: Edition 2024: `gen` Keyword Reservation :: block 4 :: P:expected identifier, found reserved keyword
-trait-upcasting.md :: Working with standard library trait hierarchies :: block 4 :: E0038,E0393
 type-derive-more-boilerplate.md :: Complete Example :: block 3 :: E0382
-type-result-fallible.md :: `#[diagnostic::do_not_recommend]` (Rust 1.85+) :: block 7 :: E0210

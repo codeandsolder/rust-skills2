@@ -93,7 +93,7 @@ Reference these guidelines when:
 
 ### 2. Error Handling (CRITICAL)
 
-- [`err-thiserror-lib`](rules/err-thiserror-lib.md) - Use `thiserror` for library error types
+- [`err-thiserror-lib`](rules/err-thiserror-lib.md) - Use `thiserror` to derive typed library errors when it removes boilerplate without hiding the API
 - [`err-anyhow-app`](rules/err-anyhow-app.md) - Use `anyhow` for application error handling
 - [`err-result-over-panic`](rules/err-result-over-panic.md) - Return `Result<T, E>` instead of panicking for recoverable errors
 - [`err-context-chain`](rules/err-context-chain.md) - Add context with `.context()` or `.with_context()`
@@ -104,7 +104,7 @@ Reference these guidelines when:
 - [`err-source-chain`](rules/err-source-chain.md) - Preserve error chains with `#[source]` or `source()` method
 - [`err-lowercase-msg`](rules/err-lowercase-msg.md) - Start error messages lowercase, no trailing punctuation
 - [`err-doc-errors`](rules/err-doc-errors.md) - Document meaningful `Err` conditions in a `# Errors` section
-- [`err-custom-type`](rules/err-custom-type.md) - Define custom error types for domain-specific failures
+- [`err-custom-type`](rules/err-custom-type.md) - Define domain error types when callers benefit from knowing what failed
 - [`err-clippy-unwrap-types`](rules/err-clippy-unwrap-types.md) - Configure `allow-unwrap-types` to whitelist safe `unwrap()` calls while keeping real `unwrap_used` violations
 - [`err-diagnostic-do-not-recommend`](rules/err-diagnostic-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` on trait impls whose appearance in diagnostics would mislead users
 - [`err-expect-not-allow`](rules/err-expect-not-allow.md) - Prefer `#[expect(...)]` over `#[allow(...)]` for suppressing lint warnings
@@ -232,7 +232,7 @@ Reference these guidelines when:
 - [`type-newtype-validated`](rules/type-newtype-validated.md) - Put durable domain invariants behind checked constructors so downstream code can rely on the type instead of re-validating primitives
 - [`type-enum-states`](rules/type-enum-states.md) - Use enums when a value is in exactly one of several mutually exclusive states
 - [`type-option-nullable`](rules/type-option-nullable.md) - Use `Option<T>` when absence is an ordinary state; use `Result<T, E>` when callers need failure information
-- [`type-result-fallible`](rules/type-result-fallible.md) - Use `Result<T, E>` for fallible operations
+- [`type-result-fallible`](rules/type-result-fallible.md) - Use `Result<T, E>` when an operation can fail with useful error information
 - [`type-phantom-marker`](rules/type-phantom-marker.md) - Use `PhantomData` for zero-cost type markers
 - [`type-never-diverge`](rules/type-never-diverge.md) - Use `!` as the return type of functions that never return normally
 - [`type-generic-bounds`](rules/type-generic-bounds.md) - Put each trait bound on the API surface that actually requires it
@@ -254,7 +254,7 @@ Reference these guidelines when:
 - [`trait-default-methods`](rules/trait-default-methods.md) - Define a trait in terms of a few required methods plus defaulted ones built on top of them
 - [`trait-dyn-vs-generic`](rules/trait-dyn-vs-generic.md) - Choose static dispatch (generics / `impl Trait`) vs dynamic dispatch (`dyn Trait`) deliberately
 - [`trait-object-safety`](rules/trait-object-safety.md) - Keep a trait dyn-compatible (object-safe) when you need `dyn Trait`
-- [`trait-upcasting`](rules/trait-upcasting.md) - Prefer implicit trait object upcasting over hand-written `as_supertrait` helpers (Rust 1.86+)
+- [`trait-upcasting`](rules/trait-upcasting.md) - Use trait-object upcasting for dyn-compatible supertrait relationships (Rust 1.86+)
 
 ### 12. Conversions (MEDIUM)
 
@@ -367,7 +367,7 @@ Reference these guidelines when:
 - [`doc-examples-section`](rules/doc-examples-section.md) - Include `# Examples` with runnable code
 - [`doc-errors-section`](rules/doc-errors-section.md) - Include `# Errors` section for fallible functions
 - [`doc-panics-section`](rules/doc-panics-section.md) - Include `# Panics` section for functions that can panic
-- [`doc-safety-section`](rules/doc-safety-section.md) - Include `# Safety` section for unsafe functions
+- [`doc-safety-section`](rules/doc-safety-section.md) - Document caller obligations with `# Safety`; justify local unsafe operations with `// SAFETY:` proofs
 - [`doc-question-mark`](rules/doc-question-mark.md) - Give doctests a `Result`-returning context when demonstrating `?`
 - [`doc-hidden-setup`](rules/doc-hidden-setup.md) - Use `# ` prefix to hide example setup code
 - [`doc-intra-links`](rules/doc-intra-links.md) - Use intra-doc links to reference types and items
@@ -415,7 +415,7 @@ Reference these guidelines when:
 - [`proj-lib-main-split`](rules/proj-lib-main-split.md) - Keep `main.rs` minimal, logic in `lib.rs`
 - [`proj-mod-by-feature`](rules/proj-mod-by-feature.md) - Organize modules by feature, not type
 - [`proj-flat-small`](rules/proj-flat-small.md) - Keep small projects flat
-- [`proj-mod-rs-dir`](rules/proj-mod-rs-dir.md) - Use mod.rs for multi-file modules
+- [`proj-mod-rs-dir`](rules/proj-mod-rs-dir.md) - Choose a consistent multi-file module layout; both `foo.rs` + `foo/` and `foo/mod.rs` are supported
 - [`proj-pub-crate-internal`](rules/proj-pub-crate-internal.md) - Use pub(crate) for internal APIs
 - [`proj-pub-super-parent`](rules/proj-pub-super-parent.md) - Use `pub(super)` when an item declared in a child module must be visible in its parent module scope
 - [`proj-pub-use-reexport`](rules/proj-pub-use-reexport.md) - Use pub use for clean public API
