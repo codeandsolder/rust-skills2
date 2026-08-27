@@ -1,166 +1,203 @@
 # err-context-chain
 
-> Add context with `.context()` or `.with_context()`
+> Add context at abstraction boundaries so an error says what operation failed as well as why
 
 ## Why It Matters
 
-Raw errors often lack information about what operation failed. Adding context creates an error chain that tells the full story: what you were trying to do, and why it failed.
+Low-level errors usually describe the immediate failure, not the application operation that led to it. `No such file or directory` is useful, but `failed to read user record /srv/users/42.json: No such file or directory` is much better.
 
-## Bad
+Context should add **new** information as an error crosses an abstraction boundary. Repeating the same message at every layer only makes reports longer.
+
+## Bad: Propagate an Opaque Low-Level Error
 
 ```rust
-// Raw error - no context
-fn load_user(id: u64) -> Result<User, Error> {
-    let path = format!("users/{}.json", id);
-    let content = std::fs::read_to_string(&path)?;
-    Ok(serde_json::from_str(&content)?)
+use anyhow::Result;
+use serde_json::Value;
+use std::fs;
+
+fn load_user(path: &str) -> Result<Value> {
+    let text = fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&text)?)
 }
 
-// Error message: "No such file or directory (os error 2)"
-// Which file? What were we doing?
+fn main() {}
 ```
 
-## Good
+If reading fails, the source error may not say which application resource was being loaded. If parsing fails, it may not say that the JSON was supposed to be a user record.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Good: Describe the Failed Operation
+
+```rust
+use anyhow::{Context, Result};
+use serde_json::Value;
+use std::fs;
+
+fn load_user(id: u64) -> Result<Value> {
+    let path = format!("users/{id}.json");
+
+    let text = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read user file {path}"))?;
+
+    serde_json::from_str(&text)
+        .with_context(|| format!("failed to parse JSON for user {id}"))
+}
+
+fn main() {}
+```
+
+A report can now preserve both layers: the application operation and the underlying I/O or parse error.
+
+## `context` Versus `with_context`
+
+`Context` offers two common forms:
+
+```rust
+use anyhow::{Context, Result};
+use std::fs;
+
+fn static_context() -> Result<String> {
+    fs::read_to_string("config.json")
+        .context("failed to read application config")
+}
+
+fn dynamic_context(path: &str) -> Result<String> {
+    fs::read_to_string(path)
+        .with_context(|| format!("failed to read {path}"))
+}
+
+fn main() {}
+```
+
+- `.context(value)` receives its context value eagerly. Static strings are simple and cheap.
+- `.with_context(|| value)` invokes the closure only when the result is an error. Prefer it when the message needs formatting, cloning, or other work.
+
+Do not describe `.context()` as inherently allocating: whether constructing the supplied context allocates depends on the context value you pass.
+
+## Build a Chain by Crossing Real Boundaries
+
 ```rust
 use anyhow::{Context, Result};
 
-fn load_user(id: u64) -> Result<User> {
-    let path = format!("users/{}.json", id);
-    
-    let content = std::fs::read_to_string(&path)
-        .with_context(|| format!("failed to read user file: {}", path))?;
-    
-    let user: User = serde_json::from_str(&content)
-        .with_context(|| format!("failed to parse user {} JSON", id))?;
-    
-    Ok(user)
+fn read_order(id: u64) -> Result<String> {
+    std::fs::read_to_string(format!("orders/{id}.txt"))
+        .with_context(|| format!("failed to read order {id}"))
 }
 
-// Error: "failed to parse user 42 JSON"
-// Caused by: "expected ':' at line 5 column 12"
-```
+fn prepare_order(id: u64) -> Result<String> {
+    let order = read_order(id)
+        .with_context(|| format!("failed to prepare order {id}"))?;
+    Ok(order)
+}
 
-## context() vs with_context()
-
-```rust
-// context() - static string (slight allocation)
-fs::read_to_string(path)
-    .context("failed to read config")?;
-
-// with_context() - lazy evaluation (only allocates on error)
-fs::read_to_string(path)
-    .with_context(|| format!("failed to read {}", path))?;
-
-// Use with_context() when:
-// - Message includes runtime data (format!)
-// - Computing the message is expensive
-// - Error path is cold (most of the time)
-```
-
-## Building Context Chains
-
-```rust
-fn process_order(order_id: u64) -> Result<()> {
-    let order = fetch_order(order_id)
-        .with_context(|| format!("failed to fetch order {}", order_id))?;
-    
-    let user = load_user(order.user_id)
-        .with_context(|| format!("failed to load user for order {}", order_id))?;
-    
-    let payment = process_payment(&order, &user)
-        .context("payment processing failed")?;
-    
-    ship_order(&order, &payment)
-        .context("shipping failed")?;
-    
+fn run() -> Result<()> {
+    prepare_order(42).context("startup order preparation failed")?;
     Ok(())
 }
 
-// Full error chain:
-// "shipping failed"
-// Caused by: "carrier API returned 503"
-// Caused by: "connection refused"
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("{error:#}");
+    }
+}
 ```
 
-## Displaying Error Chains
+Useful context often answers one of these questions:
+
+- Which file, URL, record, user, request, or configuration key was involved?
+- Which higher-level operation was attempted?
+- Which input identifier matters for reproducing the failure?
+
+## Avoid Redundant Context
+
+This is technically valid but poor reporting:
 
 ```rust
+use anyhow::{Context, Result};
+
+fn read_config() -> Result<String> {
+    std::fs::read_to_string("config.json")
+        .context("failed")
+        .context("operation failed")
+        .context("application operation failed")
+}
+
+fn main() {}
+```
+
+Every layer should add information, not just another synonym for failure.
+
+## Typed Errors Can Carry Context Structurally
+
+Context does not require `anyhow`. A typed error can store the same information in fields while preserving a source error:
+
+```rust
+use std::io;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+enum ConfigError {
+    #[error("failed to read config from {path}")]
+    Read {
+        path: String,
+        #[source]
+        source: io::Error,
+    },
+}
+
+fn read_config(path: &str) -> Result<String, ConfigError> {
+    std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
+        path: path.to_owned(),
+        source,
+    })
+}
+
+fn main() {}
+```
+
+Choose structured fields when callers need to inspect them. Choose `anyhow::Context` when the application mainly needs a diagnostic chain.
+
+## Displaying a Chain
+
+```rust
+use anyhow::{Context, Result};
+
+fn run() -> Result<()> {
+    std::fs::read_to_string("missing.txt")
+        .context("failed to load startup data")?;
+    Ok(())
+}
+
 fn main() {
-    if let Err(e) = run() {
-        // Just top-level message
-        eprintln!("Error: {}", e);
-        
-        // Full chain with alternate format
-        eprintln!("Error: {:#}", e);
-        
-        // Debug format (includes backtrace if enabled)
-        eprintln!("Error: {:?}", e);
-        
-        // Iterate through chain
-        for (i, cause) in e.chain().enumerate() {
-            eprintln!("  {}: {}", i, cause);
+    if let Err(error) = run() {
+        // Compact chain.
+        eprintln!("{error:#}");
+
+        // Individual causes.
+        for (index, cause) in error.chain().enumerate() {
+            eprintln!("{index}: {cause}");
         }
     }
 }
 ```
 
-## With thiserror
+The outer context should normally describe the higher-level operation; the source error should retain the lower-level cause.
 
-```rust
-use thiserror::Error;
+## Async Code Does Not Need a Special `move` Rule
 
-#[derive(Error, Debug)]
-pub enum AppError {
-    #[error("failed to load config from {path}")]
-    ConfigLoad {
-        path: String,
-        #[source]
-        cause: std::io::Error,
-    },
-    
-    #[error("failed to connect to database")]
-    Database {
-        #[source]
-        cause: sqlx::Error,
-    },
-}
+Edition 2024's return-position `impl Trait` capture changes do not imply that every `.with_context(...)` closure in async code must be `move`. Use `move` when ownership/lifetime requirements of the particular closure require it, exactly as with other closures. Do not add it mechanically as an Edition 2024 error-handling rule.
 
-// Usage
-fn load_config(path: &str) -> Result<Config, AppError> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| AppError::ConfigLoad {
-            path: path.to_string(),
-            cause: e,
-        })?;
-    // ...
-}
-```
+## Practical Guidance
 
-## Edition 2024: Closure Capture Note
-
-In Edition 2024, RPIT (return position impl Trait) captures all lifetime parameters by default. When using `.with_context(|| ...)` in async code, use `move ||` closures to ensure owned data is captured correctly:
-
-```rust
-use anyhow::{Context, Result};
-
-async fn fetch_user(id: u64) -> Result<User> {
-    let url = format!("https://api.example.com/users/{}", id);
-
-    // ✅ Edition 2024: use move || to capture owned data
-    http_client::get(&url)
-        .with_context(move || format!("failed to fetch user from {url}"))
-        .await?;
-
-    // ℹ️ With non-move closures, the borrow checker may complain
-    // about captured lifetimes across .await points
-    Ok(user)
-}
-```
+- Add context where an error crosses an abstraction boundary.
+- Include identifiers and resource names that help diagnose the failure.
+- Prefer `with_context` for dynamically constructed messages.
+- Preserve the source error instead of flattening it into a string.
+- Avoid context layers that merely restate `failed` or duplicate the source message.
+- Use typed fields instead of free-form context when callers need programmatic recovery information.
 
 ## See Also
 
-- [err-anyhow-app](err-anyhow-app.md) - Use anyhow for applications
-- [err-source-chain](err-source-chain.md) - Use #[source] to chain errors
-- [err-question-mark](err-question-mark.md) - Use ? for propagation
+- [err-anyhow-app](./err-anyhow-app.md) - `anyhow` at application boundaries
+- [err-source-chain](./err-source-chain.md) - Preserving `Error::source`
+- [err-from-impl](./err-from-impl.md) - Error conversions
+- [err-question-mark](./err-question-mark.md) - Propagation with `?`

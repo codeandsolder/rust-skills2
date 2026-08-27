@@ -1,124 +1,162 @@
 # err-lowercase-msg
 
-> Start error messages lowercase, no trailing punctuation
+> Keep `Error` display messages concise, usually lowercase, and usually without trailing punctuation so they compose cleanly
 
 ## Why It Matters
 
-Error messages are often chained, logged, or displayed with additional context. Consistent formatting—lowercase start, no trailing period—allows clean composition: "failed to load config: invalid JSON: unexpected token". Mixed case and punctuation create awkward output: "Failed to load config.: Invalid JSON.: Unexpected token.".
+Rust's `Error` documentation says error messages are **typically concise lowercase sentences without trailing punctuation**. That convention is useful because error displays are often embedded in larger reports or chained with context.
 
-## Bad
+It is a convention, not a grammar law. Proper nouns, protocol names, acronyms, identifiers, and error codes keep their normal spelling.
 
-```rust
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-enum ConfigError {
-    #[error("Failed to read config file.")]  // Capital F, trailing period
-    ReadFailed(#[from] std::io::Error),
-    
-    #[error("Invalid JSON format!")]  // Capital I, exclamation
-    ParseFailed(#[from] serde_json::Error),
-    
-    #[error("The requested key was not found")]  // Reads like a sentence
-    KeyNotFound(String),
-}
-
-// Chained output: "Config load error: Failed to read config file.: No such file"
-// Awkward capitalization and punctuation
-```
-
-## Good
+## Bad: Sentence-Style Fragments That Compose Poorly
 
 ```rust
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Debug, Error)]
 enum ConfigError {
-    #[error("failed to read config file")]  // lowercase, no period
-    ReadFailed(#[from] std::io::Error),
-    
-    #[error("invalid JSON format")]  // lowercase, no period
-    ParseFailed(#[from] serde_json::Error),
-    
-    #[error("key not found: {0}")]  // lowercase, data at end
+    #[error("Failed to read configuration.")]
+    Read,
+
+    #[error("Invalid JSON format!")]
+    Parse,
+}
+
+fn main() {}
+```
+
+An outer report such as `failed to start service: {error}` now gets mid-chain capitalization and punctuation that reads awkwardly.
+
+## Good: Concise Error Displays
+
+```rust
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+enum ConfigError {
+    #[error("failed to read configuration")]
+    Read,
+
+    #[error("invalid JSON format")]
+    Parse,
+
+    #[error("key not found: {0}")]
     KeyNotFound(String),
 }
 
-// Chained output: "config load error: failed to read config file: no such file"
-// Clean, consistent
-```
-
-## Rust Standard Library Convention
-
-The standard library follows this convention:
-
-```rust
-// std::io::Error messages
-"entity not found"
-"permission denied"
-"connection refused"
-
-// std::num::ParseIntError
-"invalid digit found in string"
-
-// std::str::Utf8Error  
-"invalid utf-8 sequence"
-```
-
-## Formatting Guidelines
-
-| Do | Don't |
-|----|-------|
-| `"failed to parse config"` | `"Failed to parse config."` |
-| `"invalid input: expected number"` | `"Invalid input - expected a number!"` |
-| `"connection timed out after {0}s"` | `"Connection Timed Out After {0} seconds."` |
-| `"key '{0}' not found"` | `"Key Not Found: {0}"` |
-
-## Context Addition Pattern
-
-```rust
-use anyhow::{Context, Result};
-
-fn load_user(id: u64) -> Result<User> {
-    let data = fetch(id)
-        .with_context(|| format!("failed to fetch user {}", id))?;
-    
-    parse_user(data)
-        .with_context(|| "failed to parse user data")?
+fn main() {
+    assert_eq!(ConfigError::Read.to_string(), "failed to read configuration");
 }
-
-// Output: "failed to fetch user 42: connection refused"
-// All lowercase, clean chain
 ```
 
-## Display vs Debug
+`JSON` remains uppercase because it is an acronym; the sentence itself still starts with the ordinary lowercase word `invalid`.
+
+## Standard-Library Convention
+
+The standard library documents this convention directly. One representative example is `ParseIntError`:
 
 ```rust
-#[derive(Error, Debug)]
-#[error("invalid configuration")]  // Display: for users/logs
-pub struct ConfigError {
-    path: PathBuf,
+fn main() {
+    let error = "NaN".parse::<u32>().unwrap_err();
+    assert_eq!(error.to_string(), "invalid digit found in string");
+}
+```
+
+The exact text of platform-originating I/O errors is not a good style oracle for your own API: some messages ultimately come from the operating system. Follow the `Error` display convention for messages your type controls.
+
+## Do Not Duplicate the Source in `Display`
+
+When an outer error exposes an inner error through `Error::source()`, its own display should normally describe the outer failure rather than print the source again:
+
+```rust
+use std::io;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[error("failed to read configuration")]
+struct ConfigReadError {
+    #[source]
     source: io::Error,
 }
 
-// Debug output (for developers) can have more detail
-// Display output (for users) should be clean
+fn main() {
+    let error = ConfigReadError {
+        source: io::Error::new(io::ErrorKind::NotFound, "config file missing"),
+    };
+    assert_eq!(error.to_string(), "failed to read configuration");
+}
 ```
 
-## When to Use Capitals
+A reporting layer can render the source chain. If the outer `Display` also embeds `{source}`, a chain-aware reporter may show the same cause twice.
+
+There are APIs where including source text in the outer display is intentional, especially when the type does not expose it as `source()`. Make that decision deliberately.
+
+## Formatting Guidelines
+
+| Prefer | Avoid when composing error chains |
+|---|---|
+| `failed to parse config` | `Failed to parse config.` |
+| `invalid input: expected number` | `Invalid input - expected a number!` |
+| `connection timed out after {seconds}s` | `Connection Timed Out After {seconds} seconds.` |
+| `key {key:?} not found` | `Key Not Found: {key}` |
+
+The point is composability and consistency, not blindly lowercasing every token.
+
+## Capitalization Exceptions
+
+Messages may legitimately begin with a token whose spelling starts uppercase:
 
 ```rust
-// Proper nouns / acronyms keep their case
-#[error("invalid JSON syntax")]     // JSON is an acronym
-#[error("OAuth token expired")]     // OAuth is a proper noun
-#[error("HTTP request failed")]     // HTTP is an acronym
+use thiserror::Error;
 
-// Error codes can be uppercase
-#[error("error code E0001: invalid input")]
+#[derive(Debug, Error)]
+enum ProtocolError {
+    #[error("HTTP request failed")]
+    Http,
+
+    #[error("OAuth token expired")]
+    OAuth,
+
+    #[error("E0001: invalid input")]
+    Code,
+}
+
+fn main() {
+    assert_eq!(ProtocolError::Http.to_string(), "HTTP request failed");
+}
 ```
+
+Do not rewrite `HTTP` to `http` or `OAuth` to `oauth` merely to satisfy the lowercase convention.
+
+## Error Values Versus User-Facing Reports
+
+`Display` for an error value is often a fragment designed to compose. A top-level CLI/reporting layer is free to add labels, capitalization, punctuation, color, source snippets, or remediation text around the chain.
+
+```rust
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[error("configuration file is missing")]
+struct ConfigMissing;
+
+fn main() {
+    let error = ConfigMissing;
+    eprintln!("Error: {error}");
+}
+```
+
+Keeping those presentation concerns at the reporting boundary prevents every low-level error type from baking in terminal-oriented prose.
+
+## Practical Guidance
+
+- Default to concise lowercase phrases without trailing punctuation for error `Display` text.
+- Preserve normal spelling for acronyms, proper nouns, identifiers, and codes.
+- Describe the current abstraction layer; let `source()` carry the cause chain.
+- Avoid rendering the same source both in the outer message and again through a chain-aware reporter unless that duplication is intentional.
+- Treat top-level user presentation separately from the composable `Display` text of individual errors.
 
 ## See Also
 
-- [err-thiserror-lib](./err-thiserror-lib.md) - Error definition with thiserror
-- [err-context-chain](./err-context-chain.md) - Adding context to errors
-- [doc-examples-section](./doc-examples-section.md) - Documentation conventions
+- [err-thiserror-lib](./err-thiserror-lib.md) - Typed error displays
+- [err-context-chain](./err-context-chain.md) - Adding operation context
+- [err-source-chain](./err-source-chain.md) - Preserving causes

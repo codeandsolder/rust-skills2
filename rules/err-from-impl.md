@@ -1,179 +1,207 @@
 # err-from-impl
 
-> Implement `From<E>` for error conversions to enable `?` operator
+> Implement specific `From<SourceError>` conversions when the conversion is unconditional, unambiguous, and preserves the information callers need
 
 ## Why It Matters
 
-The `?` operator automatically converts errors using `From` trait. By implementing `From<SourceError> for YourError`, you enable seamless error propagation without explicit `.map_err()` calls. This makes error handling code cleaner and ensures consistent error wrapping throughout your codebase.
+For `Result`, the `?` operator can convert the residual error into the function's return error type. The standard `Result` residual conversion uses `From`, so a suitable `From<SourceError> for AppError` lets `?` propagate the source error without a manual `.map_err(...)` at every call site.
 
-## Bad
+That convenience is valuable only when the conversion has one sensible meaning. Do not add broad `From` implementations merely to make `?` compile: conversions become part of the API and can erase context or make future variants difficult to distinguish.
 
-```rust
-#[derive(Debug)]
-enum AppError {
-    Io(std::io::Error),
-    Parse(serde_json::Error),
-    Database(diesel::result::Error),
-}
-
-fn load_config(path: &str) -> Result<Config, AppError> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| AppError::Io(e))?;  // Manual conversion everywhere
-    
-    let config: Config = serde_json::from_str(&content)
-        .map_err(|e| AppError::Parse(e))?;  // Repeated boilerplate
-    
-    save_to_db(&config)
-        .map_err(|e| AppError::Database(e))?;  // Gets tedious
-    
-    Ok(config)
-}
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-#[derive(Debug)]
-enum AppError {
-    Io(std::io::Error),
-    Parse(serde_json::Error),
-    Database(diesel::result::Error),
-}
-
-// Implement From for each source error type
-impl From<std::io::Error> for AppError {
-    fn from(err: std::io::Error) -> Self {
-        AppError::Io(err)
-    }
-}
-
-impl From<serde_json::Error> for AppError {
-    fn from(err: serde_json::Error) -> Self {
-        AppError::Parse(err)
-    }
-}
-
-impl From<diesel::result::Error> for AppError {
-    fn from(err: diesel::result::Error) -> Self {
-        AppError::Database(err)
-    }
-}
-
-fn load_config(path: &str) -> Result<Config, AppError> {
-    let content = std::fs::read_to_string(path)?;  // Auto-converts
-    let config: Config = serde_json::from_str(&content)?;  // Clean!
-    save_to_db(&config)?;
-    Ok(config)
-}
-```
-
-## Use thiserror for Automatic From
+## Good: Specific, Lossless Wrapping
 
 ```rust
+use std::io;
+use std::num::ParseIntError;
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Debug, Error)]
 enum AppError {
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),  // Auto-generates From impl
-    
-    #[error("Parse error: {0}")]
-    Parse(#[from] serde_json::Error),  // #[from] does the work
-    
-    #[error("Database error: {0}")]
-    Database(#[from] diesel::result::Error),
+    #[error("failed to read input")]
+    Io(#[from] io::Error),
+
+    #[error("input was not an integer")]
+    ParseInt(#[from] ParseIntError),
 }
 
-// Now ? just works
-fn load_config(path: &str) -> Result<Config, AppError> {
-    let content = std::fs::read_to_string(path)?;
-    let config: Config = serde_json::from_str(&content)?;
-    save_to_db(&config)?;
-    Ok(config)
+fn read_number(path: &str) -> Result<u64, AppError> {
+    let text = std::fs::read_to_string(path)?;
+    Ok(text.trim().parse()?)
 }
+
+fn main() {}
 ```
 
-## From with Context
+`thiserror`'s `#[from]` generates the corresponding `From` implementation and also treats the wrapped field as the error source.
 
-Sometimes you need to add context during conversion:
+## Manual `From` Is the Same Contract
+
+You do not need a derive macro:
 
 ```rust
-#[derive(Error, Debug)]
+use std::fmt;
+use std::io;
+
+#[derive(Debug)]
+enum AppError {
+    Io(io::Error),
+}
+
+impl From<io::Error> for AppError {
+    fn from(source: io::Error) -> Self {
+        Self::Io(source)
+    }
+}
+
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(_) => f.write_str("I/O operation failed"),
+        }
+    }
+}
+
+impl std::error::Error for AppError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(source) => Some(source),
+        }
+    }
+}
+
+fn read(path: &str) -> Result<String, AppError> {
+    Ok(std::fs::read_to_string(path)?)
+}
+
+fn main() {}
+```
+
+Use manual implementations when conversion needs custom logic that still represents a true unconditional conversion.
+
+## Add Call-Site Context with `map_err`
+
+A `From<io::Error>` cannot know which path or operation produced the error. If that information belongs in the typed error, construct the variant at the call site instead:
+
+```rust
+use std::io;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
 enum ConfigError {
-    #[error("Failed to read config from '{path}': {source}")]
-    ReadFailed {
+    #[error("failed to read config from {path}")]
+    Read {
         path: String,
         #[source]
-        source: std::io::Error,
+        source: io::Error,
     },
 }
 
-// Can't use #[from] when you need extra context
-fn load_config(path: &str) -> Result<Config, ConfigError> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|source| ConfigError::ReadFailed {
-            path: path.to_string(),
-            source,
-        })?;
-    // ...
+fn load_config(path: &str) -> Result<String, ConfigError> {
+    std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
+        path: path.to_owned(),
+        source,
+    })
 }
 
-// Or use anyhow for ad-hoc context
-use anyhow::{Context, Result};
-
-fn load_config(path: &str) -> Result<Config> {
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("Failed to read config from '{}'", path))?;
-    // ...
-}
+fn main() {}
 ```
 
-## Blanket From Implementations
+Do not force this into `From<io::Error>`: the conversion lacks the `path` needed to construct the useful error.
 
-Be careful with blanket implementations:
+## `#[from]` Cannot Invent Extra Context
+
+A `thiserror` variant using `#[from]` is for direct conversion from the source error. If the variant needs additional application data, construct it explicitly as above.
+
+A simple direct variant is ideal:
 
 ```rust
-// ❌ Too broad - conflicts with other From impls
-impl<E: std::error::Error> From<E> for AppError {
-    fn from(err: E) -> Self {
-        AppError::Other(err.to_string())
-    }
-}
-
-// ✅ Specific implementations
-impl From<std::io::Error> for AppError { ... }
-impl From<ParseIntError> for AppError { ... }
-```
-
-## #[from] in no_std
-
-Since thiserror 2.0+ and Rust 1.81+, `#[from]` works in `no_std` environments:
-
-```toml
-# Cargo.toml
-[dependencies]
-thiserror = { version = "2", default-features = false }
-```
-
-```rust
-#![no_std]
-
 use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum UsbError {
-    #[error("descriptor read failed")]
-    DescriptorRead(#[from] DescriptorError),
+#[derive(Debug, Error)]
+enum ParseError {
+    #[error("integer parse failed")]
+    Integer(#[from] std::num::ParseIntError),
+}
 
-    #[error("transfer failed")]
-    Transfer(#[from] TransferError),
+fn parse(input: &str) -> Result<u32, ParseError> {
+    Ok(input.parse()?)
+}
+
+fn main() {}
+```
+
+## Avoid Blanket Error Conversions
+
+This shape is usually both semantically poor and, for a normal error type, conflicts with Rust's blanket identity conversion:
+
+```text
+impl<E: std::error::Error> From<E> for AppError {
+    fn from(error: E) -> Self {
+        AppError::Other(error.to_string())
+    }
 }
 ```
+
+Problems include:
+
+- `From<T> for T` already exists, so a sufficiently broad implementation overlaps when `E = AppError`.
+- converting to a string discards the concrete source type and source chain unless you rebuild them separately;
+- every new dependency error silently acquires the same conversion, even when callers would benefit from a distinct variant;
+- adding another more-specific conversion later can run into coherence constraints.
+
+Prefer explicit source types or an application report type such as `anyhow::Error` when genuinely arbitrary error aggregation is the requirement.
+
+## `From` Should Be Infallible
+
+`From` represents a conversion that cannot fail. If converting one error representation to another can itself fail or depends on validation, use `TryFrom`, a constructor returning `Result`, or explicit mapping instead of hiding failure inside a `From` implementation.
+
+## Preserve Structured Sources
+
+When an outer error is caused by an inner error, preserve the source rather than formatting it into the outer message and throwing the value away:
+
+```rust
+use std::io;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[error("cache initialization failed")]
+struct CacheError {
+    #[source]
+    source: io::Error,
+}
+
+fn initialize() -> Result<(), CacheError> {
+    std::fs::File::open("cache.db")
+        .map(|_| ())
+        .map_err(|source| CacheError { source })
+}
+
+fn main() {}
+```
+
+This lets reporting layers traverse `Error::source()` while the outer `Display` remains concise.
+
+## Decision Guide
+
+| Conversion shape | Usually prefer |
+|---|---|
+| one source type maps directly to one error variant | `From` / `#[from]` |
+| conversion needs path/request/user context | explicit `map_err` / constructor |
+| conversion can fail | `TryFrom` or explicit fallible function |
+| arbitrary application errors mainly need reporting | `anyhow`-style report type |
+| callers need to distinguish source categories | explicit typed variants |
+
+## Practical Guidance
+
+- Add `From` only when the conversion has one unsurprising meaning.
+- Preserve the original source error whenever it remains diagnostically useful.
+- Use `#[from]` for direct wrappers; use `map_err` when call-site data is required.
+- Avoid generic `From<E>` catch-alls for error enums.
+- Remember that `?` convenience is a consequence of the error conversion design, not a reason to make the design broader than it should be.
 
 ## See Also
 
-- [err-thiserror-lib](./err-thiserror-lib.md) - Using thiserror for libraries
-- [err-no-std-error](./err-no-std-error.md) - no_std error patterns
-- [err-source-chain](./err-source-chain.md) - Preserving error chains
-- [err-question-mark](./err-question-mark.md) - The ? operator
+- [err-thiserror-lib](./err-thiserror-lib.md) - Defining typed errors
+- [err-source-chain](./err-source-chain.md) - Preserving error sources
+- [err-context-chain](./err-context-chain.md) - Adding operation context
+- [err-question-mark](./err-question-mark.md) - Propagation with `?`

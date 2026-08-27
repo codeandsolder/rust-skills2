@@ -1,188 +1,194 @@
 # err-expect-bugs-only
 
-> Use `expect()` only for invariants that indicate bugs, not user errors
+> Use `expect()` when failure violates a justified assumption; return or handle errors for anticipated runtime failures
 
 ## Why It Matters
 
-`expect()` is better than `unwrap()` because it provides context, but it still panics. Reserve it for situations where failure indicates a bug in your code—a violated invariant, not a user error or external failure. The message should explain why the invariant should hold, helping future developers understand and fix the bug.
+`expect()` turns `None` or `Err` into a panic. That is appropriate when the program has a well-founded reason the value **should** be present or successful and failure indicates a broken invariant, violated startup assumption, or test expectation.
 
-## Bad
+It is a poor substitute for error handling when failure is an ordinary possibility: user input can be invalid, files can be absent, networks can fail, and remote data can be malformed.
+
+The distinction is about the contract and recovery model, not whether the code happens to be in a library or binary.
+
+## Bad: Panic on Anticipated Failures
 
 ```rust
-// User input can legitimately fail - don't expect
-fn parse_user_input(input: &str) -> Config {
-    serde_json::from_str(input)
-        .expect("Invalid JSON")  // User error, not a bug!
+use std::fs;
+
+fn parse_port(input: &str) -> u16 {
+    input.parse().expect("port should parse")
 }
 
-// Network can fail - don't expect
-fn fetch_data(url: &str) -> Data {
-    reqwest::get(url)
-        .expect("Network request failed")  // External failure!
-        .json()
-        .expect("Invalid response")
+fn load_optional_config(path: &str) -> String {
+    fs::read_to_string(path).expect("config should exist")
 }
 
-// File might not exist - don't expect
-fn load_config() -> Config {
-    let content = fs::read_to_string("config.json")
-        .expect("Config file missing");  // Environment issue!
-}
+fn main() {}
 ```
 
-## Good
+If `input` comes from a user or `path` names an optional/external file, those failures are normal runtime outcomes and should be represented explicitly.
 
-<!-- rust-check: fragment; reason=extraction artifact: wrapper/context -->
+## Good: Return the Anticipated Failure
+
 ```rust
-// Invariant: after insert, key exists
-fn cache_and_get(&mut self, key: String, value: Value) -> &Value {
-    self.cache.insert(key.clone(), value);
-    self.cache.get(&key)
-        .expect("BUG: key must exist immediately after insert")
+use std::fs;
+use std::io;
+use std::num::ParseIntError;
+
+fn parse_port(input: &str) -> Result<u16, ParseIntError> {
+    input.parse()
 }
 
-// Invariant: regex is compile-time constant
-fn create_parser() -> Regex {
+fn load_optional_config(path: &str) -> Result<String, io::Error> {
+    fs::read_to_string(path)
+}
+
+fn main() {}
+```
+
+## Good: `expect()` for a Source-Code Invariant
+
+A hard-coded regular expression that has already been reviewed as source code is a reasonable place for `expect()`:
+
+```rust
+use regex::Regex;
+
+fn date_regex() -> Regex {
     Regex::new(r"^\d{4}-\d{2}-\d{2}$")
-        .expect("BUG: date regex is invalid - this is a compile-time constant")
+        .expect("hard-coded date regex should be valid")
 }
 
-// Invariant: already validated
-fn process_validated(data: ValidatedData) -> Result<Output, ProcessError> {
-    let value = data.required_field
-        .expect("BUG: ValidatedData guarantees required_field is Some");
-    // ...
-}
-
-// Invariant: type system guarantees
-fn get_first<T>(vec: Vec<T>) -> T 
-where 
-    Vec<T>: NonEmpty,  // Hypothetical trait
-{
-    vec.into_iter().next()
-        .expect("BUG: NonEmpty Vec cannot be empty")
+fn main() {
+    assert!(date_regex().is_match("2026-08-27"));
 }
 ```
 
-## expect() Message Guidelines
+If this panics, changing runtime input cannot fix it; the source code itself contains an invalid regex.
 
-Messages should:
-1. Start with "BUG:" or similar to indicate it's an invariant
-2. Explain WHY the invariant should hold
-3. Help developers fix the issue
+## Good: `expect()` After an Explicit Invariant Check
 
 ```rust
-// ❌ Bad messages
-.expect("failed")                    // No context
-.expect("should not be None")        // Doesn't explain why
-.expect("Invalid state")             // Vague
+fn first_after_nonempty_check(values: &[u32]) -> u32 {
+    assert!(!values.is_empty(), "caller must provide at least one value");
+    *values
+        .first()
+        .expect("slice should be nonempty after the assertion above")
+}
 
-// ✅ Good messages
-.expect("BUG: HashMap entry exists after insert")
-.expect("BUG: validated input must parse - validation is broken")
-.expect("BUG: static regex compilation failed - regex syntax error in source")
-```
-
-## Pattern: Validate Once, expect() After
-
-```rust
-struct ValidatedEmail(String);
-
-impl ValidatedEmail {
-    pub fn new(email: &str) -> Result<Self, EmailError> {
-        // Validation happens here, returns Result
-        if !is_valid_email(email) {
-            return Err(EmailError::Invalid);
-        }
-        Ok(ValidatedEmail(email.to_string()))
-    }
-    
-    pub fn domain(&self) -> &str {
-        // After validation, expect() is fine
-        self.0.split('@').nth(1)
-            .expect("BUG: ValidatedEmail must contain @")
-    }
+fn main() {
+    assert_eq!(first_after_nonempty_check(&[7, 8]), 7);
 }
 ```
 
-## Alternatives When expect() Is Wrong
+This example is slightly redundant—the indexing operation could express the same invariant—but it demonstrates the important point: the message explains **why** `Some` is expected.
+
+## Recommended Message Style
+
+The standard library recommends phrasing `expect` messages around the reason the value **should** be `Some` or `Ok`.
 
 ```rust
-// Don't: expect on user data
-let port: u16 = input.parse().expect("Invalid port");
-
-// Do: Return Result
-let port: u16 = input.parse().map_err(|_| ConfigError::InvalidPort)?;
-
-// Do: Provide default
-let port: u16 = input.parse().unwrap_or(8080);
-
-// Do: Handle explicitly
-let port: u16 = match input.parse() {
-    Ok(p) => p,
-    Err(_) => {
-        log::warn!("Invalid port '{}', using default", input);
-        8080
-    }
-};
-```
-
-## Rust 1.92+ Changes
-
-### `unused_must_use` respects `Infallible`
-
-Since Rust 1.92, `unused_must_use` no longer warns on `Result<(), Infallible>`. This means infallible operations don't require explicit handling:
-
-```rust
-fn always_succeeds() -> Result<(), Infallible> {
-    Ok(())
+fn extension(path: &std::path::Path) -> &std::ffi::OsStr {
+    path.extension()
+        .expect("validated input path should have an extension")
 }
 
-// No warning — Infallible means this can't fail
-let _ = always_succeeds();
+fn main() {}
 ```
 
-### `unwrap_used` Catches Fully-Qualified Syntax
+Prefer messages such as:
 
-Since clippy PR #16489 (Rust 1.93), `unwrap_used` catches `Result::unwrap(x)` in addition to `x.unwrap()`:
+```text
+validated input path should have an extension
+hard-coded regex should be valid
+queue should contain the item inserted immediately above
+wrapper script should set IMPORTANT_PATH
+```
+
+A `BUG:` prefix can be a useful project convention for internal invariants, but it is **not** a Rust requirement and should not replace explaining the assumption.
+
+Avoid messages that merely repeat the symptom:
+
+```text
+failed
+unexpected None
+invalid state
+unwrap failed
+```
+
+Those say what happened, not why success was expected.
+
+## Startup Assumptions Are a Policy Choice
+
+A binary may reasonably decide that some missing prerequisite makes startup impossible:
 
 ```rust
-// Both forms are caught by unwrap_used:
-let a = some_result.unwrap();   // caught
-let b = Result::unwrap(some_result);  // also caught since 1.93
+fn required_home() -> String {
+    std::env::var("HOME")
+        .expect("HOME should be set in the supported runtime environment")
+}
+
+fn main() {
+    let _ = required_home();
+}
 ```
 
-### Proposed: `empty_expect` Lint
+That does not make missing environment variables universally “bugs.” A CLI that can produce a friendly diagnostic may prefer returning an error instead. Use `expect()` when panic is the intended response to violation of the assumption.
 
-A proposed clippy lint `empty_expect` (#16764) would flag `.expect("")` — expect with an empty message, which is no better than `unwrap()`:
+## Tests and Examples
+
+`unwrap()` and `expect()` are often fine in tests when the test itself asserts that setup or an operation succeeds:
 
 ```rust
-// Would be flagged by empty_expect
-let value = optional_value.expect("");
+#[test]
+fn parses_valid_port() {
+    let port: u16 = "8080".parse().expect("test fixture should be a valid port");
+    assert_eq!(port, 8080);
+}
 
-// Prefer a descriptive message
-let value = optional_value.expect("BUG: invariant violated — value must be present");
+fn main() {}
 ```
 
-## Clippy `allow-unwrap-types` Config
+A useful `expect` message can still make a failing test easier to diagnose.
 
-To whitelist known-safe `unwrap()` calls (e.g., `Mutex::lock().unwrap()`) while keeping `unwrap_used` = "deny" for real logic errors, configure `allow-unwrap-types`:
+## Linting Policy
 
-```toml
-# clippy.toml
-allow-unwrap-types = [
-    "std::sync::LockResult<std::sync::MutexGuard<_>>",
-    "std::sync::LockResult<std::sync::RwLockReadGuard<_>>",
-    "std::sync::LockResult<std::sync::RwLockWriteGuard<_>>",
-]
+Clippy's `expect_used` and `unwrap_used` lints are restriction lints. Projects that deny them can make narrow exceptions where an invariant is genuinely clearer with `expect()`:
+
+```rust
+#[expect(clippy::expect_used, reason = "hard-coded regex is a source invariant")]
+fn parser() -> regex::Regex {
+    regex::Regex::new(r"^[a-z]+$")
+        .expect("hard-coded parser regex should be valid")
+}
+
+fn main() {}
 ```
 
-This allows `Mutex::lock().unwrap()` without triggering `unwrap_used`, while still catching genuine errors like `HashMap::get().unwrap()`.
+Use the lint policy to force justification, not to pretend every panic conversion is equally harmful.
+
+## Decision Guide
+
+| Failure means | Usually prefer |
+|---|---|
+| invalid user/request input | `Result`, validation, or explicit handling |
+| missing/failed external resource | `Result` or fallback |
+| network/service failure | `Result`, retry, or fallback |
+| violated internal invariant | panic / `expect()` can be appropriate |
+| invalid hard-coded source data | `expect()` can be appropriate |
+| unsupported startup environment | application policy: diagnostic or `expect()` |
+| test fixture unexpectedly invalid | `expect()` / `unwrap()` is usually fine |
+
+## Practical Guidance
+
+- Before writing `expect()`, state why success is guaranteed or intentionally assumed.
+- Phrase the message around that expectation, commonly with “should.”
+- Do not use `expect()` to erase ordinary user, I/O, network, or parsing failures.
+- A `BUG:` prefix is optional house style, not the substance of a good message.
+- If callers can meaningfully recover, preserve the failure as `Result` instead of panicking.
 
 ## See Also
 
-- [err-no-unwrap-prod](./err-no-unwrap-prod.md) - Avoiding unwrap in production
-- [err-expect-not-allow](./err-expect-not-allow.md) - Prefer #[expect] over #[allow]
-- [err-clippy-unwrap-types](./err-clippy-unwrap-types.md) - Configure allow-unwrap-types
-- [err-result-over-panic](./err-result-over-panic.md) - When to return Result
+- [err-no-unwrap-prod](./err-no-unwrap-prod.md) - Avoiding unjustified unwraps
+- [err-expect-not-allow](./err-expect-not-allow.md) - Using lint expectations deliberately
+- [err-result-over-panic](./err-result-over-panic.md) - Choosing `Result` versus panic
 - [api-parse-dont-validate](./api-parse-dont-validate.md) - Type-driven validation
