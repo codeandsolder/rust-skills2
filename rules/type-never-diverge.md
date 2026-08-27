@@ -1,211 +1,159 @@
 # type-never-diverge
 
-> Use the never type `!` for functions that never return
+> Use `!` as the return type of functions that never return normally
 
 **Rule**: `type-never-diverge`
 
 ## Why It Matters
 
-The never type `!` indicates a function will never return normally — it either loops forever, panics, or exits the process. This helps the compiler understand control flow and enables `!` to coerce to any type, making it useful in match arms and expressions. Since Rust 1.92, the never-type fallback lints (`unused_must_use`, `dead_code` on `!`-typed expressions) are deny-by-default, making the type system more consistent.
+The never type `!` has no values. A function returning `!` therefore cannot return normally: it must diverge by looping forever, panicking, terminating the process, or otherwise leaving the current control flow.
 
-## Bad
+Diverging expressions such as `panic!()`, `return`, `break`, and an infinite `loop` can coerce to the type required by their surrounding expression. That is why a panic or process exit can occupy a `match` arm whose other arm produces an ordinary value.
 
-```rust
-// Return type doesn't indicate non-returning
-fn infinite_loop() {
-    loop { process_events(); }
-    // Implicit () return type, but never returns
-}
+On stable Rust 1.98, `!` is usable in **function return types**, but general-purpose uses such as `Result<T, !>` are still unstable. Use `std::convert::Infallible` when a stable generic type needs an uninhabited error/value type.
 
-// Using Option when it always panics
-fn unreachable_code() -> Option<()> {
-    panic!("This should never be called");
-}
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-// ! indicates function never returns
-fn infinite_loop() -> ! {
-    loop { process_events(); }
-}
-
-fn abort_with_error(msg: &str) -> ! {
-    eprintln!("Fatal error: {}", msg);
-    std::process::exit(1);
-}
-
-fn panic_handler() -> ! {
-    panic!("Unexpected state");
-}
-```
-
-## Coercion to Any Type
+## Good: Mark a Diverging Function Explicitly
 
 ```rust
-// ! coerces to any type
-fn get_value(opt: Option<i32>) -> i32 {
-    match opt {
-        Some(v) => v,
-        None => panic!("No value"),  // panic! returns !, coerces to i32
+fn forever() -> ! {
+    loop {
+        std::hint::spin_loop();
     }
 }
 
-// Useful in Result handling
-fn must_get_config() -> Config {
-    match load_config() {
-        Ok(c) => c,
-        Err(e) => {
-            log_error(&e);
-            std::process::exit(1)  // Returns !, coerces to Config
+fn fatal(message: &str) -> ! {
+    eprintln!("fatal: {message}");
+    std::process::exit(1)
+}
+```
+
+A function that happens not to return today can still use `()`, but `-> !` is stronger documentation and a stronger type-level statement when non-returning behavior is part of the contract.
+
+## Diverging Expressions Coerce to the Needed Type
+
+```rust
+fn require_value(value: Option<i32>) -> i32 {
+    match value {
+        Some(value) => value,
+        None => panic!("required value is missing"),
+    }
+}
+
+fn main() {
+    assert_eq!(require_value(Some(7)), 7);
+}
+```
+
+The `None` arm never produces an `i32`; its diverging expression can therefore coexist with the `i32` produced by the other arm.
+
+The same applies to early exit:
+
+```rust
+fn parse_or_exit(text: &str) -> u16 {
+    match text.parse() {
+        Ok(port) => port,
+        Err(error) => {
+            eprintln!("invalid port: {error}");
+            std::process::exit(2)
         }
     }
 }
 ```
 
-## `Result::flatten` with `!`/`Infallible` (Rust 1.89+)
+## Stable Generic Uninhabited Type: `Infallible`
 
-`Result::flatten` eliminates manual `match` for nested `Result` types, especially with `!` or `Infallible`:
-
-```rust
-use core::convert::Infallible;
-
-// Before: manual match
-fn get_first(items: &[Result<i32, Error>]) -> Result<i32, Error> {
-    match items.first() {
-        Some(Ok(v)) => Ok(*v),
-        _ => Err(Error::Empty),
-    }
-}
-
-// After: flatten with map
-fn get_first(items: &[Result<i32, Error>]) -> Result<i32, Error> {
-    items.first().copied().unwrap_or(Err(Error::Empty))
-}
-
-// Flattening nested Results
-// Result<Result<T, E>, E> -> Result<T, E>
-let nested: Result<Result<i32, ()>, ()> = Ok(Ok(42));
-let flat: Result<i32, ()> = nested.flatten();  // Ok(42)
-
-// Infallible never-type pattern
-fn always_ok() -> Result<i32, Infallible> {
-    Ok(42)
-}
-
-// unused_must_use (Rust 1.92+) no longer warns for Infallible
-// because the Err variant can never be constructed:
-let _ = always_ok();  // No warning — Err is Infallible
-```
-
-## `unused_must_use` + `Infallible` (Rust 1.92+)
-
-Since Rust 1.92, the compiler understands that `Result<T, Infallible>` can never be an `Err`. The `#[must_use]` lint no longer warns when such a result is discarded, because the error case is statically impossible:
-
-```rust
-use core::convert::Infallible;
-
-fn compute() -> Result<i32, Infallible> {
-    Ok(42)
-}
-
-// No warning — Err is Infallible, unreachable
-compute();
-
-// With a real error type, the must_use lint applies:
-fn fallible() -> Result<i32, Error> {
-    Ok(42)
-}
-// fallible();  // Warning: unused Result that must be used
-```
-
-## `From<T> for AssertUnwindSafe<T>` (Rust 1.96+)
-
-`AssertUnwindSafe<T>` now implements `From<T>`, making it ergonomic to opt out of unwind safety in panicking contexts:
-
-```rust
-use std::panic::AssertUnwindSafe;
-
-// Before Rust 1.96: manual AssertUnwindSafe constructor
-let guarded = AssertUnwindSafe(my_value);
-
-// After Rust 1.96: ergonomic From<T> conversion
-let guarded: AssertUnwindSafe<_> = my_value.into();
-
-// Useful with catch_unwind:
-use std::panic::catch_unwind;
-
-let result = catch_unwind(AssertUnwindSafe(|| {
-    // Code that may panic
-    do_fallible_work()
-}));
-```
-
-## Standard Library Examples
-
-```rust
-// std::process::exit
-pub fn exit(code: i32) -> !
-
-// panic! macro — expands to ! type expression
-
-// std::hint::unreachable_unchecked
-pub unsafe fn unreachable_unchecked() -> !
-
-// loop {} with no break
-fn forever() -> ! {
-    loop {}
-}
-```
-
-## In Match Expressions
-
-```rust
-enum State { Running, Stopped, Error }
-
-fn get_status(state: &State) -> &str {
-    match state {
-        State::Running => "running",
-        State::Stopped => "stopped",
-        State::Error => unreachable!(),  // ! coerces to &str
-    }
-}
-```
-
-## Diverging Closures
-
-```rust
-// Closures that never return
-let handler: fn() -> ! = || panic!("Handler called");
-
-// In thread spawn
-std::thread::spawn(|| -> ! {
-    loop { process_work(); }
-});
-```
-
-## Using `Infallible` on Stable
-
-The `!` type is still nightly-only as a general-purpose type. On stable, use `std::convert::Infallible` — it's the stable equivalent and works with `Result`:
+General-purpose `!` is not yet stable, so use `Infallible` when a generic position needs a type with no possible values.
 
 ```rust
 use std::convert::Infallible;
 
-// Cannot fail — infallible
-type NeverResult = Result<(), Infallible>;
+fn fixed_value() -> Result<u32, Infallible> {
+    Ok(42)
+}
 
-fn always_ok() -> NeverResult {
-    Ok(())
+fn main() {
+    let value = fixed_value().unwrap();
+    assert_eq!(value, 42);
 }
 ```
 
+Do not describe `Infallible` as literally identical to a fully stabilized `!` type today. It fills the common stable generic use case while general-purpose never-type syntax remains experimental.
+
+## `Result::flatten` (Rust 1.89+)
+
+`Result::flatten` removes one level from a nested result **when the inner and outer error types are the same**:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Error {
+    Invalid,
+}
+
+fn main() {
+    let ok: Result<Result<u32, Error>, Error> = Ok(Ok(42));
+    assert_eq!(ok.flatten(), Ok(42));
+
+    let inner_error: Result<Result<u32, Error>, Error> = Ok(Err(Error::Invalid));
+    assert_eq!(inner_error.flatten(), Err(Error::Invalid));
+
+    let outer_error: Result<Result<u32, Error>, Error> = Err(Error::Invalid);
+    assert_eq!(outer_error.flatten(), Err(Error::Invalid));
+}
+```
+
+Its relevant shape is `Result<Result<T, E>, E> -> Result<T, E>`. It is not specifically an infallibility or never-type API, and it does not flatten nested results with two unrelated error types.
+
+## Rust 1.92 Never-Type Fallback Lints
+
+Rust 1.92 made these two future-compatibility lints deny-by-default:
+
+- `never_type_fallback_flowing_into_unsafe`
+- `dependency_on_unit_never_type_fallback`
+
+They detect code whose type inference depends on historical never-type fallback behavior. They are distinct from `unused_must_use` and `dead_code`.
+
+Rust 1.92 also changed `unused_must_use` so it no longer warns for certain `Result<(), Uninhabited>` values, such as `Result<(), Infallible>`. That is a separate lint behavior change, not one of the never-fallback lints above.
+
+When fallback-sensitive inference appears, make the intended type explicit rather than depending on an edition/compiler fallback rule.
+
+```rust
+fn choose_unit(early: bool) {
+    let _: () = if early {
+        return;
+    } else {
+        Default::default()
+    };
+}
+```
+
+## Standard Diverging Operations
+
+These are ordinary stable examples of APIs/control flow that never return normally:
+
+```rust
+fn exit_now() -> ! {
+    std::process::exit(1)
+}
+
+fn panic_now() -> ! {
+    panic!("stop")
+}
+
+fn loop_forever() -> ! {
+    loop {}
+}
+```
+
+`std::hint::unreachable_unchecked()` also returns `!`, but it is unsafe: calling it on a reachable execution path is undefined behavior. Prefer safe `unreachable!()` unless you have a proven invariant and a demonstrated reason for the unsafe optimization.
+
+## Do Not Overuse `!`
+
+A function returning `Result<T, E>` or `Option<T>` communicates recoverable failure or absence. Replacing those with a diverging path merely to avoid error handling usually weakens an API.
+
+Use `-> !` when non-returning behavior is genuinely part of the function contract, not as a substitute for normal error propagation.
+
 ## See Also
 
-- [Rust Blog 1.92: Never type lints deny-by-default](https://blog.rust-lang.org/2025/12/11/Rust-1.92.0)
-- [Rust 1.89: Result::flatten](https://blog.rust-lang.org/2025/08/07/Rust-1.89.0/)
-- [Rust 1.96: AssertUnwindSafe improvements](https://blog.rust-lang.org/2026/05/28/Rust-1.96.0/)
-- [err-result-over-panic](./err-result-over-panic.md) — When to panic vs return Result
-- [type-result-fallible](./type-result-fallible.md) — `Result` for errors
-- [opt-cold-unlikely](./opt-cold-unlikely.md) — Marking unlikely paths
+- [err-result-over-panic](./err-result-over-panic.md) — panic versus recoverable errors
+- [type-result-fallible](./type-result-fallible.md) — `Result` APIs
+- [opt-cold-unlikely](./opt-cold-unlikely.md) — cold error paths
