@@ -1,163 +1,160 @@
 # perf-hint-apis
 
-> Use branch hint APIs for hot-path optimization
+> Use compiler hint APIs only when their semantics match a measured hot path; they are advisory optimizations, not code-generation guarantees
 
 **Rule**: `perf-hint-apis`
 
 ## Why It Matters
 
-Modern CPUs use branch prediction to maintain high instruction throughput. Mispredicted branches cause pipeline stalls. Rust provides stable hint APIs that tell the compiler and CPU about branch likelihood, enabling better code layout and prediction decisions.
+`std::hint` exposes a few specialized optimization hints. They can influence code layout or branch lowering, but they do not command a particular CPU instruction and they can make performance worse when the workload does not match the hint.
 
-Available in stable Rust:
-- `std::hint::cold_path` (1.95) — mark a path as cold for code layout
-- `std::hint::select_unpredictable` (1.88) — hint that a branch is unpredictable
-- `std::hint::assert_unchecked` (1.81) — skip a bounds check unconditionally
+Treat these APIs like other low-level performance tools: keep the ordinary control flow correct without the hint, benchmark representative inputs, and preserve the hint only when it produces a repeatable benefit.
 
-## Bad
+## `cold_path`: Mark the Current Path as Unlikely
 
 ```rust
-// No branch hints — compiler treats both paths equally
-fn process_or_error(data: &[u8]) -> Result<(), Error> {
-    if data.is_empty() {
-        return Err(Error::Empty);
-    }
-    for &b in data {
-        if b == 0 {
-            return Err(Error::ZeroByte);
-        }
-    }
-    Ok(())
-}
+use std::hint::cold_path;
 
-// Predictable hot loop — no hint for the uncommon case
-fn lookup(cache: &HashMap<u64, Item>, key: u64) -> Item {
-    if let Some(item) = cache.get(&key) {
-        item.clone()  // Common case
-    } else {
-        fetch_from_db(key)  // Rare case, compiler may lay out inline
-    }
-}
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-use std::hint::{cold_path, select_unpredictable, assert_unchecked};
-
-// cold_path: tell compiler the error branch is cold
-fn process_or_error(data: &[u8]) -> Result<(), Error> {
-    if data.is_empty() {
+fn parse_nonempty(input: &str) -> Result<&str, &'static str> {
+    if input.is_empty() {
         cold_path();
-        return Err(Error::Empty);
+        return Err("input is empty");
     }
-    for &b in data {
-        if b == 0 {
-            cold_path();
-            return Err(Error::ZeroByte);
-        }
-    }
-    Ok(())
+
+    Ok(input)
 }
 
-// cold_path + early return for cache miss
-fn lookup(cache: &HashMap<u64, Item>, key: u64) -> Item {
-    if let Some(item) = cache.get(&key) {
-        return item.clone();
-    }
-    cold_path();
-    fetch_from_db(key)  // Moved to a cold code section
+fn main() {
+    assert_eq!(parse_nonempty("hello"), Ok("hello"));
+    assert!(parse_nonempty("").is_err());
 }
 ```
 
-## select_unpredictable (Rust 1.88+)
+`cold_path()` tells the compiler that the path reaching the call is unlikely. The compiler may optimize hotter paths at the cold path's expense. Do not promise that code will be emitted into a specific section or that a branch will disappear; inspect/benchmark the target if those details matter.
 
-For branches that are truly unpredictable (e.g., data-dependent), `select_unpredictable` tells the compiler to use conditional move instructions instead of branches, avoiding branch misprediction penalties:
+For a reusable cold helper function, `#[cold]` may communicate the intent more naturally.
+
+## `select_unpredictable`: Select Between Two Values
+
+`select_unpredictable` takes **three arguments**: a condition, the value to return when true, and the value to return when false.
 
 ```rust
 use std::hint::select_unpredictable;
 
-// Unpredictable branch: each element's sign is random
-fn sum_positives(values: &[i32]) -> i32 {
-    let mut sum = 0;
-    for &v in values {
-        // Without hint: branch, may mispredict
-        // With hint: compiler likely uses CMOV
-        if select_unpredictable(v > 0) {
-            sum += v;
-        }
-    }
-    sum
+fn sum_positive(values: &[i32]) -> i32 {
+    values
+        .iter()
+        .copied()
+        .map(|value| select_unpredictable(value > 0, value, 0))
+        .sum()
 }
 
-// Practical: binary search with unpredictable comparisons
-fn binary_search(haystack: &[u64], needle: u64) -> Option<usize> {
-    let mut size = haystack.len();
-    let mut base = 0;
-    
-    while size > 1 {
-        let half = size / 2;
-        let mid = base + half;
-        // Comparison result is unpredictable — hint helps
-        base = if select_unpredictable(haystack[mid] <= needle) {
-            mid
-        } else {
-            base
-        };
-        size -= half;
-    }
-    
-    if !haystack.is_empty() && haystack[base] == needle {
-        Some(base)
-    } else {
-        None
-    }
+fn main() {
+    assert_eq!(sum_positive(&[-5, 7, -1, 3]), 10);
 }
 ```
 
-## assert_unchecked (Rust 1.81+)
+It is functionally equivalent to `if condition { true_val } else { false_val }`, plus a hint that the condition is hard for a branch predictor to predict. The optimizer **might** lower this to a conditional move/select instruction on a suitable target, but that lowering is not guaranteed.
 
-`assert_unchecked` tells the compiler that a boolean expression is always true. Use it to eliminate bounds checks when you know the index is valid but the compiler doesn't:
+A binary-search-style update is another plausible use:
+
+```rust
+use std::hint::select_unpredictable;
+
+fn floor_index(values: &[u64], needle: u64) -> Option<usize> {
+    if values.is_empty() || values[0] > needle {
+        return None;
+    }
+
+    let mut base = 0usize;
+    let mut size = values.len();
+
+    while size > 1 {
+        let half = size / 2;
+        let mid = base + half;
+        base = select_unpredictable(values[mid] <= needle, mid, base);
+        size -= half;
+    }
+
+    Some(base)
+}
+
+fn main() {
+    let values = [10, 20, 30, 40];
+    assert_eq!(floor_index(&values, 25), Some(1));
+    assert_eq!(floor_index(&values, 40), Some(3));
+}
+```
+
+Do not use this API for predictable branches: the alternative lowering can be slower. It is also not a constant-time cryptography primitive.
+
+## `assert_unchecked`: An Unsafe Soundness Promise
+
+`assert_unchecked(condition)` tells the compiler that `condition` is true. If it is false, the program has immediate undefined behavior. This is fundamentally different from a debug assertion or ordinary branch hint.
 
 ```rust
 use std::hint::assert_unchecked;
 
-// SAFETY: `idx` is always < `data.len()` by construction
-unsafe fn get_unchecked_trusted(data: &[i32], idx: usize) -> i32 {
-    // Without hint: compiler emits bounds check
-    // With hint: compiler can elide the check
-    assert_unchecked(idx < data.len());
-    *data.get_unchecked(idx)
+/// # Safety
+/// `index` must be strictly less than `values.len()`.
+unsafe fn get_known_in_bounds(values: &[u32], index: usize) -> u32 {
+    // SAFETY: guaranteed by this function's caller contract.
+    unsafe {
+        assert_unchecked(index < values.len());
+        *values.get_unchecked(index)
+    }
 }
 
-// But prefer iterators or array_windows when possible:
-fn safe_alternative(data: &[i32]) -> i32 {
-    data.array_windows::<2>()
-        .map(|&[a, b]| a + b)
-        .sum()
-    // Zero bounds checks, no unsafe
+fn main() {
+    let values = [10, 20, 30];
+    // SAFETY: 1 < values.len().
+    assert_eq!(unsafe { get_known_in_bounds(&values, 1) }, 20);
 }
 ```
 
-## When to Use Each
+Usually, write safe code in a form the optimizer can understand instead. `assert_unchecked` is appropriate only when the invariant is independently required for soundness/performance, its proof is clear, and measurement shows the extra promise matters.
 
-| API | Since | Use Case | Mechanism |
-|-----|-------|----------|-----------|
-| `cold_path()` | 1.95 | Error paths, cache misses, rarely-taken branches | Code layout: puts marked path in cold section |
-| `select_unpredictable(cond)` | 1.88 | Truly unpredictable branches (binary search, data-dependent) | Compiler emits CMOV or equivalent |
-| `assert_unchecked(cond)` | 1.81 | Known-invariant conditions the compiler can't prove | UB if condition is false; enables elision |
+## Do Not Turn Hints Into Performance Folklore
 
-## Performance Impact
+Avoid claims such as:
 
-| Scenario | Without Hint | With Hint |
-|----------|-------------|-----------|
-| Cold path (rarely taken) | May be inlined in hot section | Moved to .cold section, better I-cache usage |
-| Unpredictable branch | Branch misprediction stalls | CMOV/select — no branch, constant latency |
-| Known-valid index | Bounds check + branch | No check, load direct |
+- `select_unpredictable` “emits CMOV”;
+- `cold_path` always moves code into a `.cold` section;
+- `assert_unchecked` always removes a bounds check;
+- a hint that helps one CPU/compiler build must help another.
+
+All three feed information to the optimizer. The final code depends on target, optimization level, surrounding code, compiler version, and profile data.
+
+## Prefer Higher-Level Structure First
+
+Before adding hints, check whether ordinary Rust already expresses the optimization opportunity:
+
+- use iterators/slices to expose bounds relationships;
+- hoist validation outside hot loops;
+- separate genuinely cold error handling into a helper;
+- use data layout or algorithm changes when branch behavior is the real bottleneck;
+- consider profile-guided optimization for application-wide branch/layout information.
+
+Hints are the last few percent, not a substitute for an appropriate algorithm.
+
+## Quick Reference
+
+| API | Stable since | Meaning | Important caveat |
+|---|---:|---|---|
+| `cold_path()` | 1.95 | current path is unlikely | advisory code-layout/optimization hint |
+| `select_unpredictable(cond, a, b)` | 1.88 | choose `a`/`b`; condition is hard to predict | branchless lowering is not guaranteed |
+| `unsafe { assert_unchecked(cond) }` | 1.81 | compiler may assume `cond == true` | false condition is immediate UB |
 
 ## See Also
 
-- [perf-black-box-bench](./perf-black-box-bench.md) - black_box benchmarks
-- [opt-cold-unlikely](./opt-cold-unlikely.md) - #[cold] attribute
-- [opt-likely-hint](./opt-likely-hint.md) - likely/unlikely intrinsics
-- [opt-bounds-check](./opt-bounds-check.md) - Bounds check elimination
+- [perf-black-box-bench](./perf-black-box-bench.md) — benchmark barriers
+- [opt-cold-unlikely](./opt-cold-unlikely.md) — cold functions
+- [opt-bounds-check](./opt-bounds-check.md) — bounds-check elimination
+- [perf-profile-first](./perf-profile-first.md) — measure before optimizing
+
+## References
+
+- [std::hint](https://doc.rust-lang.org/std/hint/)
+- [std::hint::select_unpredictable](https://doc.rust-lang.org/std/hint/fn.select_unpredictable.html)
+- [std::hint::cold_path](https://doc.rust-lang.org/std/hint/fn.cold_path.html)
+- [std::hint::assert_unchecked](https://doc.rust-lang.org/std/hint/fn.assert_unchecked.html)

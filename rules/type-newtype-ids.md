@@ -1,83 +1,72 @@
 # type-newtype-ids
 
-> Wrap IDs in newtypes
+> Wrap semantically distinct IDs in distinct types, and encode additional invariants such as non-zero values at construction
 
 **Rule**: `type-newtype-ids`
 
 ## Why It Matters
 
-Using raw integers for IDs is error-prone. It's easy to accidentally pass a `user_id` where a `post_id` is expected. Newtypes make these mix-ups compile-time errors instead of runtime bugs.
+Raw integers do not distinguish a `UserId` from an `OrderId`. A newtype turns that distinction into a compile-time property while still allowing a compact representation.
 
-## Bad
+Keep the wrapper's construction semantics aligned with the domain. If zero is invalid, encode that with `NonZero`; if parsing or validation is more involved, use a checked constructor or a validated-newtype helper such as `nutype`.
+
+## Bad: Interchangeable Primitive IDs
 
 ```rust
-fn get_user_posts(user_id: u64, post_id: u64) -> Vec<Post> {
-    // Which is which? Easy to swap by accident
+fn load_membership(user_id: u64, team_id: u64) -> (u64, u64) {
+    (user_id, team_id)
 }
 
-// Oops! Arguments swapped — compiles fine, wrong at runtime
-let posts = get_user_posts(post_id, user_id);
+fn main() {
+    let user_id = 7;
+    let team_id = 42;
 
-// Even worse with multiple IDs
-fn transfer(from: u64, to: u64, amount: u64) {
-    // from/to can easily be swapped
+    // Compiles even though the arguments are reversed.
+    let membership = load_membership(team_id, user_id);
+    assert_eq!(membership, (42, 7));
 }
 ```
 
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct UserId(pub u64);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PostId(pub u64);
-
-fn get_user_posts(user_id: UserId, post_id: PostId) -> Vec<Post> {
-    // Types are distinct
-}
-
-// This won't compile — types don't match
-// let posts = get_user_posts(post_id, user_id);  // ERROR!
-
-// Correct usage
-let posts = get_user_posts(UserId(1), PostId(42));
-```
-
-## Reduce Boilerplate with `derive_more`
-
-`derive_more` eliminates the manual trait implementations for newtypes:
+## Good: Distinct ID Types
 
 ```rust
-use derive_more::{AsRef, Deref, Display, From};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From, AsRef, Deref, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UserId(u64);
 
-// From<u64> for UserId, AsRef<u64>, Deref<Target = u64>, Display
-// all generated automatically.
-let id = UserId::from(42u64);
-println!("{id}");              // Display: "42"
-let raw: u64 = *id;            // Deref
-let r: &u64 = id.as_ref();     // AsRef
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TeamId(u64);
+
+fn load_membership(user_id: UserId, team_id: TeamId) -> (UserId, TeamId) {
+    (user_id, team_id)
+}
+
+fn main() {
+    let user_id = UserId(7);
+    let team_id = TeamId(42);
+
+    let membership = load_membership(user_id, team_id);
+    assert_eq!(membership, (user_id, team_id));
+
+    // load_membership(team_id, user_id); // type mismatch
+}
 ```
 
-## `#[repr(transparent)]` + `NonZero<uN>` Niche Optimization
+A public ID type usually benefits from a private field plus deliberate constructors/accessors so representation changes do not leak through every caller.
 
-For IDs that must never be zero, combine `#[repr(transparent)]` with `NonZero<uN>` for a zero-cost `Option`:
+## Non-Zero IDs
+
+When zero is not a valid identifier, make that invariant structural:
 
 ```rust
 use core::num::NonZero;
-use derive_more::{Display, From};
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UserId(NonZero<u64>);
 
 impl UserId {
     pub fn new(raw: u64) -> Option<Self> {
-        Some(Self(NonZero::new(raw)?))
+        NonZero::new(raw).map(Self)
     }
 
     pub fn get(self) -> u64 {
@@ -85,148 +74,98 @@ impl UserId {
     }
 }
 
-// Option<UserId> is 8 bytes — same as u64
-assert_eq!(std::mem::size_of::<Option<UserId>>(), 8);
+fn main() {
+    assert!(UserId::new(0).is_none());
+    assert_eq!(UserId::new(42).unwrap().get(), 42);
+
+    assert_eq!(
+        core::mem::size_of::<Option<UserId>>(),
+        core::mem::size_of::<u64>(),
+    );
+}
 ```
 
-## Validate with `nutype`
+The `Option<NonZero<T>>` niche/layout guarantee is useful for optional handles without adding a separate discriminant.
 
-For IDs with validation rules (non-empty, specific format), use `nutype` for a validated newtype with automatic sanitization:
+## Validated IDs With `nutype` 0.7
+
+For repeated validation/serialization boilerplate, `nutype` can generate a checked API. With validation present, the constructor is `try_new`, and serde traits belong in `derive(...)` when the crate's `serde` feature is enabled.
 
 ```rust
 use nutype::nutype;
-use core::num::NonZero;
 
 #[nutype(
     validate(greater = 0),
-    derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, AsRef, Deref),
-    serde(Serialize, Deserialize),
+    derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, Serialize, Deserialize),
 )]
 pub struct UserId(u64);
 
-// Guaranteed non-zero, with Display, AsRef, Deref, serde
-```
+fn main() {
+    let id = UserId::try_new(42).unwrap();
+    assert!(UserId::try_new(0).is_err());
+    assert_eq!(id.to_string(), "42");
 
-## `From<T>` for `LazyCell`/`LazyLock` (Rust 1.96+)
-
-Starting with Rust 1.96, `LazyCell` and `LazyLock` implement `From<T>`, making it ergonomic to initialize lazy ID types:
-
-```rust
-use std::cell::LazyCell;
-
-// Before Rust 1.96: manual LazyCell::new(|| ...)
-lazy_static! {
-    static ref GUEST_ID: UserId = UserId::new(0).unwrap();
-}
-
-// After Rust 1.96: From<T> for LazyCell/LazyLock
-let guest_id = LazyCell::from(UserId::new(0).unwrap());
-```
-
-## Derive Common Traits (Manual)
-
-```rust
-#[derive(
-    Debug,      // For printing
-    Clone,      // For copying
-    Copy,       // For implicit copies (if small)
-    PartialEq,  // For == comparison
-    Eq,         // For HashMap keys
-    Hash,       // For HashMap keys
-    PartialOrd, // For sorting (optional)
-    Ord,        // For BTreeMap keys (optional)
-)]
-pub struct UserId(pub u64);
-```
-
-## Add Useful Methods
-
-```rust
-pub struct UserId(u64);
-
-impl UserId {
-    pub const fn new(id: u64) -> Self { Self(id) }
-    pub const fn get(self) -> u64 { self.0 }
-
-    // For database queries
-    pub fn as_i64(self) -> i64 { self.0 as i64 }
-}
-
-impl From<u64> for UserId {
-    fn from(id: u64) -> Self { Self(id) }
-}
-
-impl std::fmt::Display for UserId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "user:{}", self.0)
-    }
+    let json = serde_json::to_string(&id).unwrap();
+    let decoded: UserId = serde_json::from_str(&json).unwrap();
+    assert_eq!(decoded, id);
 }
 ```
 
-## With Serde
+Do not copy older `serde(...)` attribute syntax or call `new()` on a validated `nutype`; those are not the `nutype` 0.7 API taught by this repository.
+
+## Transparent Serde for a Manual Newtype
+
+If the serialized representation should be exactly the inner primitive, serde can make that explicit:
 
 ```rust
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]  // Serializes as just the inner value
-pub struct UserId(pub u64);
+#[serde(transparent)]
+pub struct UserId(u64);
 
-// JSON: {"user_id": 123} not {"user_id": {"0": 123}}
-```
-
-## String IDs (UUIDs, etc.)
-
-```rust
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SessionId(String);
-
-impl SessionId {
-    pub fn new() -> Self {
-        Self(uuid::Uuid::new_v4().to_string())
-    }
-
-    pub fn parse(s: &str) -> Result<Self, ParseError> {
-        uuid::Uuid::parse_str(s)?;
-        Ok(Self(s.to_string()))
-    }
-
-    pub fn as_str(&self) -> &str { &self.0 }
+fn main() {
+    let id = UserId(123);
+    assert_eq!(serde_json::to_string(&id).unwrap(), "123");
 }
 ```
 
-## Multiple Related IDs
+Serialization does not itself validate a manual newtype. If deserialization must enforce an invariant, route it through a checked conversion or custom `Deserialize` implementation.
+
+## Generate Families of Simple IDs Deliberately
+
+A tiny local macro can reduce repetition without erasing type distinctions:
 
 ```rust
-// Macro for consistent ID types
 macro_rules! define_id {
     ($name:ident) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-        pub struct $name(pub u64);
+        pub struct $name(u64);
 
         impl $name {
-            pub const fn new(id: u64) -> Self { Self(id) }
+            pub const fn new(raw: u64) -> Self { Self(raw) }
             pub const fn get(self) -> u64 { self.0 }
-        }
-
-        impl From<u64> for $name {
-            fn from(id: u64) -> Self { Self(id) }
         }
     };
 }
 
 define_id!(UserId);
 define_id!(PostId);
-define_id!(CommentId);
-define_id!(TeamId);
+
+fn main() {
+    let user = UserId::new(1);
+    let post = PostId::new(1);
+    assert_eq!(user.get(), post.get());
+    // user == post; // type mismatch
+}
 ```
+
+Prefer a small hand-written type when it has custom semantics; macro generation is most useful when many IDs intentionally share the same API.
 
 ## See Also
 
-- [api-newtype-safety](./api-newtype-safety.md) — Newtypes for type safety
-- [type-newtype-validated](./type-newtype-validated.md) — Newtypes for validated data
-- [type-nutype-validated](./type-nutype-validated.md) — `nutype` for validated newtypes
-- [type-derive-more-boilerplate](./type-derive-more-boilerplate.md) — `derive_more` for boilerplate reduction
-- [type-repr-transparent](./type-repr-transparent.md) — Layout guarantees for newtypes
-- [type-nonzero-intrinsics](./type-nonzero-intrinsics.md) — `NonZero<uN>` niche optimization
-- [api-parse-dont-validate](./api-parse-dont-validate.md) — Parse at boundaries
+- [api-newtype-safety](./api-newtype-safety.md) — semantic newtypes
+- [type-newtype-validated](./type-newtype-validated.md) — validation at construction
+- [type-nutype-validated](./type-nutype-validated.md) — current `nutype` guidance
+- [type-nonzero-intrinsics](./type-nonzero-intrinsics.md) — `NonZero` invariants and arithmetic
+- [type-repr-transparent](./type-repr-transparent.md) — when to promise wrapped layout/ABI
