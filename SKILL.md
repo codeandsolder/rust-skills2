@@ -362,10 +362,10 @@ Reference these guidelines when:
 
 ### 21. Documentation (MEDIUM)
 
-- [`doc-all-public`](rules/doc-all-public.md) - Document all public items with `///` doc comments
+- [`doc-all-public`](rules/doc-all-public.md) - Document the public API with rustdoc comments
 - [`doc-module-inner`](rules/doc-module-inner.md) - Use inner doc comments (`//!`) to document a crate or module as a whole
 - [`doc-examples-section`](rules/doc-examples-section.md) - Add focused `# Examples` sections when an example materially clarifies how to use the API
-- [`doc-errors-section`](rules/doc-errors-section.md) - Include `# Errors` section for fallible functions
+- [`doc-errors-section`](rules/doc-errors-section.md) - Document meaningful failure conditions in a `# Errors` section
 - [`doc-panics-section`](rules/doc-panics-section.md) - Include `# Panics` section for functions that can panic
 - [`doc-safety-section`](rules/doc-safety-section.md) - Document caller obligations with `# Safety`; justify local unsafe operations with `// SAFETY:` proofs
 - [`doc-question-mark`](rules/doc-question-mark.md) - Give doctests a `Result`-returning context when demonstrating `?`
