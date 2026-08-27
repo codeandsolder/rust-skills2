@@ -3,7 +3,6 @@
 # Migration debt only; new signatures fail and stale entries must be removed.
 
 api-nutype-validated.md :: Good :: block 2 :: E0433,P:to validate string types with || legacy compile failure: repair example or add explicit rust-check metadata
-doc-cfg-patterns.md :: Good :: block 2 :: E0583,E0658 || legacy compile failure: repair example or add explicit rust-check metadata
 doc-question-mark.md :: Good :: block 2 :: E0425,E0601,P:`self` parameter is only allowed || legacy compile failure: repair example or add explicit rust-check metadata
 err-diagnostic-do-not-recommend.md :: Good :: block 2 :: E0210 || legacy compile failure: repair example or add explicit rust-check metadata
 err-doc-errors.md :: Good :: block 2 :: E0425,E0601 || legacy compile failure: repair example or add explicit rust-check metadata
@@ -13,13 +12,11 @@ lint-unsafe-doc.md :: Good :: block 3 :: E0106,E0425 || legacy compile failure: 
 macro-proc-error-spans.md :: Good :: block 2 :: E0432,P:the `#[proc_macro_derive]` attribute is only || legacy compile failure: repair example or add explicit rust-check metadata
 macro-proc-syn-quote.md :: Good :: block 2 :: E0432,P:the `#[proc_macro_derive]` attribute is only || legacy compile failure: repair example or add explicit rust-check metadata
 mem-assert-type-size.md :: Good :: block 2 :: E0425,E0512 || legacy compile failure: repair example or add explicit rust-check metadata
-mem-box-new-uninit.md :: Good :: block 2 :: E0425,E0609 || legacy compile failure: repair example or add explicit rust-check metadata
 mem-reuse-collections.md :: Good :: block 2 :: E0107,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
 mem-slotmap-arena.md :: Good :: block 2 :: E0425,E0433,E0782 || legacy compile failure: repair example or add explicit rust-check metadata
 name-funcs-snake.md :: Good :: block 2 :: E0586,P:expected item, found keyword `let`,P:unexpected token: `...` || legacy compile failure: repair example or add explicit rust-check metadata
 name-types-camel.md :: Good :: block 2 :: P:expected identifier, found `...`,P:non-item in item list || legacy compile failure: repair example or add explicit rust-check metadata
 own-move-large.md :: Good :: block 2 :: E0425,E0599 || legacy compile failure: repair example or add explicit rust-check metadata
-own-refcell-interior.md :: Good :: block 2 :: E0425,E0599 || legacy compile failure: repair example or add explicit rust-check metadata
 perf-collect-into.md :: Good :: block 2 :: E0425,E0658,P:an inner attribute is not || legacy compile failure: repair example or add explicit rust-check metadata
 perf-extend-batch.md :: Good :: block 2 :: E0107,E0425 || legacy compile failure: repair example or add explicit rust-check metadata
 proj-feature-additive.md :: Good :: block 2 :: E0433,P:`#[panic_handler]` function required, but not,P:unwinding panics are not supported || legacy compile failure: repair example or add explicit rust-check metadata
