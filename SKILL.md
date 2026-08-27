@@ -74,7 +74,7 @@ Reference these guidelines when:
 
 ### 1. Ownership & Borrowing (CRITICAL)
 
-- [`own-borrow-over-clone`](rules/own-borrow-over-clone.md) - Prefer `&T` borrowing over `.clone()`
+- [`own-borrow-over-clone`](rules/own-borrow-over-clone.md) - Borrow when a callee only needs temporary access; clone when the API genuinely needs an independent owned value
 - [`own-slice-over-vec`](rules/own-slice-over-vec.md) - Accept `&[T]` not `&Vec<T>`, `&str` not `&String`
 - [`own-cow-conditional`](rules/own-cow-conditional.md) - Use `Cow<'a, T>` for conditional ownership
 - [`own-arc-shared`](rules/own-arc-shared.md) - Use `Arc<T>` when multiple owners may cross thread boundaries; add synchronization only for mutation that actually requires it
@@ -231,7 +231,7 @@ Reference these guidelines when:
 - [`type-newtype-ids`](rules/type-newtype-ids.md) - Wrap semantically distinct IDs in distinct types, and encode additional invariants such as non-zero values at construction
 - [`type-newtype-validated`](rules/type-newtype-validated.md) - Put durable domain invariants behind checked constructors so downstream code can rely on the type instead of re-validating primitives
 - [`type-enum-states`](rules/type-enum-states.md) - Use enums for mutually exclusive states
-- [`type-option-nullable`](rules/type-option-nullable.md) - Use `Option<T>` for values that might not exist
+- [`type-option-nullable`](rules/type-option-nullable.md) - Use `Option<T>` when absence is an ordinary state; use `Result<T, E>` when callers need failure information
 - [`type-result-fallible`](rules/type-result-fallible.md) - Use `Result<T, E>` for fallible operations
 - [`type-phantom-marker`](rules/type-phantom-marker.md) - Use `PhantomData` for zero-cost type markers
 - [`type-never-diverge`](rules/type-never-diverge.md) - Use the never type `!` for functions that never return
@@ -348,7 +348,7 @@ Reference these guidelines when:
 - [`test-mock-traits`](rules/test-mock-traits.md) - Put meaningful external dependencies behind replaceable boundaries when that improves testing
 - [`test-fixture-raii`](rules/test-fixture-raii.md) - Use RAII for owned test resources; do not confuse cleanup with safe mutation of process-global state
 - [`test-tokio-async`](rules/test-tokio-async.md) - Use `#[tokio::test]` for async tests
-- [`test-should-panic`](rules/test-should-panic.md) - Use `#[should_panic]` to test that code panics as expected
+- [`test-should-panic`](rules/test-should-panic.md) - Use `#[should_panic]` for tests whose success condition is a deliberate panic
 - [`test-criterion-bench`](rules/test-criterion-bench.md) - Use `criterion` for benchmarking (or `divan` for simpler workflows)
 - [`test-doctest-examples`](rules/test-doctest-examples.md) - Keep documentation examples as executable doctests
 - [`test-loom-concurrency`](rules/test-loom-concurrency.md) - Use `loom` to exhaustively test lock-free and concurrent code

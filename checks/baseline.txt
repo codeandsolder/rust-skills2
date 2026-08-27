@@ -95,9 +95,6 @@ name-type-param-single.md :: Trait Bounds :: block 4 :: E0404,E0428,P:free funct
 opt-cache-friendly.md :: Avoid Pointer Chasing :: block 5 :: E0308
 opt-inline-never-cold.md :: Pattern: Extract Cold Code :: block 8 :: E0428
 opt-target-cpu.md :: Feature Detection at Runtime :: block 1 :: E0308
-own-borrow-over-clone.md :: Edition 2024 RPIT Lifetime Capture :: block 8 :: E0428
-own-borrow-over-clone.md :: Vec::pop_if (1.86) — Conditional pop :: block 5 :: E0369
-own-borrow-over-clone.md :: slice::get_disjoint_mut (1.86) — Borrow multiple indices simultaneously :: block 6 :: E0529
 own-clone-explicit.md :: When to Avoid Clone :: block 6 :: E0428
 own-cow-conditional.md :: Edition 2024 RPIT Makes `Cow<'_, str>` Returns More Ergonomic :: block 7 :: E0428
 own-cow-rpit-edition2024.md :: Eliminates Clone-for-Lifetime Workarounds :: block 3 :: E0428
@@ -118,7 +115,6 @@ perf-collect-once.md :: Anti-Pattern: HashMap::values().collect() Then Iterate :
 perf-iter-over-index.md :: Fixed-Size Windows with array_windows (Rust 1.94+) :: block 3 :: E0428
 proj-mod-rs-dir.md :: Consistency Rule :: block 5 :: P:expected `;`, found `mod_module_files`,P:expected one of `.`, `;`,
 proj-mod-rs-dir.md :: Edition 2024: `gen` Keyword Reservation :: block 4 :: P:expected identifier, found reserved keyword
-test-should-panic.md :: assert_matches! as Alternative (Rust 1.96+) :: block 6 :: E0308
 trait-upcasting.md :: Working with standard library trait hierarchies :: block 4 :: E0038,E0393
 type-derive-more-boilerplate.md :: Complete Example :: block 3 :: E0382
 type-enum-states.md :: Avoid Boolean Flags :: block 8 :: E0428
@@ -126,6 +122,4 @@ type-enum-states.md :: `cfg_select!` for Compile-Time State Selection (Rust 1.95
 type-enum-states.md :: `let_chains` for Peeling Nested States (Edition 2024, Rust 1.85+) :: block 5 :: E0428
 type-never-diverge.md :: Standard Library Examples :: block 7 :: P:expected one of `where` or
 type-never-diverge.md :: `Result::flatten` with `!`/`Infallible` (Rust 1.89+) :: block 4 :: E0428
-type-option-nullable.md :: `Option::as_slice()` (Rust 1.81+) :: block 5 :: E0277
-type-option-nullable.md :: `let_chains` for Multiple Option Checks (Edition 2024, Rust 1.85+) :: block 6 :: E0428
 type-result-fallible.md :: `#[diagnostic::do_not_recommend]` (Rust 1.85+) :: block 7 :: E0210
