@@ -1,33 +1,37 @@
 # own-refcell-interior
 
-> Use `RefCell<T>` for interior mutability in single-threaded code
+> Use `RefCell<T>` when thread-local shared access genuinely needs runtime-checked interior mutability
 
 ## Why It Matters
 
-Rust's borrow checker enforces rules at compile time, but sometimes you need to mutate data through a shared reference. `RefCell<T>` moves borrow checking to runtime, allowing mutation through `&self`. This is essential for patterns like caches, lazy initialization, and observer patterns where compile-time borrowing is too restrictive.
+`RefCell<T>` lets code mutate a value through a shared reference by moving Rust's usual borrow checks from compile time to runtime. A shared borrow comes from `borrow()` and an exclusive borrow from `borrow_mut()`; violating the same aliasing rules that ordinary references enforce causes a panic (or a `BorrowError` / `BorrowMutError` with the `try_` methods).
 
-## Bad
+This is useful for caches, graph-like ownership, test doubles, callbacks, and other cases where the program can uphold borrowing discipline but the static borrow checker cannot conveniently express it.
+
+`RefCell<T>` is not `Sync`, so it is not a shared cross-thread synchronization primitive. Use `Mutex`, `RwLock`, atomics, or message passing for concurrently shared state.
+
+## Bad: Forcing Exclusive Access to the Whole Owner
 
 ```rust
+use std::collections::HashMap;
+
 struct Cache {
-    // Requires &mut self to update, breaking shared reference patterns
     data: HashMap<String, String>,
 }
 
 impl Cache {
-    fn get_or_compute(&mut self, key: &str) -> &str {
-        // Caller needs &mut Cache, can't share cache reference
-        if !self.data.contains_key(key) {
-            self.data.insert(key.to_string(), expensive_compute(key));
-        }
-        &self.data[key]
+    fn get_or_compute(&mut self, key: &str) -> String {
+        self.data
+            .entry(key.to_owned())
+            .or_insert_with(|| format!("computed:{key}"))
+            .clone()
     }
 }
 ```
 
-This forces exclusive access even for logically shared operations.
+This requires `&mut Cache` even if the cache is otherwise logically shared.
 
-## Good
+## Good: Keep the Runtime Borrow Small
 
 ```rust
 use std::cell::RefCell;
@@ -38,158 +42,164 @@ struct Cache {
 }
 
 impl Cache {
-    fn get_or_compute(&self, key: &str) -> String {
-        // Can mutate through &self
-        let mut data = self.data.borrow_mut();
-        if !data.contains_key(key) {
-            data.insert(key.to_string(), expensive_compute(key));
+    fn new() -> Self {
+        Self {
+            data: RefCell::new(HashMap::new()),
         }
-        data[key].clone()
+    }
+
+    fn get_or_compute(&self, key: &str) -> String {
+        let mut data = self.data.borrow_mut();
+        data.entry(key.to_owned())
+            .or_insert_with(|| format!("computed:{key}"))
+            .clone()
     }
 }
 
-// Multiple references can coexist
-let cache = Cache::new();
-let ref1 = &cache;
-let ref2 = &cache;
-ref1.get_or_compute("key1");
-ref2.get_or_compute("key2");
+fn main() {
+    let cache = Cache::new();
+    let a = &cache;
+    let b = &cache;
+
+    assert_eq!(a.get_or_compute("one"), "computed:one");
+    assert_eq!(b.get_or_compute("two"), "computed:two");
+}
 ```
 
-## Common Pattern: Rc<RefCell<T>>
+Prefer to finish the `Ref` / `RefMut` borrow before calling unrelated code. Holding runtime borrows for large scopes makes re-entrant callbacks and nested operations more likely to panic.
+
+## Common Pattern: `Rc<RefCell<T>>`
 
 ```rust
+use std::cell::RefCell;
 use std::rc::Rc;
+
+#[derive(Default)]
+struct Counter(i32);
+
+type SharedCounter = Rc<RefCell<Counter>>;
+
+fn incrementer(counter: SharedCounter) -> impl Fn() {
+    move || counter.borrow_mut().0 += 1
+}
+
+fn main() {
+    let counter = Rc::new(RefCell::new(Counter::default()));
+    let inc_a = incrementer(Rc::clone(&counter));
+    let inc_b = incrementer(Rc::clone(&counter));
+
+    inc_a();
+    inc_b();
+    assert_eq!(counter.borrow().0, 2);
+}
+```
+
+This is appropriate when ownership is shared within one thread. It is not a substitute for `Arc<Mutex<T>>` when the state must be shared concurrently across threads.
+
+## Runtime Borrow Failures
+
+```rust
 use std::cell::RefCell;
 
-// Shared mutable state in single-threaded code
-type SharedState = Rc<RefCell<AppState>>;
+fn main() {
+    let cell = RefCell::new(5);
+    let shared = cell.borrow();
 
-fn create_handlers(state: SharedState) -> Vec<Box<dyn Fn()>> {
-    vec![
-        Box::new({
-            let state = state.clone();
-            move || state.borrow_mut().increment()
-        }),
-        Box::new({
-            let state = state.clone();
-            move || state.borrow_mut().decrement()
-        }),
-    ]
+    assert!(cell.try_borrow_mut().is_err());
+    drop(shared);
+
+    *cell.borrow_mut() += 1;
+    assert_eq!(*cell.borrow(), 6);
 }
 ```
 
-## Runtime Panics
+Use `try_borrow()` / `try_borrow_mut()` when contention in the runtime borrow state is an expected condition rather than a programming bug.
 
-`RefCell` panics if you violate borrowing rules at runtime:
+## `Cell::update` Is Not Atomic
 
-```rust
-let cell = RefCell::new(5);
-let borrow1 = cell.borrow();
-let borrow2 = cell.borrow_mut(); // PANIC: already borrowed
-```
-
-Use `try_borrow()` and `try_borrow_mut()` for fallible borrowing.
-
-## Cell::update (1.88) — Atomic Update for Copy Types
-
-For `Copy` types, `Cell::update` provides a concise read-modify-write without separate `get`/`set` calls:
+For `Copy` values, `Cell::update` (stable since Rust 1.88) is convenient syntax for a single-threaded read-transform-write:
 
 ```rust
 use std::cell::Cell;
 
-let counter = Cell::new(0);
-
-// Bad: separate read, compute, write
-counter.set(counter.get() + 1);
-
-// Good: single closure-based update
-counter.update(|x| x + 1);
-
-// With stateful computation
-counter.update(|x| {
-    if x > 100 { 0 } else { x + 1 }
-});
-```
-
-This is especially useful when `Cell` is used for interior mutability within a `RefCell`-like pattern but the data is `Copy`.
-
-## Cell::as_array_of_cells (1.91) — Reinterpret Array as Cell Array
-
-```rust
-use std::cell::Cell;
-
-// 1.91+: reinterpret &Cell<[T; N]> as &[Cell<T>; N]
-let cell = Cell::new([1u32, 2, 3, 4]);
-let cells: &[Cell<u32>; 4] = cell.as_array_of_cells();
-
-// Now you can mutate individual elements
-cells[0].set(10);
-cells[2].set(30);
-// Previously required unsafe or full-array replacement
-```
-
-Combined with `Rc<Cell<[T; N]>>` for shared mutable arrays:
-
-```rust
-use std::cell::Cell;
-use std::rc::Rc;
-
-let data: Rc<Cell<[u32; 4]>> = Rc::new(Cell::new([1, 2, 3, 4]));
-let cells: &[Cell<u32>; 4] = data.as_array_of_cells();
-cells[1].set(42);  // Mutate element through Rc + Cell
-```
-
-## Edition 2024: RefCell Borrows and Temporary Scopes
-
-### `if let` Temporary Scope Change
-
-In Edition 2021, temporary borrows from `RefCell` in `if let` conditions lived until the end of the statement — causing panics:
-
-```rust
-// Edition 2021: PANICS at runtime
-let cache = RefCell::new(Some("hello".to_string()));
-if let Some(ref value) = *cache.borrow() {
-    // Borrow is still active here...
-    cache.borrow_mut();          // PANIC: already borrowed
-    // ...even though value is a reference into the Ref
+fn main() {
+    let counter = Cell::new(0u32);
+    counter.update(|x| x + 1);
+    assert_eq!(counter.get(), 1);
 }
 ```
 
-In **Edition 2024**, the temporary scope ends at the `if let` branch boundary, so the borrow is released before the branch body:
+This operation is **not atomic or synchronizing**. `Cell` is `!Sync`; for cross-thread atomic read-modify-write operations use the appropriate type from `std::sync::atomic`.
+
+See [own-cell-update](./own-cell-update.md) for the dedicated rule.
+
+## Edition 2024: `if let` Temporaries Are Shorter on the `else` Path
+
+Rust 2024 narrows the temporary scope of an `if let` scrutinee. When the pattern **does not match**, scrutinee temporaries are dropped before entering `else`. This can matter for `RefCell`, locks, and other guard-like temporaries.
 
 ```rust
-// Edition 2024: ✅ compiles and runs without panic
-let cache = RefCell::new(Some("hello".to_string()));
-if let Some(ref value) = *cache.borrow() {
-    // Borrow from temporary is released at branch boundary
-    cache.borrow_mut();          // ✅ OK in Edition 2024
+use std::cell::RefCell;
+
+fn main() {
+    let cell = RefCell::new(None::<String>);
+
+    if let Some(value) = cell.borrow().as_ref() {
+        println!("{value}");
+    } else {
+        // In Edition 2024, the failed-pattern scrutinee borrow has been dropped
+        // before this branch starts, so an exclusive borrow is available.
+        *cell.borrow_mut() = Some("filled".to_owned());
+    }
+
+    assert_eq!(cell.borrow().as_deref(), Some("filled"));
 }
 ```
 
-### Tail Expression Temporary Scope
+The change does **not** mean the temporary is dropped before the successful `then` branch. If a successful pattern binds a reference derived from `cell.borrow()`, the `Ref` must remain alive while that reference is used. Attempting `borrow_mut()` in that branch can still panic.
 
-In Edition 2021, using `RefCell` borrows in tail expressions was limited:
+In Edition 2021, `if let` scrutinee temporaries could live through the entire `if let` expression, including `else`; the 2024 rule specifically shortens that lifetime when control enters `else`.
+
+## Edition 2024: Tail-Expression Temporaries Are Dropped Earlier
+
+The other relevant Edition 2024 change is also a **narrowing**, not an extension: temporaries created by a block's tail expression are dropped at the end of that block, before local variables in the block are dropped.
 
 ```rust
-fn len(c: RefCell<String>) -> usize {
-    c.borrow().len()  // ERROR in 2021: temporary dropped while borrowed
+use std::cell::RefCell;
+
+fn len_of_local() -> usize {
+    let text = RefCell::new(String::from("hello"));
+    text.borrow().len()
+}
+
+fn main() {
+    assert_eq!(len_of_local(), 5);
 }
 ```
 
-In **Edition 2024**, the temporary scope is extended to cover the caller's use of the return value, so this compiles:
+This pattern could fail borrow checking in Edition 2021 because the `Ref` temporary from the tail expression was scheduled to outlive the local `RefCell`. Edition 2024 drops the `Ref` first, allowing the local to be dropped afterward.
 
-```rust
-fn len(c: RefCell<String>) -> usize {
-    c.borrow().len()  // ✅ OK in Edition 2024 — temporary lives long enough
-}
-```
+Do not describe this as extending a temporary to cover the caller's use—the edition deliberately makes these temporary scopes shorter.
 
-These changes significantly reduce the need for workarounds like `.clone()` or explicit block-scoping when working with `RefCell`.
+## Choosing an Interior-Mutability Primitive
+
+| Need | Typical choice |
+|------|----------------|
+| `Copy` value, thread-local shared mutation | `Cell<T>` |
+| General value, thread-local runtime-checked borrowing | `RefCell<T>` |
+| Shared mutation across threads | `Mutex<T>` / `RwLock<T>` |
+| Cross-thread scalar/flag/counter | atomic type when its memory-ordering model fits |
+
+Prefer ordinary `&mut T` whenever ownership already gives you exclusive access; runtime borrow checking is useful when it solves an actual ownership shape, not as a default replacement for normal borrowing.
 
 ## See Also
 
-- [own-cell-update](./own-cell-update.md) - Cell::update for Copy types
-- [own-rc-single-thread](./own-rc-single-thread.md) - Combining with Rc for shared ownership
-- [own-mutex-interior](./own-mutex-interior.md) - Thread-safe alternative
-- [own-lifetime-elision](./own-lifetime-elision.md) - Edition 2024 lifetime capture
+- [own-cell-update](./own-cell-update.md) — `Cell::update` for `Copy` types
+- [own-rc-single-thread](./own-rc-single-thread.md) — shared single-thread ownership
+- [own-mutex-interior](./own-mutex-interior.md) — synchronized shared mutation
+- [own-rwlock-readers](./own-rwlock-readers.md) — read-heavy synchronized state
+
+## References
+
+- [std::cell::RefCell](https://doc.rust-lang.org/std/cell/struct.RefCell.html)
+- [Rust 2024 Edition Guide: if-let temporary scope](https://doc.rust-lang.org/edition-guide/rust-2024/temporary-if-let-scope.html)
+- [Rust 2024 Edition Guide: tail-expression temporary scope](https://doc.rust-lang.org/edition-guide/rust-2024/temporary-tail-expr-scope.html)

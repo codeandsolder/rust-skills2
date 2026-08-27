@@ -79,7 +79,7 @@ Reference these guidelines when:
 - [`own-cow-conditional`](rules/own-cow-conditional.md) - Use `Cow<'a, T>` for conditional ownership
 - [`own-arc-shared`](rules/own-arc-shared.md) - Use `Arc<T>` for thread-safe shared ownership
 - [`own-rc-single-thread`](rules/own-rc-single-thread.md) - Use `Rc<T>` for shared ownership in single-threaded contexts
-- [`own-refcell-interior`](rules/own-refcell-interior.md) - Use `RefCell<T>` for interior mutability in single-threaded code
+- [`own-refcell-interior`](rules/own-refcell-interior.md) - Use `RefCell<T>` when thread-local shared access genuinely needs runtime-checked interior mutability
 - [`own-mutex-interior`](rules/own-mutex-interior.md) - Use the right `Mutex<T>` for the execution model: `std`/`parking_lot` for synchronous code, `tokio::sync::Mutex` for async code
 - [`own-rwlock-readers`](rules/own-rwlock-readers.md) - Use the right `RwLock<T>` when reads significantly outnumber writes
 - [`own-copy-small`](rules/own-copy-small.md) - Implement `Copy` for small, simple types
@@ -131,7 +131,7 @@ Reference these guidelines when:
 - [`mem-take-replace`](rules/mem-take-replace.md) - Use `mem::take` / `mem::replace` to move a value out of a `&mut` without cloning
 - [`mem-drop-order`](rules/mem-drop-order.md) - Know and control drop order: struct fields drop top-to-bottom, locals in reverse
 - [`mem-arc-str`](rules/mem-arc-str.md) - Prefer `Arc<str>` over `Arc<String>` for thread-shared immutable strings
-- [`mem-box-new-uninit`](rules/mem-box-new-uninit.md) - Use `Box::new_uninit()` for lazy-initialized heap allocations
+- [`mem-box-new-uninit`](rules/mem-box-new-uninit.md) - Use `Box::new_uninit()` when you genuinely need deferred or in-place heap initialization; call `assume_init()` only after the allocation contains a valid `T`
 - [`mem-ecow-clone-heavy`](rules/mem-ecow-clone-heavy.md) - Use `EcoString` for clone-heavy string workloads
 - [`mem-hotpath-profile`](rules/mem-hotpath-profile.md) - Profile memory before optimizing
 - [`mem-slotmap-arena`](rules/mem-slotmap-arena.md) - Use `SlotMap<K, V>` for stable handles with contiguous storage
@@ -374,7 +374,7 @@ Reference these guidelines when:
 - [`doc-link-types`](rules/doc-link-types.md) - Use intra-doc links to connect related types and functions
 - [`doc-cargo-metadata`](rules/doc-cargo-metadata.md) - Fill `Cargo.toml` metadata for published crates
 - [`doc-crate-readme`](rules/doc-crate-readme.md) - Unify the README and crate root docs with `#![doc = include_str!("../README.md")]`
-- [`doc-cfg-patterns`](rules/doc-cfg-patterns.md) - Use `#[doc(cfg(...))]` to annotate platform/feature-gated items
+- [`doc-cfg-patterns`](rules/doc-cfg-patterns.md) - Use real `#[cfg(...)]` attributes for availability; on docs.rs, optionally add `doc(cfg)` badges behind `cfg(docsrs)` because `doc_cfg` is still unstable on stable Rust
 - [`doc-hidden-public`](rules/doc-hidden-public.md) - Use `#[doc(hidden)]` to omit internal impl details from public docs
 - [`doc-include-str`](rules/doc-include-str.md) - Use `#[doc = include_str!("...")]` for embedding external content in documentation
 - [`doc-test-edition-2024`](rules/doc-test-edition-2024.md) - Edition 2024 changes for doc tests: combined binary, `standalone_crate`, nested includes, and `$crate`
