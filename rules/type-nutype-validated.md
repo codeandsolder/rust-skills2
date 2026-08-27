@@ -1,175 +1,212 @@
 # type-nutype-validated
 
-> Use `nutype` for validated newtypes
+> Use validated newtypes to make invalid states unrepresentable; `nutype` is useful when generated constructors and invariant-preserving trait impls justify a proc macro
 
 **Rule**: `type-nutype-validated`
 
 ## Why It Matters
 
-Manually implementing validated newtypes requires 40–60 lines of boilerplate: a wrapper struct, a constructor with validation, `TryFrom`, `Display`, `AsRef`, `Deref`, `Debug`, `Clone`, serde support, and tests. The `nutype` crate (v0.7.0+) generates all of this from a single attribute, eliminating entire categories of bugs while keeping the API surface clean.
+A validated newtype moves a check from “remember to validate this primitive everywhere” to “construction is the only place an invalid value can enter.” Downstream APIs can then accept the domain type directly and rely on its invariant.
 
-This is the "parse, don't validate" pattern at its most ergonomic: the type guarantees invariants hold, and `nutype` handles construction, sanitization, serialization, and error types automatically.
+The important design pattern is the type boundary, not any particular macro. A hand-written private-field newtype is often ideal. `nutype` is useful when sanitization, several validators, parsing/conversion traits, or serde support would otherwise produce repetitive code.
 
-## Bad
+This rule focuses on **type design**. See [api-nutype-validated](./api-nutype-validated.md) for the current `nutype` 0.7 constructor, regex, serde, `const_fn`, and feature-flag details.
+
+## Bad: Primitive Obsession
 
 ```rust
-// ~50 lines of boilerplate for every validated newtype
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Username(String);
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum UsernameError {
-    #[error("username too short")]
-    TooShort,
-    #[error("username contains invalid characters")]
-    InvalidChars,
+fn connect(port: u16) {
+    // Every caller and callee must remember that zero is invalid.
+    assert!(port > 0);
+    println!("connecting to port {port}");
 }
 
-impl Username {
-    pub fn new(s: &str) -> Result<Self, UsernameError> {
-        let s = s.trim().to_lowercase();
-        if s.len() < 3 {
-            return Err(UsernameError::TooShort);
-        }
-        if !s.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            return Err(UsernameError::InvalidChars);
-        }
-        Ok(Username(s))
-    }
-}
-
-impl AsRef<str> for Username {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::ops::Deref for Username {
-    type Target = str;
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for Username {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl std::str::FromStr for Username {
-    type Err = UsernameError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Username::new(s)
-    }
-}
-
-impl serde::Serialize for Username {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.0.serialize(serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Username {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(deserializer)?;
-        Username::new(&s).map_err(serde::de::Error::custom)
-    }
+fn main() {
+    connect(8080);
 }
 ```
 
-## Good
+The signature does not communicate or enforce the domain invariant.
+
+## Good: Put the Invariant in the Type
 
 ```rust
 use nutype::nutype;
 
-#[nutype(
-    validate(predicate = |s| s.len() >= 3 && s.chars().all(|c| c.is_alphanumeric() || c == '_')),
-    sanitize(with = |s| s.trim().to_lowercase()),
-    derive(Debug, Clone, PartialEq, Eq, Hash, Display, AsRef, Deref, FromStr),
-    serde(Serialize, Deserialize),
-)]
-pub struct Username(String);
-
-// That's it. Everything from the "Bad" example is generated:
-//   - Username::new("  Alice_42  ") -> Ok(Username("alice_42"))
-//   - Username::new("ab") -> Err(UsernameError::Invalid)
-//   - format!("{username}"), username.as_ref(), *username
-//   - "hello".parse::<Username>()
-//   - serde_json::to_string(&username), serde_json::from_str(...)
-```
-
-## Common Patterns
-
-```rust
-use nutype::nutype;
-
-// Non-empty string with sanitization
-#[nutype(
-    validate(not_empty),
-    sanitize(trim),
-    derive(Debug, Clone, Display, AsRef, Deref),
-)]
-pub struct Name(String);
-
-// Email with regex validation
-#[nutype(
-    validate(regex = r"^[^@]+@[^@]+\.[^@]+$"),
-    sanitize(trim, lowercase),
-    derive(Debug, Clone, Display, AsRef),
-    serde(Deserialize),
-)]
-pub struct Email(String);
-
-// Bounded numeric
-#[nutype(
-    validate(greater_or_equal = 0.0, less_or_equal = 100.0),
-    derive(Debug, Clone, Copy, PartialEq, PartialOrd),
-)]
-pub struct Percentage(f64);
-
-// Positive integer with NonZero-size niche opt
 #[nutype(
     validate(greater = 0),
-    derive(Debug, Clone, Copy, PartialEq, Eq, Hash),
+    derive(Debug, Clone, Copy, PartialEq, Eq, Display, TryFrom),
 )]
-pub struct Age(u16);
-```
+pub struct Port(u16);
 
-## Error Type
+fn connect(port: Port) {
+    println!("connecting to port {port}");
+}
 
-`nutype` generates a custom error enum for each validated type. For `predicate` validators, the error variant is `Invalid`. For built-in validators (`not_empty`, `greater`, `regex`, etc.), each gets its own named variant.
+fn main() {
+    let port = Port::try_new(8080).unwrap();
+    connect(port);
 
-```rust
-let err = Username::new("ab").unwrap_err();
-// UsernameError::Invalid — the predicate returned false
-
-// You can match on the error to give user-friendly messages
-match err {
-    UsernameError::Invalid => "Invalid username format",
+    assert!(Port::try_new(0).is_err());
 }
 ```
 
-## Integration with `api-parse-dont-validate`
+Once a `Port` exists through the safe API, code receiving it does not need to repeat `port > 0` checks.
 
-Nutype newtypes shine at system boundaries (CLI args, HTTP requests, file parsing):
+With validation present, `nutype` 0.7 generates `try_new`, not `new`. The public tuple field is not exposed, so ordinary safe construction cannot bypass the validator.
+
+## The Same Pattern Without a Macro
+
+For a small invariant, hand-written code may be clearer and cheaper to compile:
 
 ```rust
-#[nutype(validate(regex = r"^\d{3}-\d{3}-\d{4}$"), derive(Debug, Clone, Display))]
-pub struct Phone(String);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Percentage(u8);
 
-// Parse once at the boundary, use the validated type everywhere
-fn handle_request(phone: Phone) -> Result<(), Error> {
-    // phone is guaranteed valid
-    lookup_phone(&phone);
-    Ok(())
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PercentageOutOfRange;
+
+impl Percentage {
+    pub fn new(value: u8) -> Result<Self, PercentageOutOfRange> {
+        if value <= 100 {
+            Ok(Self(value))
+        } else {
+            Err(PercentageOutOfRange)
+        }
+    }
+
+    pub fn get(self) -> u8 {
+        self.0
+    }
+}
+
+fn main() {
+    assert_eq!(Percentage::new(75).unwrap().get(), 75);
+    assert!(Percentage::new(101).is_err());
 }
 ```
+
+Do not add a proc macro merely to avoid ten straightforward lines. Use one when it meaningfully improves consistency or removes repetitive surface area across many domain types.
+
+## Validate at Boundaries, Not Repeatedly Inside the Domain
+
+```rust
+use nutype::nutype;
+
+#[nutype(
+    sanitize(trim, lowercase),
+    validate(not_empty),
+    derive(Debug, Clone, PartialEq, Eq, AsRef, FromStr),
+)]
+pub struct Username(String);
+
+fn parse_request(raw: &str) -> Result<Username, UsernameError> {
+    raw.parse()
+}
+
+fn greet(username: &Username) -> String {
+    // No second emptiness/normalization check: Username already carries it.
+    format!("hello {}", username.as_ref())
+}
+
+fn main() {
+    let username = parse_request("  Alice  ").unwrap();
+    assert_eq!(greet(&username), "hello alice");
+}
+```
+
+This is the useful interpretation of “parse, don't validate”: convert untrusted or weakly typed input into a stronger type at the boundary, then keep using that stronger type.
+
+## Sanitization Changes the Meaning of Construction
+
+Sanitization is not validation. It transforms the input before validation and storage. That can be exactly what a domain wants—trimming user-entered labels, canonicalizing case-insensitive identifiers—but should be an explicit semantic choice.
+
+Do not silently lowercase, truncate, clamp, or otherwise normalize values merely because the macro makes it easy. Ask whether callers expect rejection or canonicalization.
+
+## Preserve the Invariant Through the Whole API
+
+A validated newtype loses much of its value if safe APIs expose unrestricted mutation of the inner value.
+
+Prefer:
+
+- immutable accessors such as `as_ref`, `Deref`, or `into_inner` when appropriate;
+- domain methods that preserve the invariant;
+- re-validation when an operation can produce a new value.
+
+Be cautious with escape hatches such as arbitrary mutable dereferencing, unchecked constructors, deserialization hooks, or third-party derives that can mutate/expose the representation. `nutype` intentionally restricts ordinary derives for this reason; its unchecked features should be treated as explicit invariant boundaries.
+
+## Error Types Are Part of the Boundary
+
+A validation error should be useful at the input boundary but usually should not leak throughout the core domain model.
+
+For example:
+
+```rust
+use nutype::nutype;
+
+#[nutype(
+    validate(greater_or_equal = 1, less_or_equal = 65535),
+    derive(Debug, Clone, Copy, PartialEq, Eq),
+)]
+pub struct ServicePort(u32);
+
+fn parse_port(raw: &str) -> Result<ServicePort, String> {
+    let value: u32 = raw
+        .parse()
+        .map_err(|_| "port is not an integer".to_owned())?;
+
+    ServicePort::try_new(value).map_err(|err| err.to_string())
+}
+
+fn main() {
+    assert!(parse_port("443").is_ok());
+    assert!(parse_port("0").is_err());
+}
+```
+
+At an HTTP/CLI/configuration boundary you may map the generated validation error into a user-facing error type. Internal functions can simply accept `ServicePort`.
+
+## Newtypes Also Give Semantic Type Separation
+
+Validation is only one benefit. Distinct wrapper types prevent accidental interchange of primitives with identical representation:
+
+```rust
+struct UserId(u64);
+struct OrderId(u64);
+
+fn load_user(id: UserId) {
+    let _ = id.0;
+}
+
+fn main() {
+    load_user(UserId(7));
+    // load_user(OrderId(7)); // compile-time type mismatch
+}
+```
+
+If no runtime validation is necessary, a simple semantic newtype may be enough; do not force every wrapper into the validated-newtype pattern.
+
+## When `nutype` Fits
+
+Use it when several of these are true:
+
+- many domain types repeat the same constructor/error/trait boilerplate;
+- sanitization and validation should occur in one canonical constructor;
+- `FromStr`, `TryFrom`, serde, display, or borrowing traits are useful;
+- keeping the inner representation private is important;
+- the proc-macro dependency and compile-time cost are acceptable.
+
+Prefer a hand-written type when the invariant or API is small, highly custom, performance/build constraints matter, or public API stability calls for tighter control over generated surface area.
 
 ## See Also
 
-- [type-newtype-validated](./type-newtype-validated.md) — Manual validated newtypes
-- [type-newtype-ids](./type-newtype-ids.md) — ID newtypes
-- [api-parse-dont-validate](./api-parse-dont-validate.md) — Parse at boundaries
-- [type-derive-more-boilerplate](./type-derive-more-boilerplate.md) — `derive_more` for lighter boilerplate
-- [nutype on GitHub](https://github.com/greyblake/nutype)
+- [api-nutype-validated](./api-nutype-validated.md) — current `nutype` 0.7 API details
+- [type-newtype-validated](./type-newtype-validated.md) — hand-written validated newtypes
+- [type-newtype-ids](./type-newtype-ids.md) — semantic identifier types
+- [api-parse-dont-validate](./api-parse-dont-validate.md) — boundary parsing
+- [api-newtype-safety](./api-newtype-safety.md) — general newtype API design
+
+## References
+
+- [nutype 0.7 documentation](https://docs.rs/nutype/latest/nutype/)
+- [Parse, don't validate](https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/)
