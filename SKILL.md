@@ -75,7 +75,7 @@ Reference these guidelines when:
 ### 1. Ownership & Borrowing (CRITICAL)
 
 - [`own-borrow-over-clone`](rules/own-borrow-over-clone.md) - Borrow when a callee only needs temporary access; clone when the API genuinely needs an independent owned value
-- [`own-slice-over-vec`](rules/own-slice-over-vec.md) - Accept `&[T]` not `&Vec<T>`, `&str` not `&String`
+- [`own-slice-over-vec`](rules/own-slice-over-vec.md) - Accept borrowed views such as `&[T]`, `&str`, and `&Path` when the implementation only needs a view
 - [`own-cow-conditional`](rules/own-cow-conditional.md) - Use `Cow<'a, T>` for conditional ownership
 - [`own-arc-shared`](rules/own-arc-shared.md) - Use `Arc<T>` when multiple owners may cross thread boundaries; add synchronization only for mutation that actually requires it
 - [`own-rc-single-thread`](rules/own-rc-single-thread.md) - Use `Rc<T>` for shared ownership that is confined to one thread
@@ -230,11 +230,11 @@ Reference these guidelines when:
 
 - [`type-newtype-ids`](rules/type-newtype-ids.md) - Wrap semantically distinct IDs in distinct types, and encode additional invariants such as non-zero values at construction
 - [`type-newtype-validated`](rules/type-newtype-validated.md) - Put durable domain invariants behind checked constructors so downstream code can rely on the type instead of re-validating primitives
-- [`type-enum-states`](rules/type-enum-states.md) - Use enums for mutually exclusive states
+- [`type-enum-states`](rules/type-enum-states.md) - Use enums when a value is in exactly one of several mutually exclusive states
 - [`type-option-nullable`](rules/type-option-nullable.md) - Use `Option<T>` when absence is an ordinary state; use `Result<T, E>` when callers need failure information
 - [`type-result-fallible`](rules/type-result-fallible.md) - Use `Result<T, E>` for fallible operations
 - [`type-phantom-marker`](rules/type-phantom-marker.md) - Use `PhantomData` for zero-cost type markers
-- [`type-never-diverge`](rules/type-never-diverge.md) - Use the never type `!` for functions that never return
+- [`type-never-diverge`](rules/type-never-diverge.md) - Use `!` as the return type of functions that never return normally
 - [`type-generic-bounds`](rules/type-generic-bounds.md) - Put each trait bound on the API surface that actually requires it
 - [`type-no-stringly`](rules/type-no-stringly.md) - Replace durable stringly-typed states and identifiers with enums or domain types, while keeping text parsing at system boundaries
 - [`type-repr-transparent`](rules/type-repr-transparent.md) - Use `#[repr(transparent)]` when a wrapper intentionally needs the wrapped field's layout and ABI
