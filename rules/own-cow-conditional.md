@@ -97,7 +97,8 @@ fn ensure_trailing_zero(bytes: &[u8]) -> Cow<'_, [u8]> {
 
 fn main() {
     assert!(matches!(ensure_trailing_zero(&[1, 0]), Cow::Borrowed(_)));
-    assert_eq!(ensure_trailing_zero(&[1]), &[1, 0]);
+    let terminated = ensure_trailing_zero(&[1]);
+    assert_eq!(terminated.as_ref(), &[1, 0]);
 }
 ```
 
