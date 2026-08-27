@@ -145,15 +145,17 @@ fn first_value<'a>(values: &'a [u32]) -> impl Copy + use<> {
     values[0]
 }
 
+fn consume_copy<T: Copy>(_: T) {}
+
 fn main() {
     let values = vec![10, 20];
     let first = first_value(&values);
     drop(values);
-    assert_eq!(first, 10);
+    consume_copy(first);
 }
 ```
 
-The hidden type is just `u32`, so it does not need to capture `'a`. `use<>` makes that explicit.
+The hidden type is just `u32`, so it does not need to capture `'a`. `use<>` makes that explicit. The example uses only the `Copy` capability promised by the opaque return type; callers cannot rely on unlisted traits merely because the hidden type happens to implement them.
 
 When a hidden type really does borrow a named lifetime, include it in the capture set:
 
