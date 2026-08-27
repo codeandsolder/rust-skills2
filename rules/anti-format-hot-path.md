@@ -1,159 +1,213 @@
 # anti-format-hot-path
 
-> Don't use format! in hot paths
+> Avoid unnecessary intermediate formatting allocations in measured hot paths; keep `format!` when a new owned `String` is the actual result you need
 
 ## Why It Matters
 
-`format!()` allocates a new `String` every call. In hot paths (loops, frequently called functions), this creates allocation churn that impacts performance. Pre-allocate, reuse buffers, or use `write!()` to an existing buffer.
+`format!(...)` constructs an owned `String`. That allocation is avoidable when formatted output is immediately copied into an existing `String`, byte buffer, logger, file, socket, or other sink. In a high-frequency path, eliminating those intermediates can reduce allocator and copy traffic.
 
-## Bad
+But “never use `format!` in a hot path” is too broad. If the API fundamentally needs a new owned string, some owned storage is required. The relevant questions are:
+
+- can formatting target the real destination directly?
+- can an existing buffer be reused safely?
+- can a logging/diagnostic API accept formatting arguments without first building a string?
+- does profiling show formatting allocation is material at all?
+
+## Build Into One Existing String
 
 ```rust
-// format! in loop - allocates every iteration
-fn log_events(events: &[Event]) {
-    for event in events {
-        let message = format!("[{}] {}: {}", event.level, event.source, event.message);
-        logger.log(&message);
+use std::fmt::Write as _;
+
+struct Item<'a> {
+    name: &'a str,
+    value: u32,
+}
+
+fn build(items: &[Item<'_>]) -> String {
+    let mut output = String::new();
+    for item in items {
+        writeln!(&mut output, "{}={}", item.name, item.value).unwrap();
+    }
+    output
+}
+
+fn main() {
+    let items = [
+        Item { name: "a", value: 1 },
+        Item { name: "b", value: 2 },
+    ];
+    assert_eq!(build(&items), "a=1\nb=2\n");
+}
+```
+
+This avoids creating one temporary `String` per item just to append it to another `String`.
+
+## Reuse a Buffer When the Lifetime Contract Allows It
+
+```rust
+use std::fmt::Write as _;
+
+struct Formatter {
+    buffer: String,
+}
+
+impl Formatter {
+    fn new() -> Self {
+        Self { buffer: String::with_capacity(128) }
+    }
+
+    fn render<'a>(&'a mut self, level: &str, message: &str) -> &'a str {
+        self.buffer.clear();
+        write!(&mut self.buffer, "[{level}] {message}").unwrap();
+        &self.buffer
     }
 }
 
-// format! for building parts
-fn build_url(base: &str, path: &str, params: &[(&str, &str)]) -> String {
-    let mut url = format!("{}{}", base, path);
-    for (key, value) in params {
-        url = format!("{}{}={}&", url, key, value);  // New allocation each time
-    }
-    url
-}
-
-// format! for simple concatenation
-fn greet(name: &str) -> String {
-    format!("Hello, {}!", name)  // Fine for one-off, bad if called 1M times
+fn main() {
+    let mut formatter = Formatter::new();
+    assert_eq!(formatter.render("INFO", "ready"), "[INFO] ready");
+    assert_eq!(formatter.render("WARN", "slow"), "[WARN] slow");
 }
 ```
 
-## Good
+This works because callers consume each borrowed result before mutably reusing the formatter. If callers need to retain independent results, they need independent owned storage and this reuse contract no longer fits.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Write Directly to I/O
+
 ```rust
-use std::fmt::Write;
+use std::io::{self, Write};
 
-// Reuse buffer across iterations
-fn log_events(events: &[Event]) {
-    let mut buffer = String::with_capacity(256);
-    for event in events {
-        buffer.clear();
-        write!(buffer, "[{}] {}: {}", event.level, event.source, event.message).unwrap();
-        logger.log(&buffer);
-    }
+fn write_event(output: &mut impl Write, id: u64, message: &str) -> io::Result<()> {
+    writeln!(output, "[{id}] {message}")
 }
 
-// Build incrementally in single buffer
-fn build_url(base: &str, path: &str, params: &[(&str, &str)]) -> String {
-    let mut url = String::with_capacity(base.len() + path.len() + params.len() * 20);
-    url.push_str(base);
-    url.push_str(path);
-    for (key, value) in params {
-        write!(url, "{}={}&", key, value).unwrap();
-    }
-    url
-}
-
-// For truly hot paths, avoid allocation entirely
-fn greet_to_buf(name: &str, buffer: &mut String) {
-    buffer.clear();
-    buffer.push_str("Hello, ");
-    buffer.push_str(name);
-    buffer.push('!');
+fn main() -> io::Result<()> {
+    let mut output = Vec::new();
+    write_event(&mut output, 7, "ready")?;
+    assert_eq!(output, b"[7] ready\n");
+    Ok(())
 }
 ```
 
-## Comparison
+For real I/O, buffering and syscall behavior may matter more than the formatting allocation itself. Measure end-to-end behavior rather than ranking formatting macros in isolation.
 
-| Approach | Allocations | Performance |
-|----------|-------------|-------------|
-| `format!()` in loop | N | Slow |
-| `write!()` to reused buffer | 1 | Fast |
-| `push_str()` + `push()` | 1 | Fastest |
-| Pre-sized `String::with_capacity()` | 1 (no realloc) | Fast |
+## Implement `Display` When the Value Has a Natural Text Representation
 
-## When format! Is Fine
+A `Display` implementation lets callers choose the final destination:
 
 ```rust
-// One-time initialization
-let config_path = format!("{}/config.toml", home_dir);
+use std::fmt::{self, Write as _};
 
-// Error messages (not hot path)
-return Err(format!("invalid input: {}", input));
-
-// Debug output
-println!("Debug: {:?}", value);
-```
-
-## Pattern: Formatter Buffer Pool
-
-```rust
-use std::cell::RefCell;
-
-thread_local! {
-    static BUFFER: RefCell<String> = RefCell::new(String::with_capacity(256));
+struct Event<'a> {
+    level: &'a str,
+    message: &'a str,
 }
 
-fn format_event(event: &Event) -> String {
-    BUFFER.with(|buf| {
-        let mut buf = buf.borrow_mut();
-        buf.clear();
-        write!(buf, "[{}] {}", event.level, event.message).unwrap();
-        buf.clone()  // Still one allocation per call, but no parsing
-    })
-}
-```
-
-## Pattern: Display Implementation
-
-```rust
-struct Event {
-    level: Level,
-    message: String,
-}
-
-impl std::fmt::Display for Event {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}] {}", self.level, self.message)
+impl fmt::Display for Event<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "[{}] {}", self.level, self.message)
     }
 }
 
-// Caller controls allocation
-let mut buf = String::new();
-write!(buf, "{}", event)?;
+fn main() {
+    let event = Event { level: "INFO", message: "ready" };
+
+    let mut output = String::new();
+    write!(&mut output, "{event}").unwrap();
+    assert_eq!(output, "[INFO] ready");
+}
 ```
 
-## Pattern: format_args!() for Lazy Formatting
+This does not promise zero allocation in every caller; it simply avoids forcing the representation to be materialized as a `String` before the caller decides what to do with it.
 
-Use `format_args!()` when you need formatted text without allocating until absolutely necessary — it produces a `std::fmt::Arguments` value that can be stored, inspected, or written later:
+## `format_args!` Is Borrowed Formatting State
+
+`format_args!` produces `fmt::Arguments` without heap allocation. The value borrows its formatting arguments and, except for argument-free cases, may also borrow temporaries.
 
 ```rust
-// BAD: allocates even if level filter rejects it
-log(format!("event: {} at {}", event.name, event.time));
+use std::fmt;
 
-// GOOD: lazy formatting — no allocation until write
-let args = format_args!("event: {} at {}", event.name, event.time);
-log(args);
-
-// Even better: use the tracing/log macros directly
-info!("event: {} at {}", event.name, event.time);
+fn main() {
+    let name = String::from("Ada");
+    let args = format_args!("hello {name}");
+    let rendered = fmt::format(args);
+    assert_eq!(rendered, "hello Ada");
+}
 ```
 
-## Clippy Lint
+Current Rust extends relevant temporary lifetimes in some `let` initializer forms so an `Arguments` value like this can be stored locally, but it is still borrowed formatting state—not an owned deferred string you can freely move beyond the values it references.
 
-```toml
-[lints.clippy]
-format_in_format_args = "warn"       # Suggests using `write!` or `format_args!` instead of format!() inside format args
-format_args = "warn"                 # Suggests using format_args!() over format!() when possible
+This is useful for formatting-aware APIs that can consume `fmt::Arguments` directly.
+
+## Logging Macros Can Avoid Eager String Construction
+
+Prefer passing formatting arguments directly to a logging API instead of allocating first when the API supports it:
+
+```rust
+fn main() {
+    let user_id = 42;
+    log::info!("loaded user {user_id}");
+}
 ```
+
+Whether a particular logging implementation performs work before or after level filtering is crate-specific. Do not promise that every logging macro defers all formatting or allocation in every configuration.
+
+## When `format!` Is Fine—even in Frequently Called Code
+
+If the function's contract is to produce an owned `String`, `format!` is often the clearest implementation:
+
+```rust
+fn greeting(name: &str) -> String {
+    format!("Hello, {name}!")
+}
+
+fn main() {
+    assert_eq!(greeting("Ada"), "Hello, Ada!");
+}
+```
+
+A frequently called function is not automatically an optimization problem. If profiling shows this allocation matters, consider whether callers can accept a destination buffer, `Display`, `fmt::Arguments`, a structured value, or another representation without making the API worse.
+
+## Capacity Estimates Must Be Defensible
+
+`String::with_capacity` can avoid growth reallocations when you have a useful bound or estimate. Avoid magic formulas like `params.len() * 20` unless the input format actually makes that estimate meaningful.
+
+```rust
+fn join_pair(left: &str, right: &str) -> String {
+    let mut output = String::with_capacity(left.len() + 1 + right.len());
+    output.push_str(left);
+    output.push('/');
+    output.push_str(right);
+    output
+}
+
+fn main() {
+    assert_eq!(join_pair("api", "users"), "api/users");
+}
+```
+
+Here the capacity is exact because all appended byte lengths are known.
+
+## Do Not Publish Universal Performance Rankings
+
+Tables such as “`push_str` = fastest, reused `write!` = fast, `format!` = slow” are not portable performance facts. Results depend on format complexity, destination growth, optimizer, allocator, target, and surrounding work.
+
+If formatting is hot enough to matter, benchmark representative operations and inspect allocation counts/bytes as well as wall-clock throughput.
+
+## Practical Guidance
+
+- Use `format!` when a new owned formatted `String` is the desired result.
+- Use `write!`/`writeln!` when a destination buffer or I/O sink already exists.
+- Reuse buffers only when result lifetimes/ownership make reuse possible.
+- Implement `Display` for values with a natural textual representation so callers control allocation.
+- Treat `format_args!` as borrowed formatting arguments, not owned storage.
+- Pass formatting directly to logging APIs when supported instead of pre-building a `String`.
+- Reserve capacity from meaningful bounds, not arbitrary constants.
+- Profile before claiming a formatting optimization matters.
 
 ## See Also
 
-- [mem-avoid-format](./mem-avoid-format.md) - Avoiding format
-- [mem-write-over-format](./mem-write-over-format.md) - Using write!
+- [mem-avoid-format](./mem-avoid-format.md) - Avoiding unnecessary intermediate strings
+- [mem-write-over-format](./mem-write-over-format.md) - Writing into existing destinations
 - [mem-reuse-collections](./mem-reuse-collections.md) - Buffer reuse
+- [perf-profile-first](./perf-profile-first.md) - Measure before optimizing

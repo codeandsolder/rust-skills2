@@ -2,18 +2,6 @@
 # Format: file :: section :: block N :: sorted(error-tokens)
 # Migration debt only; new, changed, and stale signatures fail CI.
 
-anti-clone-excessive.md :: Counter-Pattern: Premature Clone Avoidance :: block 3 :: E0428
-anti-clone-excessive.md :: Pattern: clone_from() to Reuse Allocation :: block 6 :: E0424
-anti-collect-intermediate.md :: Pattern: collect_into() (Rust 1.85+) :: block 5 :: E0061,E0428
-anti-format-hot-path.md :: Pattern: Display Implementation :: block 5 :: E0599
-anti-format-hot-path.md :: Pattern: Formatter Buffer Pool :: block 4 :: E0599
-anti-format-hot-path.md :: When format! Is Fine :: block 3 :: E0308
-anti-over-abstraction.md :: Prefer Concrete Types in Private Code :: block 4 :: E0428
-anti-over-abstraction.md :: Rule of Three :: block 3 :: E0107
-anti-over-abstraction.md :: Special Case: Deref Overuse :: block 5 :: E0308
-anti-type-erasure.md :: impl Trait Positions :: block 4 :: E0107
-anti-unsafe-send-sync.md :: Pattern: Use Existing Safe Types :: block 6 :: E0428
-anti-vec-for-slice.md :: Mutable Slices :: block 4 :: E0428
 opt-cache-friendly.md :: Avoid Pointer Chasing :: block 5 :: E0308
 opt-inline-never-cold.md :: Pattern: Extract Cold Code :: block 8 :: E0428
 opt-target-cpu.md :: Feature Detection at Runtime :: block 1 :: E0308
