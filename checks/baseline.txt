@@ -114,7 +114,6 @@ own-lifetime-elision.md :: The Three Elision Rules :: block 3 :: P:expected one 
 own-lifetime-elision.md :: The Three Elision Rules :: block 4 :: P:expected one of `!`, `(`,
 own-lifetime-elision.md :: The Three Elision Rules :: block 5 :: P:expected one of `!`, `(`,
 own-lifetime-elision.md :: `'_` in `impl Trait` Positions (Edition 2024) :: block 14 :: E0404,E0428
-own-rc-single-thread.md :: Cycles Need Weak References :: block 4 :: E0308
 own-slice-over-vec.md :: Path Types Too :: block 7 :: E0428
 own-slice-over-vec.md :: Standard Library Range Types (Rust 1.96) :: block 4 :: E0119,E0428
 perf-chain-avoid.md :: When Chain Is Fine :: block 4 :: E0106
