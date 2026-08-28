@@ -1,0 +1,8 @@
+[package]
+name = "mycrate"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+mycrate-derive = { path = "../mycrate-derive" }
