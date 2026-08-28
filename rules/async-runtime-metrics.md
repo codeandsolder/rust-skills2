@@ -89,10 +89,11 @@ To use those APIs, Tokio must be compiled with the cfg enabled, for example:
 rustflags = ["--cfg", "tokio_unstable"]
 ```
 
-Do not present unstable-only methods in ordinary stable examples without stating this requirement.
+Do not present unstable-only methods as ordinary stable-Tokio APIs without stating this requirement.
 
-<!-- rust-check: ignore; reason=requires tokio_unstable cfg, which is intentionally not enabled in the corpus harness -->
-```rust
+A representative unstable-metrics helper is:
+
+```text
 use tokio::runtime::Handle;
 
 fn report_unstable_metrics() {
@@ -103,7 +104,9 @@ fn report_unstable_metrics() {
 }
 ```
 
-`tokio_unstable` is a Tokio cfg contract, not a stable Rust language feature. Treat these metrics as potentially changing across Tokio releases.
+This repository compile-checks that exact API family in `checks/fixtures/tokio-special` with the pinned stable Rust toolchain plus `RUSTFLAGS="--cfg tokio_unstable"`. `tokio_unstable` is a Tokio cfg contract, not a Rust nightly language feature, so a dedicated cfg-enabled fixture is more accurate than classifying it as a nightly Rust example.
+
+Treat these metrics as potentially changing across Tokio releases.
 
 ## Poll Count Does Not Directly Detect Starvation
 
@@ -173,7 +176,7 @@ async fn main() {
 
 ## `tokio-console`
 
-For per-task/resource diagnostics, `tokio-console`/`console-subscriber` can provide much richer instrumentation than aggregate runtime counters. It has its own instrumentation and `tokio_unstable` setup requirements; follow the current console documentation rather than assuming that enabling `RuntimeMetrics` automatically enables console data.
+For per-task/resource diagnostics, `tokio-console`/`console-subscriber` can provide much richer instrumentation than aggregate runtime counters. With Tokio it requires the runtime's tracing instrumentation and `tokio_unstable`; follow the current console documentation rather than assuming that enabling `RuntimeMetrics` automatically enables console data.
 
 Aggregate metrics and task-level tracing serve different purposes and can be used together.
 
