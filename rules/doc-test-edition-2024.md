@@ -98,12 +98,12 @@ and `src/lib.rs` contains:
 
 If `README.md` contains this doctest:
 
-```text
+````text
 ```rust
 let bytes = include_bytes!("examples/data.bin");
 assert!(!bytes.is_empty());
 ```
-```
+````
 
 then in Edition 2024 the nested `include_bytes!` path is resolved relative to `README.md`, the file containing that doctest. Before Edition 2024, the equivalent path was resolved relative to the Rust source file that performed the outer `include_str!`.
 
