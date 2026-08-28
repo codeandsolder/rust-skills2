@@ -111,11 +111,11 @@ fn main() {
 
 ## Asserting a Pattern in Tests
 
-Rust 1.96 stabilized `assert_matches!` and `debug_assert_matches!`. They are available from `std` but are not imported by the prelude.
+Rust 1.96 stabilized `assert_matches!` and `debug_assert_matches!`. They are exported from the `std` macro root but are not imported by the prelude, so import the macro itself:
 
 <!-- rust-check: compile -->
 ```rust
-use std::assert_matches::assert_matches;
+use std::assert_matches;
 
 fn parse(raw: &str) -> Result<u32, std::num::ParseIntError> {
     raw.parse()
