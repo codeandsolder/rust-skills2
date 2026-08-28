@@ -10,12 +10,14 @@ CARGO_TARGET_DIR="$TARGET_DIR" cargo check \
     --manifest-path "$MANIFEST" \
     -p proc-macro-contract-consumer \
     --target "$TARGET" \
+    --locked \
     --quiet
 
 CARGO_TARGET_DIR="$TARGET_DIR" cargo run \
     --manifest-path "$MANIFEST" \
     -p proc-macro-contract-consumer \
     --target "$TARGET" \
+    --locked \
     --quiet
 
 set +e
@@ -23,6 +25,7 @@ BAD_OUTPUT="$(CARGO_TARGET_DIR="$TARGET_DIR" cargo check \
     --manifest-path "$MANIFEST" \
     -p bad-proc-macro-export \
     --target "$TARGET" \
+    --locked \
     2>&1)"
 BAD_STATUS=$?
 set -e
