@@ -1,117 +1,100 @@
 # proj-bin-dir
 
-> Put multiple binaries in src/bin/
+> Use `src/bin/` for conventionally discovered additional binary targets
 
 ## Why It Matters
 
-When a crate produces multiple binaries, placing them in `src/bin/` keeps the project organized. Each file becomes a separate binary target automatically, without manual `Cargo.toml` configuration.
+Cargo automatically discovers binary targets in `src/bin/`. For packages with several executables, this often avoids repetitive `[[bin]]` entries and makes the target boundaries obvious.
 
-## Bad
+Explicit `[[bin]]` entries are still appropriate when you need a custom path, name, `required-features`, test/bench settings, or other target configuration.
 
-```
+## Conventional Layout
+
+```text
 my-project/
-├── Cargo.toml        # Complex [[bin]] sections for each binary
-├── src/
-│   ├── main.rs       # Which binary is this?
-│   ├── server.rs     # Is this a module or binary?
-│   ├── cli.rs        # Unclear
-│   └── lib.rs
+├── Cargo.toml
+└── src/
+    ├── lib.rs
+    ├── main.rs          # optional package-default binary
+    └── bin/
+        ├── server.rs    # binary target `server`
+        └── cli.rs       # binary target `cli`
 ```
 
-```toml
-# Cargo.toml - verbose and error-prone
-[[bin]]
-name = "server"
-path = "src/server.rs"
-
-[[bin]]
-name = "cli"
-path = "src/cli.rs"
-```
-
-## Good
-
-```
-my-project/
-├── Cargo.toml        # Clean, no [[bin]] needed
-├── src/
-│   ├── lib.rs        # Shared library code
-│   └── bin/
-│       ├── server.rs # Binary: my-project-server (or just server)
-│       └── cli.rs    # Binary: my-project-cli (or just cli)
-```
-
-Each file in `src/bin/` automatically becomes a binary named after the file.
+Each top-level `.rs` file in `src/bin/` is inferred as a separate binary target named after the file stem. Cargo also supports directory-form targets such as `src/bin/server/main.rs`.
 
 ## Running Binaries
 
 ```bash
-# Run specific binary
 cargo run --bin server
 cargo run --bin cli
-
-# Build specific binary
 cargo build --bin server
-
-# Build all binaries
 cargo build --bins
 ```
 
-## Pattern: Binary with Multiple Files
+If several binaries exist and `cargo run` would be ambiguous, select one with `--bin` or configure `package.default-run`.
 
-For complex binaries, use directories:
+## Binary with Multiple Source Files
 
-```
+Use a directory when a binary has its own modules:
+
+```text
 src/
 ├── lib.rs
 └── bin/
     ├── server/
-    │   ├── main.rs      # Entry point
-    │   ├── config.rs    # Server-specific module
+    │   ├── main.rs
+    │   ├── config.rs
     │   └── handlers.rs
     └── cli/
         ├── main.rs
         └── commands.rs
 ```
 
-## Pattern: Shared Library Code
+Only `main.rs` is the binary root in each directory; the neighboring files are ordinary modules included by that target.
 
-```rust
-// src/lib.rs - Shared code
+## Shared Code Belongs in the Library Target
+
+When multiple binaries share substantial logic, put that logic in `src/lib.rs` (or modules reachable from it) and keep binary roots thin:
+
+```text
+// src/lib.rs
 pub mod config;
 pub mod database;
 pub mod models;
 
-// src/bin/server.rs - Server binary
-use my_project::{config, database, models};
+// src/bin/server.rs
+use package_library::{config, database};
 
 fn main() {
     let config = config::load();
-    let db = database::connect(&config);
-    // ...
+    let _db = database::connect(&config);
 }
 
-// src/bin/cli.rs - CLI binary
-use my_project::{config, models};
+// src/bin/cli.rs
+use package_library::config;
 
 fn main() {
-    let config = config::load();
-    // CLI logic using shared code
+    let _config = config::load();
 }
 ```
 
+This is deliberately a multi-file sketch rather than one Rust compilation unit. Replace `package_library` with the actual library target name; by default Cargo derives that name from the package name with dashes converted to underscores.
+
 ## Binary Naming
 
-| File Path | Binary Name |
-|-----------|-------------|
-| `src/main.rs` | `my-project` (crate name) |
+| File path | Inferred binary name |
+|---|---|
+| `src/main.rs` | package name by default |
 | `src/bin/server.rs` | `server` |
 | `src/bin/my-cli.rs` | `my-cli` |
 | `src/bin/server/main.rs` | `server` |
 
+A file in `src/bin/server.rs` does **not** automatically become `my-project-server`; its inferred target name is `server`.
+
 ## Explicit Configuration
 
-When you need custom settings:
+Use `[[bin]]` when convention is not enough:
 
 ```toml
 [[bin]]
@@ -124,39 +107,30 @@ name = "my-cli"
 path = "src/bin/cli.rs"
 ```
 
-## Pattern: Default Binary
+A package-level default can be selected with:
 
 ```toml
-# src/main.rs is the default binary
-# Additional binaries in src/bin/
-
 [package]
 name = "my-tool"
-default-run = "my-tool"  # Or specify another
+default-run = "my-tool"
 ```
 
 ## Workspace Context
 
-In a workspace, use `-p` to select the member crate before `--bin`:
+Use `-p`/`--package` to choose a workspace member and `--bin` to choose one of that member's binary targets:
 
 ```bash
-# Run binary from a specific workspace member
-cargo run -p my-app-cli --bin server
-cargo run -p my-app-cli --bin cli
-
-# default-run also works with workspace inheritance
-```
-
-```toml
-# crates/cli/Cargo.toml
-[package]
-name = "my-app-cli"
-version.workspace = true
-default-run = "my-app-cli"
+cargo run -p app-tools --bin server
+cargo run -p app-tools --bin cli
 ```
 
 ## See Also
 
-- [proj-lib-main-split](./proj-lib-main-split.md) - Keep main.rs minimal
-- [proj-workspace-large](./proj-workspace-large.md) - Workspace for larger projects
-- [proj-flat-small](./proj-flat-small.md) - Simple project structure
+- [proj-lib-main-split](./proj-lib-main-split.md) - Keep binary entry points small
+- [proj-workspace-large](./proj-workspace-large.md) - Workspaces for larger projects
+- [proj-flat-small](./proj-flat-small.md) - Avoid needless structure in small packages
+
+## References
+
+- [Cargo Book: package layout](https://doc.rust-lang.org/cargo/guide/project-layout.html)
+- [Cargo Book: targets](https://doc.rust-lang.org/cargo/reference/cargo-targets.html)
