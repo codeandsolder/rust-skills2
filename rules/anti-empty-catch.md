@@ -97,7 +97,7 @@ Here the API deliberately collapses “missing” and “invalid” into `None`.
 When partial failure matters, collect or summarize it instead of stopping at the first error or silently discarding each one:
 
 ```rust
-fn validate_batch(values: &[&str]) -> (Vec<u32>, Vec<&str>) {
+fn validate_batch<'a>(values: &[&'a str]) -> (Vec<u32>, Vec<&'a str>) {
     let mut successes = Vec::new();
     let mut failures = Vec::new();
 
