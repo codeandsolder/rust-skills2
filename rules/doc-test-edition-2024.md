@@ -96,14 +96,14 @@ and `src/lib.rs` contains:
 #![doc = include_str!("../README.md")]
 ```
 
-If `README.md` contains this doctest:
+If `README.md` contains this doctest (shown with `~` fences here so this rule's single-file verifier does not treat the illustrative external-file snippet as one of its own Rust examples):
 
-````text
-```rust
+```text
+~~~rust
 let bytes = include_bytes!("examples/data.bin");
 assert!(!bytes.is_empty());
+~~~
 ```
-````
 
 then in Edition 2024 the nested `include_bytes!` path is resolved relative to `README.md`, the file containing that doctest. Before Edition 2024, the equivalent path was resolved relative to the Rust source file that performed the outer `include_str!`.
 
