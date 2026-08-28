@@ -4,9 +4,7 @@
 
 ## Why It Matters
 
-Most operating systems do not expose ordinary filesystem operations through the same readiness APIs used for async sockets. Tokio therefore implements `tokio::fs` with ordinary blocking filesystem calls executed on its blocking thread pool (currently via `spawn_blocking`). This keeps those calls off async runtime workers while preserving an async API.
-
-Calling `std::fs` directly inside a future blocks the worker executing that future. On a current-thread runtime this is especially severe: there is no other async worker to make progress until the call returns.
+Most operating systems do not expose ordinary filesystem operations through the same readiness APIs used for async sockets. Tokio therefore performs ordinary filesystem work through blocking operations offloaded from async workers. Calling `std::fs` directly inside a future can block the worker executing that future.
 
 ## Bad
 
@@ -16,7 +14,6 @@ use std::path::PathBuf;
 async fn read_files(paths: &[PathBuf]) -> std::io::Result<Vec<String>> {
     let mut out = Vec::with_capacity(paths.len());
     for path in paths {
-        // Blocks the async worker running this future.
         out.push(std::fs::read_to_string(path)?);
     }
     Ok(out)
@@ -37,7 +34,7 @@ async fn read_files(paths: &[PathBuf]) -> std::io::Result<Vec<String>> {
 }
 ```
 
-This example is intentionally sequential. Whether several filesystem operations should be issued concurrently depends on the storage device, cache state, filesystem, and workload; “more concurrent reads” is not automatically faster.
+This is intentionally sequential. Whether several filesystem operations should be issued concurrently depends on the storage stack and workload; more concurrent reads are not automatically faster.
 
 ## Ordinary File APIs
 
@@ -59,25 +56,24 @@ async fn copy_prefix() -> std::io::Result<()> {
 }
 ```
 
-`tokio::fs` also provides directory, metadata, rename, remove, and canonicalization operations. The same principle applies: use its async wrapper when the operation occurs on an async execution path and may block.
-
 ## Special Files Are Different
 
-Tokio explicitly recommends `tokio::fs` for **ordinary files**. A named pipe, device, or other special file can block in ways that interact badly with the blocking pool and runtime shutdown.
+Named pipes, devices, and other special files can have blocking/readiness behavior that ordinary-file wrappers do not model well. Prefer a dedicated async abstraction when one exists—for example Tokio's Unix pipe support or `tokio::io::unix::AsyncFd` around a descriptor that has already been configured for nonblocking operation.
 
-Use a dedicated async abstraction when one exists—for example `tokio::net::unix::pipe` for Unix named pipes or `tokio::io::unix::AsyncFd` for a nonblocking file descriptor whose readiness can be driven by the OS.
+A meaningful `AsyncFd` example requires a real Unix file descriptor with the correct nonblocking semantics and OS-level read/write code. The generic corpus harness cannot honestly synthesize that resource, so the setup sketch is an explicit platform/environment exception rather than a vague fragment.
 
-<!-- rust-check: fragment; reason=Unix-only AsyncFd example requires a nonblocking OS file descriptor and platform-specific setup -->
+<!-- rust-check: ignore; reason=Unix-only AsyncFd example requires a real nonblocking OS file descriptor and platform-specific syscall setup -->
 ```rust
 use tokio::io::unix::AsyncFd;
 
 let async_fd = AsyncFd::new(nonblocking_fd)?;
 let mut guard = async_fd.readable().await?;
-// Perform the nonblocking syscall, then clear readiness when appropriate.
+// Perform the nonblocking syscall here; clear readiness when the syscall
+// reports that the resource is no longer ready.
 guard.clear_ready();
 ```
 
-Do not blindly send a potentially indefinite special-file read to `spawn_blocking`: blocking-pool work cannot generally be aborted once it has started.
+Do not blindly move a potentially indefinite special-file read into `spawn_blocking`: work that has begun in the blocking pool generally cannot be aborted by dropping its async handle.
 
 ## When `std::fs` Is Fine
 
@@ -89,11 +85,11 @@ fn load_config_before_runtime() -> std::io::Result<String> {
 }
 ```
 
-The relevant boundary is not file size. A tiny operation can still block unpredictably on cold storage, network filesystems, antivirus hooks, or filesystem contention; a large cached read may finish quickly. Avoid universal thresholds such as “under 1 KB is safe.”
+The relevant boundary is whether the operation may block an async worker, not a universal file-size threshold.
 
 ## Batching Can Reduce Offload Overhead
 
-If profiling shows that thousands of tiny synchronous operations spend significant time crossing into the blocking pool, batching them into one `spawn_blocking` job can be reasonable:
+If profiling shows that many tiny synchronous operations spend significant time crossing into the blocking pool, batching them into one `spawn_blocking` job can be reasonable:
 
 ```rust
 use std::path::PathBuf;
@@ -114,15 +110,10 @@ Do this because measurement shows batching helps, not because of a fixed file-si
 
 ## Blocking-Pool Interaction
 
-`tokio::fs`, explicit `spawn_blocking`, some DNS resolution, and standard-stream operations can share runtime blocking-pool capacity. Setting `max_blocking_threads` too low can therefore delay unrelated operations. Apply workload-level backpressure to large batches instead of treating the runtime's global thread cap as the primary concurrency control.
+`tokio::fs`, explicit `spawn_blocking`, and some other runtime services may share blocking-pool capacity. Apply workload-level backpressure to large batches instead of treating the runtime's global thread cap as the primary concurrency control.
 
 ## See Also
 
 - [async-spawn-blocking](./async-spawn-blocking.md) — blocking-pool semantics
 - [async-blocking-detection](./async-blocking-detection.md) — finding worker stalls
 - [async-tokio-runtime](./async-tokio-runtime.md) — runtime configuration
-
-## References
-
-- [Tokio filesystem module](https://docs.rs/tokio/latest/tokio/fs/)
-- [Tokio `spawn_blocking`](https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html)

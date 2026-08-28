@@ -103,11 +103,11 @@ async fn fixed_poll_order() -> Result<((), ()), &'static str> {
 }
 ```
 
-With biased mode, branches are always polled top-to-bottom and the caller is responsible for fairness. Put latency-sensitive control/shutdown work early if a later branch can consume substantial time per poll.
+With biased mode, branches are always polled top-to-bottom and the caller is responsible for fairness.
 
 ## Timeouts
 
-`tokio::time::timeout` expects a future. Since `try_join!` is evaluated inside async control flow and produces its final `Result`, wrap the joined operation in an async block when applying one timeout to the whole group:
+Wrap the group in an async block when one timeout should apply to the whole `try_join!` operation:
 
 ```rust
 use std::time::Duration;
@@ -128,21 +128,51 @@ async fn with_timeout() -> Result<(u32, u32), &'static str> {
 }
 ```
 
-For per-operation timeouts, wrap each operation in a helper future that converts `Elapsed` into the common error type before passing those futures to `try_join!`.
-
 ## Different Error Types
 
-All branches must be compatible with a common error type. Convert at the boundary:
+All branches must be compatible with one error type. Convert each branch at the join boundary. Explicit async wrappers avoid requiring `TryFutureExt` just for `map_err` on the future itself.
 
-<!-- rust-check: fragment; reason=application-specific error enum and fetch functions -->
+<!-- rust-check: compile -->
 ```rust
-let (user, config) = tokio::try_join!(
-    fetch_user().map_err(AppError::from),
-    fetch_config().map_err(AppError::from),
-)?;
-```
+#[derive(Debug)]
+struct UserError;
 
-Depending on the future type, combinators such as `map_err` may require `TryFutureExt`; an explicit `async { fetch_user().await.map_err(AppError::from) }` wrapper avoids that trait dependency.
+#[derive(Debug)]
+struct ConfigError;
+
+#[derive(Debug)]
+enum AppError {
+    User(UserError),
+    Config(ConfigError),
+}
+
+impl From<UserError> for AppError {
+    fn from(error: UserError) -> Self {
+        Self::User(error)
+    }
+}
+
+impl From<ConfigError> for AppError {
+    fn from(error: ConfigError) -> Self {
+        Self::Config(error)
+    }
+}
+
+async fn fetch_user() -> Result<u32, UserError> {
+    Ok(7)
+}
+
+async fn fetch_config() -> Result<String, ConfigError> {
+    Ok("default".to_owned())
+}
+
+async fn load_both() -> Result<(u32, String), AppError> {
+    tokio::try_join!(
+        async { fetch_user().await.map_err(AppError::from) },
+        async { fetch_config().await.map_err(AppError::from) },
+    )
+}
+```
 
 ## Dynamic Collections
 
@@ -166,8 +196,3 @@ For a runtime-sized collection, use a dynamic primitive such as a buffered strea
 - [async-select-racing](./async-select-racing.md) — first-to-complete semantics
 - [async-joinset-structured](./async-joinset-structured.md) — spawned task ownership
 - [err-question-mark](./err-question-mark.md) — error propagation
-
-## References
-
-- [Tokio `try_join!`](https://docs.rs/tokio/latest/tokio/macro.try_join.html)
-- [Tokio `join!`](https://docs.rs/tokio/latest/tokio/macro.join.html)

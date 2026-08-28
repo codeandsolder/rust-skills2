@@ -8,13 +8,13 @@
 
 Rust async executors are cooperatively scheduled. A future that calls a blocking API or performs a long CPU loop without yielding can occupy a runtime worker and delay unrelated tasks. On a current-thread runtime, one such operation can stop all async progress until it returns.
 
-The important distinction is **where the blocking happens**:
+Distinguish the execution domains:
 
 - direct blocking inside a future stalls an async worker;
-- `spawn_blocking` deliberately moves blocking work to Tokio's separate blocking pool;
-- a deep `spawn_blocking` queue indicates pressure in that pool, not evidence that a future is directly blocking a worker.
+- `spawn_blocking` moves synchronous work to Tokio's separate blocking pool;
+- a deep blocking-pool queue means that pool is under pressure, not that an async worker is directly blocked.
 
-Use development instrumentation such as `tokio-console`, application latency/heartbeat signals, and targeted profiling. Runtime metrics are useful context, but no single counter proves that a worker is stuck in synchronous code.
+Use task/runtime instrumentation, application latency or heartbeat signals, and targeted profiling together. No single runtime counter identifies the source of every stall.
 
 ## Bad
 
@@ -22,12 +22,11 @@ Use development instrumentation such as `tokio-console`, application latency/hea
 use std::time::Duration;
 
 async fn handle_request() {
-    // BAD: this thread cannot poll other futures while sleeping.
     std::thread::sleep(Duration::from_secs(1));
 }
 ```
 
-The same problem applies to synchronous filesystem/network calls, long lock waits on blocking mutexes, FFI that blocks, and long compute loops that do not yield.
+The same concern applies to synchronous filesystem/network calls, blocking FFI, blocking lock acquisition, and long compute loops that do not yield.
 
 ## Good: Move Blocking Work Off Async Workers
 
@@ -43,11 +42,11 @@ async fn handle_request() -> Result<u64, tokio::task::JoinError> {
 }
 ```
 
-`spawn_blocking` is for synchronous operations that eventually finish. For many CPU-bound jobs, bound concurrency explicitly or use a CPU-oriented executor such as Rayon rather than allowing Tokio's large blocking pool to run an arbitrary number of computations at once.
+`spawn_blocking` is for synchronous operations that eventually finish. Bound concurrency separately when many CPU-heavy jobs could otherwise occupy the large blocking pool simultaneously.
 
-## Good: External Heartbeat for Whole-Runtime Stalls
+## External Heartbeat for Whole-Runtime Stalls
 
-A watchdog running on an ordinary OS thread can observe whether an async heartbeat stops advancing even when the runtime itself is stalled:
+A watchdog on an ordinary OS thread can observe whether an async heartbeat stops advancing even if the runtime itself is stalled:
 
 ```rust
 use std::sync::{
@@ -79,13 +78,13 @@ fn start_watchdog(counter: Arc<AtomicU64>) -> std::thread::JoinHandle<()> {
 }
 ```
 
-A stalled heartbeat is still only a symptom: CPU starvation, process suspension, scheduler pressure, or an overloaded host can produce similar observations. Correlate it with profiles, task instrumentation, and workload metrics.
+A stalled heartbeat is a symptom, not a diagnosis: host scheduler pressure, process suspension, CPU starvation, or executor stalls can all produce it.
 
 ## `tokio-console` During Development
 
-`tokio-console`/`console-subscriber` can expose task poll durations, long busy periods, and resource activity. It is particularly useful for finding tasks that spend too long between yielding points.
+`tokio-console`/`console-subscriber` can expose task poll durations, long busy periods, and resource activity. It requires the console subscriber dependency plus the Tokio/tracing instrumentation configuration expected by that tool, so this repository's generic example crate does not compile-check the setup snippet itself.
 
-<!-- rust-check: fragment; reason=requires console-subscriber dependency and Tokio tracing instrumentation -->
+<!-- rust-check: ignore; reason=requires console-subscriber plus the Tokio tracing instrumentation configuration used by tokio-console -->
 ```rust
 #[tokio::main]
 async fn main() {
@@ -94,11 +93,11 @@ async fn main() {
 }
 ```
 
-Use a build configured for the instrumentation required by the console and reproduce the real workload; a task that is never polled cannot be diagnosed from its source location by a magic runtime counter.
+Treat that as deployment/setup documentation; compile-check the application's actual console configuration in the application that enables it.
 
-## Runtime Metrics: What They Do and Do Not Mean
+## Runtime Metrics: Context, Not a Blocking Detector
 
-Stable `RuntimeMetrics` includes useful values such as worker count and alive-task count:
+Stable `RuntimeMetrics` includes values such as worker count and alive-task count:
 
 ```rust
 async fn report_basic_metrics() {
@@ -108,19 +107,13 @@ async fn report_basic_metrics() {
 }
 ```
 
-Many more detailed scheduler and blocking-pool metrics remain behind Tokio's `tokio_unstable` configuration. In particular, `num_blocking_threads` and blocking-pool queue metrics describe work submitted **to the blocking pool**. A growing queue can indicate that `spawn_blocking`, filesystem, DNS, or other blocking-pool users are saturated; it does not detect `std::thread::sleep` executed directly on an async worker.
+More detailed scheduler and blocking-pool metrics may require Tokio's unstable instrumentation configuration. Blocking-pool thread/queue metrics describe work submitted to that pool; they do not detect `std::thread::sleep` executed directly on an async worker.
 
 ## `block_in_place` Is Specialized
 
-`tokio::task::block_in_place` tells the multi-thread runtime that the current task is about to block so Tokio can hand other tasks to another worker. The closure still blocks its current thread, all concurrent code inside that same task is suspended, and it is not available on a current-thread runtime.
+`tokio::task::block_in_place` tells the multi-thread runtime that the current task is about to block so Tokio can hand other tasks to another worker. The closure still blocks its thread, concurrent work inside that same task is suspended, and the API is not available on a current-thread runtime.
 
-Prefer `spawn_blocking` when the synchronous work can naturally be moved into a `'static` closure. Use `block_in_place` only when its specific execution semantics are required.
-
-## Blocking-Pool Configuration
-
-Tokio's blocking-thread limit is intentionally large by default because the pool serves APIs such as filesystem operations and DNS resolution as well as explicit `spawn_blocking` calls. Setting `max_blocking_threads` too low can create an unbounded queue and delay unrelated blocking-pool users.
-
-Do not lower the limit merely to make queue depth easier to alert on. Bound a CPU-heavy workload at its own admission point (for example with a semaphore or CPU pool), and size runtime limits from measured workload behavior.
+Prefer `spawn_blocking` when the work can naturally be moved into an owned closure. Use `block_in_place` only when its specific execution semantics are required.
 
 ## Review Checklist
 
@@ -128,7 +121,7 @@ Look for:
 
 - `std::thread::sleep` inside async code;
 - synchronous filesystem/network/database clients on async workers;
-- blocking mutex/RwLock acquisition held across slow operations;
+- blocking mutex/RwLock acquisition around slow work;
 - FFI whose blocking behavior is unknown;
 - long loops without `.await`, cooperative yielding, or offloading;
 - large `spawn_blocking` bursts without workload-level backpressure.
@@ -140,10 +133,3 @@ Then validate suspected paths with traces/profiles rather than inferring causali
 - [async-spawn-blocking](./async-spawn-blocking.md) — moving blocking work off workers
 - [async-tokio-runtime](./async-tokio-runtime.md) — runtime configuration
 - [async-runtime-metrics](./async-runtime-metrics.md) — runtime metrics
-
-## References
-
-- [Tokio `spawn_blocking`](https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html)
-- [Tokio `RuntimeMetrics`](https://docs.rs/tokio/latest/tokio/runtime/struct.RuntimeMetrics.html)
-- [Tokio runtime `Builder`](https://docs.rs/tokio/latest/tokio/runtime/struct.Builder.html)
-- [tokio-console](https://github.com/tokio-rs/console)

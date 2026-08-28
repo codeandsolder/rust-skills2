@@ -81,7 +81,7 @@ Reference these guidelines when:
 - [`own-rc-single-thread`](rules/own-rc-single-thread.md) - Use `Rc<T>` for shared ownership that is confined to one thread
 - [`own-refcell-interior`](rules/own-refcell-interior.md) - Use `RefCell<T>` when thread-local shared access genuinely needs runtime-checked interior mutability
 - [`own-mutex-interior`](rules/own-mutex-interior.md) - Use the right `Mutex<T>` for the execution model: `std`/`parking_lot` for synchronous code, `tokio::sync::Mutex` for async code
-- [`own-rwlock-readers`](rules/own-rwlock-readers.md) - Use the right `RwLock<T>` when reads significantly outnumber writes
+- [`own-rwlock-readers`](rules/own-rwlock-readers.md) - Choose `RwLock<T>` when concurrent readers materially help the measured workload, not from a fixed read/write ratio
 - [`own-copy-small`](rules/own-copy-small.md) - Implement `Copy` for small, simple types
 - [`own-clone-explicit`](rules/own-clone-explicit.md) - Use `Clone` to make non-`Copy` duplication explicit, but do not infer a universal allocation or cost model from `.clone()`
 - [`own-move-large`](rules/own-move-large.md) - Borrow large values when ownership transfer is unnecessary; use indirection when it solves a real layout, location, or ownership problem—not from a fixed byte threshold
@@ -382,7 +382,7 @@ Reference these guidelines when:
 ### 22. Observability (MEDIUM)
 
 - [`obs-tracing-over-log`](rules/obs-tracing-over-log.md) - Use `tracing` for structured, span-aware diagnostics instead of `println!` or bare `log`
-- [`obs-library-facade`](rules/obs-library-facade.md) - Libraries emit through the tracing/log facade and never install a subscriber
+- [`obs-library-facade`](rules/obs-library-facade.md) - Reusable libraries should emit observability data without surprising callers by installing process-global logging or tracing state
 - [`obs-structured-fields`](rules/obs-structured-fields.md) - Record structured key-value fields, not values interpolated into the message string
 - [`obs-instrument-spans`](rules/obs-instrument-spans.md) - Use `#[tracing::instrument]` and spans to attach context to async tasks and requests
 - [`obs-levels-filter`](rules/obs-levels-filter.md) - Use log levels meaningfully and filter with `EnvFilter` / `RUST_LOG`
