@@ -454,14 +454,14 @@ Reference these guidelines when:
 ### 26. Anti-patterns (REFERENCE)
 
 - [`anti-unwrap-abuse`](rules/anti-unwrap-abuse.md) - Avoid `unwrap()` for recoverable production errors; reserve panics for proven invariants and bugs
-- [`anti-expect-lazy`](rules/anti-expect-lazy.md) - Don't use expect for recoverable errors
+- [`anti-expect-lazy`](rules/anti-expect-lazy.md) - Do not use `expect()` for ordinary runtime failures; use it to document deliberate panic invariants
 - [`anti-clone-excessive`](rules/anti-clone-excessive.md) - Do not clone merely to satisfy ownership when borrowing, moving, or deliberate sharing better matches the API
 - [`anti-lock-across-await`](rules/anti-lock-across-await.md) - Avoid holding blocking lock guards across `.await`; async mutex guards may cross `.await` when resource serialization requires it
-- [`anti-string-for-str`](rules/anti-string-for-str.md) - Don't accept &String when &str works
+- [`anti-string-for-str`](rules/anti-string-for-str.md) - Prefer `&str` over `&String` when the API only needs string contents
 - [`anti-vec-for-slice`](rules/anti-vec-for-slice.md) - Accept slices when an API only needs element access; accept `Vec` references when vector-specific capacity or length-changing operations are genuinely part of the contract
 - [`anti-index-over-iter`](rules/anti-index-over-iter.md) - Don't use indexing when iterators work
-- [`anti-panic-expected`](rules/anti-panic-expected.md) - Don't panic on expected or recoverable errors
-- [`anti-empty-catch`](rules/anti-empty-catch.md) - Don't silently ignore errors
+- [`anti-panic-expected`](rules/anti-panic-expected.md) - Do not use panics as the API for expected runtime failures
+- [`anti-empty-catch`](rules/anti-empty-catch.md) - Do not accidentally discard errors; make best-effort and discard semantics explicit
 - [`anti-over-abstraction`](rules/anti-over-abstraction.md) - Introduce generics and traits when they express a stable semantic boundary; do not generalize code solely for hypothetical flexibility
 - [`anti-premature-optimize`](rules/anti-premature-optimize.md) - Don't optimize before profiling
 - [`anti-type-erasure`](rules/anti-type-erasure.md) - Prefer static polymorphism when one concrete type is sufficient; use `dyn Trait` deliberately when runtime type erasure and heterogeneous implementations are part of the design
