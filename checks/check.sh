@@ -37,12 +37,14 @@ CARGO_TARGET_DIR="$FEATURE_TARGET" cargo check \
     --manifest-path "$FEATURE_FIXTURE" \
     --lib \
     --target "$TARGET" \
+    --locked \
     --quiet
 CARGO_TARGET_DIR="$FEATURE_TARGET" cargo check \
     --manifest-path "$FEATURE_FIXTURE" \
     --lib \
     --target "$TARGET" \
     --no-default-features \
+    --locked \
     --quiet
 
 echo "All checks passed."
