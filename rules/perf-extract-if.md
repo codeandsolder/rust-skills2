@@ -1,122 +1,175 @@
 # perf-extract-if
 
-> Use `extract_if` for conditional extraction when you need to keep both removed and retained elements
+> Use `extract_if` when matching elements should be removed while their ownership is yielded to the caller.
 
 **Rule**: `perf-extract-if`
 
 ## Why It Matters
 
-`Vec::extract_if` (Rust 1.87), `HashMap::extract_if` and `HashSet::extract_if` (Rust 1.88), and `BTreeMap::extract_if` (Rust 1.91) remove matching elements while yielding ownership of the removed values. This can replace patterns that first clone matching elements and then retain the rest.
+`extract_if` combines conditional removal with an iterator over the removed values. That is useful when you need **both** partitions: retain non-matching values in the original collection and process/collect matching values by ownership.
 
-The APIs are not identical: **`Vec::extract_if` and `BTreeMap::extract_if` take a range as their first argument**, while `HashMap` and `HashSet` do not.
+Current stable Rust provides:
 
-## Bad
+- `Vec::extract_if(range, pred)` since 1.87,
+- `HashMap::extract_if(pred)` and `HashSet::extract_if(pred)` since 1.88,
+- `BTreeMap::extract_if(range, pred)` since 1.91.
 
-<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding task collection context -->
+The returned iterators are lazy. If you stop consuming them early, unvisited elements remain in the original collection.
+
+## Bad: Clone Matching Elements, Then Scan Again to Retain
+
+<!-- rust-check: compile -->
 ```rust
-// Manual retain + collect: two passes and clones.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Task {
+    id: u32,
+    priority: u8,
+}
+
 fn extract_high_priority(tasks: &mut Vec<Task>) -> Vec<Task> {
-    let high: Vec<_> = tasks.iter()
-        .filter(|t| t.priority > 5)
+    let high = tasks
+        .iter()
+        .filter(|task| task.priority > 5)
         .cloned()
-        .collect();
-    tasks.retain(|t| t.priority <= 5);
+        .collect::<Vec<_>>();
+
+    tasks.retain(|task| task.priority <= 5);
     high
 }
-
-// Draining everything destroys the retained partition unless it is rebuilt.
-fn extract_evens(numbers: &mut Vec<i32>) -> Vec<i32> {
-    let all: Vec<_> = numbers.drain(..).collect();
-    all.into_iter().filter(|n| n % 2 == 0).collect()
-}
 ```
 
-## Good
+This performs separate selection/removal work and clones the extracted `Task`s. It may still be perfectly acceptable when simplicity matters more than the extra work or when cloning is cheap.
 
-<!-- rust-check: fragment; reason=standalone fragment: domain Task type and helper context -->
+## Good: Remove and Yield Ownership in One Operation
+
+<!-- rust-check: compile -->
 ```rust
-use std::collections::HashMap;
+#[derive(Debug, PartialEq, Eq)]
+struct Task {
+    id: u32,
+    priority: u8,
+}
 
 fn extract_high_priority(tasks: &mut Vec<Task>) -> Vec<Task> {
-    tasks.extract_if(.., |t| t.priority > 5).collect()
+    tasks
+        .extract_if(.., |task| task.priority > 5)
+        .collect()
 }
 
-fn extract_evens(numbers: &mut Vec<i32>) -> Vec<i32> {
-    numbers.extract_if(.., |n| *n % 2 == 0).collect()
-}
+let mut tasks = vec![
+    Task { id: 1, priority: 2 },
+    Task { id: 2, priority: 9 },
+    Task { id: 3, priority: 4 },
+];
 
-fn extract_large(map: &mut HashMap<String, u64>) -> HashMap<String, u64> {
-    map.extract_if(|_, v| *v > 100).collect()
-}
+let high = extract_high_priority(&mut tasks);
+assert_eq!(high, [Task { id: 2, priority: 9 }]);
+assert_eq!(tasks.len(), 2);
 ```
 
-Passing `..` to `Vec::extract_if` means “consider the entire vector.” A narrower range can limit which positions are eligible for extraction.
+`Vec::extract_if` passes each eligible element to the predicate as `&mut T`, so the predicate may also mutate elements whether or not it removes them.
 
-## API Reference
+## Vec Range Extraction
 
-| Collection | Method shape | Since |
-|------------|--------------|-------|
-| `Vec<T>` | `.extract_if(range, pred)` | 1.87 |
-| `HashMap<K, V>` | `.extract_if(pred)` | 1.88 |
-| `HashSet<T>` | `.extract_if(pred)` | 1.88 |
-| `BTreeMap<K, V>` | `.extract_if(range, pred)` | 1.91 |
+`Vec::extract_if` takes a positional range. Passing `..` examines the entire vector.
 
-## Vec Patterns
-
+<!-- rust-check: compile -->
 ```rust
 let mut items = vec![1, 2, 3, 4, 5, 6];
-let extracted: Vec<_> = items.extract_if(.., |n| *n % 2 == 0).collect();
-assert_eq!(items, [1, 3, 5]);
-assert_eq!(extracted, [2, 4, 6]);
+let extracted = items
+    .extract_if(1..4, |value| *value % 2 == 0)
+    .collect::<Vec<_>>();
 
-// Only positions 1..4 are considered.
-let mut items = vec![1, 2, 3, 4, 5, 6];
-let extracted: Vec<_> = items.extract_if(1..4, |n| *n % 2 == 0).collect();
 assert_eq!(items, [1, 3, 5, 6]);
 assert_eq!(extracted, [2, 4]);
 ```
 
-## HashMap and HashSet Patterns
+Only positions in the requested original range are candidates for removal.
 
+## Hash Collections
+
+Hash-map/set extraction has no range argument.
+
+<!-- rust-check: compile -->
 ```rust
 use std::collections::{HashMap, HashSet};
 
-let mut map: HashMap<&str, i32> = [
-    ("a", 1), ("b", 2), ("c", 3), ("d", 4)
-].into();
-let large: HashMap<_, _> = map.extract_if(|_, v| *v > 2).collect();
-assert_eq!(map.len(), 2);
-assert_eq!(large.len(), 2);
+fn hash_examples() {
+    let mut map: HashMap<&str, i32> =
+        [("a", 1), ("b", 2), ("c", 3), ("d", 4)].into();
+    let large: HashMap<_, _> = map.extract_if(|_, value| *value > 2).collect();
+    assert_eq!(map.len(), 2);
+    assert_eq!(large.len(), 2);
 
-let mut set: HashSet<i32> = [1, 2, 3, 4, 5, 6].into();
-let odds: HashSet<_> = set.extract_if(|n| *n % 2 == 1).collect();
-assert_eq!(set.len(), 3);
-assert_eq!(odds.len(), 3);
+    let mut set: HashSet<i32> = [1, 2, 3, 4, 5, 6].into();
+    let odds: HashSet<_> = set.extract_if(|value| *value % 2 == 1).collect();
+    assert_eq!(set.len(), 3);
+    assert_eq!(odds.len(), 3);
+}
 ```
+
+For `HashMap`, the predicate receives `(&K, &mut V)`; keys are not mutable because changing a key could invalidate the map's hash/equality invariants.
 
 ## BTreeMap Range Extraction
 
+`BTreeMap::extract_if` combines a **key range** with the predicate.
+
+<!-- rust-check: compile -->
 ```rust
 use std::collections::BTreeMap;
 
-let mut map: BTreeMap<i32, i32> = (0..8).map(|x| (x, x)).collect();
-let evens: BTreeMap<_, _> = map
-    .extract_if(.., |k, _| k % 2 == 0)
-    .collect();
-assert_eq!(evens.len(), 4);
-assert_eq!(map.len(), 4);
+fn extract_middle_evens() {
+    let mut map: BTreeMap<i32, i32> = (0..10).map(|x| (x, x)).collect();
+
+    let extracted: BTreeMap<_, _> = map
+        .extract_if(2..=7, |key, _value| key % 2 == 0)
+        .collect();
+
+    assert_eq!(extracted.keys().copied().collect::<Vec<_>>(), [2, 4, 6]);
+    assert!(!map.contains_key(&2));
+    assert!(map.contains_key(&8));
+}
 ```
 
-Because `BTreeMap::extract_if` takes a key range, it can also extract conditionally from only part of the ordered map.
+## Consume the Iterator When You Mean “Extract All Matches”
+
+The iterator performs work as it is advanced. If it is dropped early, unvisited elements remain.
+
+<!-- rust-check: compile -->
+```rust
+fn remove_only_first_even(values: &mut Vec<i32>) -> Option<i32> {
+    values.extract_if(.., |value| *value % 2 == 0).next()
+}
+
+let mut values = vec![1, 2, 4, 6];
+assert_eq!(remove_only_first_even(&mut values), Some(2));
+// 4 and 6 were never visited, so they remain.
+assert_eq!(values, [1, 4, 6]);
+```
+
+When all matches should be removed, exhaust the iterator with `collect`, a loop, `for_each(drop)`, or another consuming operation.
+
+## When `retain` Is Simpler
+
+If you only need to remove values and do **not** need ownership of what was removed, `retain` / `retain_mut` usually expresses the intent more directly.
+
+<!-- rust-check: compile -->
+```rust
+fn remove_zeroes(values: &mut Vec<i32>) {
+    values.retain(|value| *value != 0);
+}
+```
+
+Do not choose `extract_if` solely because it is newer. Choose it because yielding removed ownership is useful, or because range-limited extraction/mutation matches the operation.
 
 ## Performance Notes
 
-`extract_if` is useful when the removed values are needed and retaining the original allocation matters. It avoids cloning elements merely to create the removed partition. Do not assume it is universally faster than `retain`: if you do not need ownership of removed elements, `retain`/`retain_mut` is usually the simpler operation.
+`extract_if` can avoid cloning removed values and rebuilding the retained partition, but it is not a universal speedup over every hand-written alternative. Predicate cost, collection type, ordering requirements, and what you do with the removed values all matter.
 
-If an `extract_if` iterator is dropped before it is exhausted, unvisited elements remain in the collection. Consume the iterator when the intent is to process the whole requested range.
+Use the API for the right ownership semantics first; benchmark if the operation is actually hot.
 
 ## See Also
 
-- [perf-drain-reuse](./perf-drain-reuse.md) - drain and extraction patterns
-- [perf-collect-into](./perf-collect-into.md) - collection reuse
-- [perf-entry-api](./perf-entry-api.md) - Entry API for maps
+- [perf-drain-reuse](./perf-drain-reuse.md) - Draining and allocation reuse
+- [perf-collect-into](./perf-collect-into.md) - Reusing destination collections
+- [perf-entry-api](./perf-entry-api.md) - Entry-based map mutation
