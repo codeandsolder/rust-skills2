@@ -15,9 +15,9 @@ Do not confuse that packaging pattern with generated-code hygiene. Procedural ma
 
 ## Bad: Trying to Export Ordinary API from a Proc-Macro Crate
 
-This intentionally requires a proc-macro crate target, which the single-crate example harness cannot model:
+This intentionally requires a real proc-macro crate target. The dedicated fixture checks that the crate fails for the specific proc-macro export restriction rather than merely accepting any compiler failure:
 
-<!-- rust-check: ignore; reason=requires a proc-macro crate target to demonstrate proc-macro export restrictions -->
+<!-- rust-check: fixture(proc-macro-contracts) -->
 ```rust
 use proc_macro::TokenStream;
 
@@ -93,7 +93,7 @@ mycrate-derive.workspace = true
 
 The facade may expose a trait and a derive macro with the same spelling because they occupy different namespaces:
 
-<!-- rust-check: ignore; reason=requires the paired mycrate-derive proc-macro crate to compile the re-export -->
+<!-- rust-check: fixture(proc-macro-contracts) -->
 ```rust
 // mycrate/src/lib.rs
 pub use mycrate_derive::Greet;
@@ -112,7 +112,7 @@ pub mod __private {
 
 A consumer can then depend on the facade and use both APIs:
 
-<!-- rust-check: ignore; reason=requires the paired facade and proc-macro crates to exercise a re-exported derive -->
+<!-- rust-check: fixture(proc-macro-contracts) -->
 ```rust
 use mycrate::Greet;
 
@@ -124,6 +124,8 @@ fn main() {
     println!("{}", robot.greet());
 }
 ```
+
+The repository fixture exercises the same public shape through a dependency deliberately renamed to `api`, which also verifies the generated-path strategy below.
 
 ## Generated Paths: Do Not Blindly Hardcode `::mycrate`
 
@@ -150,7 +152,7 @@ Procedural macros have no `$crate` token that resolves to the defining facade. C
 
 A typical resolver shape is:
 
-<!-- rust-check: ignore; reason=requires proc-macro-crate in a procedural-macro expansion context -->
+<!-- rust-check: fixture(proc-macro-contracts) -->
 ```rust
 use proc_macro2::Span;
 use proc_macro_crate::{crate_name, FoundCrate};

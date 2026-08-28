@@ -3,7 +3,7 @@
 
 Recommended and anti-pattern examples are strict by default: blocks under a
 heading beginning with "Good" or "Bad" get expectation `compile`. Other legacy
-snippets retain the older heuristics unless they opt in to explicit metadata.
+snippets retain the older classifier unless they opt in to explicit metadata.
 
 An example can override its expectation with an HTML comment immediately above
 the fence:
@@ -11,8 +11,14 @@ the fence:
     <!-- rust-check: compile -->
     <!-- rust-check: fragment; reason=uses domain types defined elsewhere -->
     <!-- rust-check: compile_fail; reason=demonstrates a type error -->
-    <!-- rust-check: ignore; reason=requires a proc-macro crate -->
+    <!-- rust-check: ignore; reason=not executable in any maintained fixture -->
     <!-- rust-check: nightly(portable_simd); reason=nightly-only API -->
+    <!-- rust-check: fixture(proc-macro-contracts) -->
+
+`fixture(name)` keeps the block machine-readable as Rust but delegates its
+verification to checks/fixtures/<name>/verify.sh. The named fixture must contain
+both Cargo.toml and verify.sh. Fixture-backed blocks are recorded in manifest.json
+but are not generated as ordinary Cargo examples.
 
 Native rustdoc fence attributes are also honored for compile semantics:
 
@@ -24,7 +30,7 @@ Native rustdoc fence attributes are also honored for compile semantics:
 An explicit rust-check marker may add a more specific expectation/reason, but it
 must not contradict a native compile_fail/ignore fence attribute.
 
-Expectations are written to manifest.json for analyze.py.
+Expectations are written to manifest.json for analyze.py and fixture runners.
 """
 import json
 import pathlib
@@ -32,16 +38,15 @@ import re
 
 HERE = pathlib.Path(__file__).resolve().parent
 RULES = (HERE.parent / "rules").resolve()
+FIXTURES = HERE / "fixtures"
 OUT = HERE / "examples"
 OUT.mkdir(exist_ok=True)
 for f in OUT.glob("*.rs"):
     f.unlink()
 
-placeholder = re.compile(r"\b(my_crate|mycrate|mylib|my_app|my_project|my_lib|mycrate_derive)\b")
-placeholder_use = re.compile(r"\buse\s+(model|transport|service|internal|app|domain)\b")
 MARKER = re.compile(
     r"^<!--\s*rust-check:\s*"
-    r"(compile|fragment|compile_fail|ignore|nightly(?:\([^)]*\))?)"
+    r"(compile|fragment|compile_fail|ignore|nightly(?:\([^)]*\))?|fixture\([A-Za-z0-9_-]+\))"
     r"(?:\s*;\s*reason=(.*?))?\s*-->$"
 )
 FENCE = re.compile(r"^```rust(?P<attrs>\s*(?:,[^`]*)?)\s*$")
@@ -68,6 +73,20 @@ def explicit_marker(lines, fence_index):
         expect = "nightly"
         if not reason and feature:
             reason = f"requires nightly feature {feature}"
+    elif raw.startswith("fixture("):
+        fixture = raw[len("fixture("):-1]
+        fixture_dir = FIXTURES / fixture
+        if not (fixture_dir / "Cargo.toml").is_file():
+            raise SystemExit(
+                f"fixture {fixture!r} before line {fence_index + 1} has no Cargo.toml"
+            )
+        if not (fixture_dir / "verify.sh").is_file():
+            raise SystemExit(
+                f"fixture {fixture!r} before line {fence_index + 1} has no verify.sh"
+            )
+        expect = f"fixture:{fixture}"
+        if not reason:
+            reason = f"verified by fixture {fixture}"
     else:
         expect = raw
     if expect in {"fragment", "compile_fail", "ignore"} and not reason:
@@ -121,19 +140,17 @@ def resolve_expectation(lines, fence_index, fence_match, block, section, md_name
 
 
 def legacy_expectation(block, section):
-    """Keep legacy classification outside strict Good/Bad sections."""
+    """Keep the remaining legacy classifier outside strict Good/Bad sections.
+
+    Special execution environments must now opt in explicitly with metadata;
+    keyword-based auto-ignores are intentionally gone.
+    """
     if section.strip().lower().startswith("good"):
         return "compile", "Good sections compile by default"
     if section.strip().lower().startswith("bad"):
         return "compile", "Bad sections compile by default"
     if "#![feature" in block:
         return "nightly", "legacy nightly feature gate"
-    if "proc_macro" in block:
-        return "ignore", "legacy proc-macro snippet requires a proc-macro crate"
-    if placeholder.search(block) or placeholder_use.search(block):
-        return "ignore", "legacy placeholder/domain crate names"
-    if any(ln.strip() == "..." for ln in block.splitlines()):
-        return "ignore", "legacy bare pseudocode ellipsis"
     return "auto", "legacy classifier"
 
 
@@ -176,13 +193,17 @@ for md in sorted(RULES.glob("*.md")):
                 lines, i, fence_match, block, section, md.name
             )
             name = f"{md.stem.replace('-', '_')}__{file_index}"
+            generated_expectation = (
+                expect not in {"ignore", "nightly"}
+                and not expect.startswith("fixture:")
+            )
             info = {
                 "file": md.name,
                 "line": start + 1,
                 "section": section,
                 "expect": expect,
                 "reason": reason,
-                "generated": expect not in {"ignore", "nightly"},
+                "generated": generated_expectation,
             }
             manifest[name] = info
             if info["generated"]:

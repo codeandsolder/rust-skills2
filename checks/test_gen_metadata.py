@@ -39,6 +39,13 @@ fn compiles_but_is_not_run() {}
 ```rust,should_panic
 fn main() { panic!("runtime behavior is irrelevant to cargo check"); }
 ```
+
+## Fixture backed
+
+<!-- rust-check: fixture(feature-additive) -->
+```rust
+#![cfg_attr(not(feature = "std"), no_std)]
+```
 '''
 
 
@@ -54,17 +61,18 @@ def main():
         run_gen()
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         prefix = "zz_verifier_metadata_fixture__"
-        rows = [manifest[f"{prefix}{i}"] for i in range(4)]
+        rows = [manifest[f"{prefix}{i}"] for i in range(5)]
         got = [(row["expect"], row["generated"]) for row in rows]
         want = [
             ("compile_fail", True),
             ("ignore", False),
             ("compile", True),
             ("compile", True),
+            ("fixture:feature-additive", False),
         ]
         if got != want:
-            raise AssertionError(f"native fence expectations: got {got!r}, want {want!r}")
-        print("OK: native rustdoc fence expectations")
+            raise AssertionError(f"native/fixture expectations: got {got!r}, want {want!r}")
+        print("OK: native rustdoc and fixture expectations")
     finally:
         FIXTURE.unlink(missing_ok=True)
         # Restore generated state so the real corpus run that follows sees only

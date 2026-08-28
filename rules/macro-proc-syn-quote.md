@@ -81,9 +81,9 @@ Choose `syn` features from the APIs the macro actually uses rather than copying 
 
 ## Thin Proc-Macro Entry Point
 
-The entry point itself requires a `proc-macro` crate target, so the normal example harness intentionally skips it:
+The entry point itself requires a `proc-macro` crate target, so it is verified in the dedicated proc-macro workspace rather than wrapped as an ordinary binary example:
 
-<!-- rust-check: ignore; reason=proc_macro attributes and proc_macro::TokenStream require a proc-macro crate target -->
+<!-- rust-check: fixture(proc-macro-contracts) -->
 ```rust
 use proc_macro::TokenStream;
 

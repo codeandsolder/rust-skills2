@@ -35,7 +35,8 @@ serde = { version = "1", optional = true }
 
 For a library that uses allocation in its no-std configuration, the crate root can look like this:
 
-```text
+<!-- rust-check: fixture(feature-additive) -->
+```rust
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(not(feature = "std"))]
