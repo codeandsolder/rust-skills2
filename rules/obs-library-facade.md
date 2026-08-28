@@ -1,66 +1,96 @@
 # obs-library-facade
 
-> Libraries emit through the tracing/log facade and never install a subscriber
+> Reusable libraries should emit observability data without surprising callers by installing process-global logging or tracing state
 
 ## Why It Matters
 
-Installing a global subscriber or logger is a one-time, process-wide operation. If a library calls `tracing_subscriber::fmt::init()` or `env_logger::init()`, it silently conflicts with any other library or the application binary that does the same — the second call panics or is silently ignored, and the caller loses all control over log format, destination, and level filtering. Libraries must only *emit* events and spans; the binary that owns `main` decides how to handle them. This is the same contract as `log` has always enforced and `tracing` carries forward.
+Global logger/subscriber installation is process-wide coordination. A reusable library that silently performs it can conflict with the application, tests, other libraries, or embedding environments that need different filtering, formatting, destinations, or subscriber composition.
 
-## Bad
+The durable split is:
 
+- reusable library code **emits** events/spans through a facade such as `tracing` or `log`;
+- the application or embedding layer that owns process startup normally chooses and installs the global collector/logger;
+- a library may expose an **explicit opt-in helper** when convenient, but should not install global state as an incidental side effect of ordinary API calls.
+
+## Bad: Hidden Global Setup in Library Work
+
+<!-- rust-check: compile -->
 ```rust
-// In a library crate: mylib/src/lib.rs
 use tracing::info;
 
 pub fn connect(url: &str) {
-    // BAD: library installs a subscriber — conflicts with the application
+    // Bad library behavior: ordinary work unexpectedly claims global setup.
     tracing_subscriber::fmt::init();
     info!(url, "connecting");
 }
 ```
 
-<!-- rust-check: fragment; reason=observability anti-pattern references an application logging facade -->
+Whether repeated global initialization panics or returns an error depends on the setup API used. The design problem is the surprise and loss of caller control, not one universal failure mode.
+
+## Good: Library Emits, Application Configures
+
+<!-- rust-check: compile -->
 ```rust
-// Also bad: using env_logger in a library
-pub fn init_logging() {
-    env_logger::init(); // steals the global logger from the application
+mod mylib {
+    use tracing::info;
+
+    pub fn connect(url: &str) {
+        info!(url, "connecting");
+    }
 }
-```
 
-## Good
-
-```rust
-// In a library crate: mylib/src/lib.rs
-use tracing::info;
-
-pub fn connect(url: &str) {
-    // Good: just emit; the application owns subscriber setup
-    info!(url, "connecting");
-}
-```
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-// In the binary: src/main.rs
-fn main() {
-    // The application initializes once, with full control
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+        .try_init()?;
 
     mylib::connect("postgres://localhost/app");
+    Ok(())
 }
 ```
 
-## Key Points
+The binary owns the policy. Library events still work when the application chooses a completely different subscriber stack.
 
-- **Library `Cargo.toml`**: depend on `tracing = "0.1"` only. Do **not** add `tracing-subscriber` or `env_logger` as non-`dev` dependencies.
-- **Binary `Cargo.toml`**: add `tracing-subscriber = { version = "0.3", features = ["env-filter"] }` for the subscriber.
-- If you need a subscriber in library tests, add it to `[dev-dependencies]` and call it inside `#[test]` functions using `tracing_subscriber::fmt::try_init()` (the `try_` variant does not panic on re-init).
-- The `log` crate follows the same rule: libraries call `log::info!(...)`; applications call `env_logger::init()` or bridge via `tracing_log::LogTracer`.
+## Explicit Convenience Setup Can Be Fine
+
+A crate that serves both as a library and as tooling support may offer an explicitly named helper. Prefer a fallible operation so existing process-global state is not converted into a panic:
+
+```rust
+pub fn try_init_default_tracing(
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .try_init()
+}
+```
+
+The key is that callers choose to invoke this API. Do not bury it in `Client::new`, `connect`, parsing, or unrelated initialization.
+
+## Tests and Examples
+
+Tests that want human-readable tracing may call `try_init()` and tolerate a prior installation because several tests can share one process:
+
+```rust
+fn init_test_tracing() {
+    let _ = tracing_subscriber::fmt()
+        .with_test_writer()
+        .try_init();
+}
+
+#[test]
+fn emits_a_trace() {
+    init_test_tracing();
+    tracing::info!("test event");
+}
+```
+
+For more isolation, use scoped/subscriber APIs rather than relying on mutable global state.
+
+## Dependency Boundary
+
+A reusable library that merely emits `tracing` events generally needs only `tracing` in normal dependencies. Subscriber implementations can stay in the application, examples, or dev-dependencies unless the library intentionally exposes subscriber-building functionality.
 
 ```toml
-# library Cargo.toml
 [dependencies]
 tracing = "0.1"
 
@@ -68,8 +98,18 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ```
 
+The same architectural principle applies to the `log` facade: emission can be a library concern; process-global logger policy normally belongs to the executable or embedding application.
+
+## Key Points
+
+- Do not install process-global observability state as a hidden side effect of ordinary reusable-library calls.
+- Emit through a facade and let the application choose collection/filtering/output policy.
+- Explicit opt-in setup helpers are different from implicit initialization.
+- Prefer fallible initialization APIs when setup may already have occurred.
+- Keep subscriber implementation dependencies out of the runtime library dependency graph unless the public API actually needs them.
+
 ## See Also
 
-- [obs-tracing-over-log](obs-tracing-over-log.md) - why to use `tracing` over `println!` or bare `log`
-- [obs-levels-filter](obs-levels-filter.md) - configure level filtering with `EnvFilter` in the binary
-- [api-serde-optional](api-serde-optional.md) - pattern for gating heavy dependencies behind feature flags
+- [obs-tracing-over-log](obs-tracing-over-log.md) - structured tracing
+- [obs-levels-filter](obs-levels-filter.md) - application filtering policy
+- [api-serde-optional](api-serde-optional.md) - optional dependency boundaries
