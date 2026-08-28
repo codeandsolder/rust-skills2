@@ -1,4 +1,4 @@
-use api::{Greet as _, Hello as _, MyTrait as _};
+use api::{Greet, Hello, MyTrait};
 
 #[derive(api::Greet)]
 struct Robot;
