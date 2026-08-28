@@ -47,4 +47,13 @@ CARGO_TARGET_DIR="$FEATURE_TARGET" cargo check \
     --locked \
     --quiet
 
+echo "==> Tokio unstable instrumentation fixture"
+TOKIO_FIXTURE="$ROOT/checks/fixtures/tokio-special/Cargo.toml"
+TOKIO_TARGET="$ROOT/checks/target/tokio-special"
+RUSTFLAGS="--cfg tokio_unstable" CARGO_TARGET_DIR="$TOKIO_TARGET" cargo check \
+    --manifest-path "$TOKIO_FIXTURE" \
+    --target "$TARGET" \
+    --locked \
+    --quiet
+
 echo "All checks passed."

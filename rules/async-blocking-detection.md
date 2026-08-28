@@ -82,10 +82,11 @@ A stalled heartbeat is a symptom, not a diagnosis: host scheduler pressure, proc
 
 ## `tokio-console` During Development
 
-`tokio-console`/`console-subscriber` can expose task poll durations, long busy periods, and resource activity. It requires the console subscriber dependency plus the Tokio/tracing instrumentation configuration expected by that tool, so this repository's generic example crate does not compile-check the setup snippet itself.
+`tokio-console`/`console-subscriber` can expose task poll durations, long busy periods, and resource activity. With Tokio, the console requires Tokio's optional `tracing` instrumentation plus the `tokio_unstable` cfg at build time. `console_subscriber::init()` installs the console layer and enables the required Tokio/runtime tracing targets automatically.
 
-<!-- rust-check: ignore; reason=requires console-subscriber plus the Tokio tracing instrumentation configuration used by tokio-console -->
-```rust
+A minimal application setup looks like this:
+
+```text
 #[tokio::main]
 async fn main() {
     console_subscriber::init();
@@ -93,7 +94,9 @@ async fn main() {
 }
 ```
 
-Treat that as deployment/setup documentation; compile-check the application's actual console configuration in the application that enables it.
+This repository verifies that setup in `checks/fixtures/tokio-special` with `console-subscriber`, Tokio's `tracing` feature, and `RUSTFLAGS="--cfg tokio_unstable"`. Keeping that configuration in a dedicated fixture avoids enabling Tokio's unstable instrumentation for every ordinary rule example.
+
+Treat console instrumentation as development/diagnostic configuration and compile-check the same feature/cfg combination your application actually uses.
 
 ## Runtime Metrics: Context, Not a Blocking Detector
 

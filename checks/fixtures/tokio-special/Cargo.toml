@@ -1,0 +1,9 @@
+[package]
+name = "tokio-special-contracts-fixture"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "tracing"] }
+console-subscriber = "0.5"
