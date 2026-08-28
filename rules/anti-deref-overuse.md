@@ -1,135 +1,175 @@
 # anti-deref-overuse
 
-> Don't use `Deref<Target = InnerType>` for newtype method delegation
+> Implement `Deref` only when transparent target-like behavior is part of the type's intended API
 
 ## Why It Matters
 
-`Deref` is meant for smart pointer types (`Box`, `Arc`, `Cow`), not for emulating inheritance or leaking inner APIs. Using `Deref` on newtypes:
+`Deref` is more than a convenience delegation hook. A `Deref<Target = T>` implementation participates in deref coercion and method lookup, so callers can often use `&Wrapper` where `&T` is expected and can call methods from `T` through the wrapper.
 
-- **Leaks the inner type's full public API** — callers can use `&Email` where `&str` is expected, bypassing validation.
-- **Hides the newtype's semantics** — it's no longer an `Email`, it's a `String` in disguise.
-- **Prevents adding custom methods** without ambiguity.
-- **Confuses trait resolution** — inherent methods on the inner type shadow your own.
+That is appropriate when the wrapper is intended to behave transparently like its target and dereferencing is cheap and unsurprising. It is usually a poor fit for an invariant-bearing domain newtype whose abstraction is meant to remain visible.
 
-## Bad
+Do not describe deref coercion as bypassing construction validation: if an `Email` was already constructed through a checked constructor, obtaining `&str` from that valid value does not retroactively bypass the constructor. The concern is API design: implicit coercion and target methods become part of the wrapper's public behavior.
 
+## Bad: Incidental Delegation Through `Deref`
+
+<!-- rust-check: compile -->
 ```rust
+use std::ops::Deref;
+
+#[derive(Debug, Clone)]
 struct Email(String);
 
-impl std::ops::Deref for Email {
+impl Deref for Email {
     type Target = str;
+
     fn deref(&self) -> &str {
         &self.0
     }
 }
 
-// Now &Email coerces to &str EVERYWHERE — unintended
-fn send_to(address: &str) { /* ... */ }
-
-let email = Email("test@example.com".to_string());
-send_to(&email);  // Compiles — may bypass validation
-// Any String method also works on Email via Deref
-
-// Email has no custom validation interface exposed
-// — the Deref leaks raw string access
-```
-
-```rust
-// Even worse: Deref on a generic newtype
-struct Wrapper<T>(T);
-
-impl<T> std::ops::Deref for Wrapper<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        &self.0
-    }
+fn send_to(address: &str) -> usize {
+    address.len()
 }
-// This is a code smell — you're hiding the wrapper entirely
+
+fn main() {
+    let email = Email("test@example.com".to_owned());
+
+    // These compile because Deref makes transparent string-like behavior
+    // part of Email's API, whether or not that was the design intent.
+    assert!(email.ends_with("example.com"));
+    assert_eq!(send_to(&email), email.len());
+}
 ```
 
-## Good
+This code is type-correct. The anti-pattern is choosing `Deref` merely to avoid writing the domain API you actually want.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Good: Explicit Access for an Invariant-Bearing Newtype
+
+<!-- rust-check: compile -->
 ```rust
-struct Email(String);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Email(String);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ValidationError;
 
 impl Email {
-    /// Parse and validate on construction.
-    pub fn new(s: &str) -> Result<Self, ValidationError> {
-        if is_valid_email(s) {
-            Ok(Email(s.to_string()))
+    pub fn parse(raw: &str) -> Result<Self, ValidationError> {
+        let valid = raw
+            .split_once('@')
+            .is_some_and(|(local, domain)| !local.is_empty() && !domain.is_empty());
+
+        if valid {
+            Ok(Self(raw.to_owned()))
         } else {
-            Err(ValidationError::InvalidEmail)
+            Err(ValidationError)
         }
     }
 
-    /// Explicit accessor — not automatic via Deref.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    /// Custom validation method that doesn't conflict.
     pub fn domain(&self) -> &str {
-        self.0.split('@').nth_back(0).unwrap_or("")
-    }
-}
-
-// Callers use explicit methods
-let email = Email::new("test@example.com").unwrap();
-send_to(email.as_str());  // Explicit: reader sees the conversion
-```
-
-## Pattern: Explicit Delegation
-
-```rust
-#[derive(Debug, Clone)]
-struct UserId(u64);
-
-impl UserId {
-    pub fn new(id: u64) -> Self {
-        Self(id)
-    }
-
-    pub fn as_u64(&self) -> u64 {
         self.0
-    }
-
-    // Only expose what makes sense for UserId
-    pub fn is_system(&self) -> bool {
-        self.0 < 1000
+            .split_once('@')
+            .map_or("", |(_, domain)| domain)
     }
 }
 
-// No Deref — callers can't accidentally use UserId as u64
-fn lookup_user(id: UserId) { /* ... */ }
-// lookup_user(42);  // Compile error — type-safe!
-lookup_user(UserId::new(42));  // Explicit — correct
+fn send_to(address: &str) -> usize {
+    address.len()
+}
+
+fn main() {
+    let email = Email::parse("test@example.com").unwrap();
+    assert_eq!(email.domain(), "example.com");
+    assert_eq!(send_to(email.as_str()), 16);
+    assert!(Email::parse("not-an-email").is_err());
+}
 ```
 
-## When Deref Is Appropriate
+The conversion to `&str` is now visible at the call site and the wrapper controls which domain-specific operations it exposes.
 
-| Use case | Example | OK? |
-|----------|---------|-----|
-| Smart pointers | `Box<T>`, `Arc<T>`, `Cow<T>` | ✅ Intended use |
-| Newtypes for API safety | `Email(String)`, `UserId(u64)` | ❌ Use explicit methods |
-| Thin wrapper delegation | — | ❌ Use explicit delegation |
+## `Deref` Can Be Correct Beyond `Box`
+
+The standard library guidance is broader than “only implement this for smart pointers.” A custom type can reasonably implement `Deref` when all of these are true:
+
+- it transparently behaves like the target type;
+- dereferencing is cheap;
+- exposing the target's methods and coercions is unsurprising;
+- that relationship is stable enough to become part of the public API.
+
+Pointer-like owners are the common case, but the semantic test matters more than a hardcoded whitelist.
+
+<!-- rust-check: compile -->
+```rust
+use std::ops::Deref;
+
+struct ReadOnlyBuffer(Vec<u8>);
+
+impl Deref for ReadOnlyBuffer {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+fn checksum(bytes: &[u8]) -> u64 {
+    bytes.iter().map(|&b| u64::from(b)).sum()
+}
+
+fn main() {
+    let buffer = ReadOnlyBuffer(vec![1, 2, 3]);
+    assert_eq!(checksum(&buffer), 6);
+}
+```
+
+Whether this particular wrapper *should* be transparent is still an API decision; the example only shows the kind of relationship for which `Deref` can be coherent.
+
+## `AsRef` Is a Separate Contract
+
+If callers genuinely benefit from generic borrowed conversion, `AsRef<str>` can be intentional:
+
+<!-- rust-check: compile -->
+```rust
+struct Name(String);
+
+impl AsRef<str> for Name {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+fn measure(value: impl AsRef<str>) -> usize {
+    value.as_ref().len()
+}
+
+fn main() {
+    assert_eq!(measure(Name("alice".to_owned())), 5);
+}
+```
+
+Do not implement `AsRef` mechanically either. It advertises a generic conversion contract; an inherent `as_str()` method is often the smaller API for a domain newtype.
 
 ## Decision Guide
 
-| Goal | Approach |
-|------|----------|
-| Expose inner value | `fn as_inner(&self) -> &Inner` |
-| Expose specific methods | Write delegation methods |
-| Smart pointer semantics | `Deref` is correct |
-| FFI wrapper | `#[repr(transparent)]` without Deref |
+| Intent | Typical choice |
+|---|---|
+| Transparent pointer/target-like wrapper | Consider `Deref` |
+| Domain newtype with visible semantics/invariants | Explicit inherent methods |
+| Generic borrowed conversion is useful | Consider `AsRef<T>` |
+| Expose one or two inner operations | Delegate those methods explicitly |
+| FFI layout guarantee | `#[repr(transparent)]` is separate from `Deref` |
 
 ## See Also
 
-- [type-repr-transparent](./type-repr-transparent.md) — FFI-safe single-field newtypes
-- [api-newtype-safety](./api-newtype-safety.md) — Type-safe newtype pattern
-- [type-display-vs-debug](./type-display-vs-debug.md) — Proper trait implementations for newtypes
+- [type-repr-transparent](./type-repr-transparent.md) — representation/layout, not delegation
+- [api-newtype-safety](./api-newtype-safety.md) — type-safe newtypes
+- [type-display-vs-debug](./type-display-vs-debug.md) — semantic trait implementations
 
 ## References
 
-- [Rust Anti-patterns: Deref polymorphism](https://rust-unofficial.github.io/patterns/anti_patterns/deref.html)
-- [Rust API Guidelines: Deref](https://rust-lang.github.io/api-guidelines/predictability.html#smart-pointers-behave-like-smart-pointers-c-smart-ptr)
+- [Rust `Deref` documentation](https://doc.rust-lang.org/std/ops/trait.Deref.html)
+- [Rust API Guidelines: smart pointer behavior](https://rust-lang.github.io/api-guidelines/predictability.html#smart-pointers-behave-like-smart-pointers-c-smart-ptr)
