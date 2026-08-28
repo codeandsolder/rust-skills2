@@ -1,43 +1,47 @@
 # proj-mod-by-feature
 
-> Organize modules by feature, not type
+> Prefer domain/feature-oriented modules when they keep code that changes together in one place
 
 ## Why It Matters
 
-Feature-based organization keeps related code together, making navigation intuitive and changes localized. Type-based organization (all handlers in one folder, all models in another) scatters related code across the codebase, making features harder to understand and modify.
+A module tree should make the codebase easier to navigate and preserve useful boundaries. In applications where each domain feature has a model, storage code, business logic, and handlers, a purely layer-oriented tree can scatter one change across many distant directories.
 
-## Bad
+Feature-oriented modules are a useful default in that situation, not a universal law. Cross-cutting infrastructure, small projects, reusable libraries, and architectures with strong layer boundaries may be clearer with another shape.
 
-```
+## Layer-Only Layout Can Scatter a Feature
+
+```text
 src/
 ├── controllers/
-│   ├── user_controller.rs
-│   ├── order_controller.rs
-│   └── product_controller.rs
+│   ├── user.rs
+│   ├── order.rs
+│   └── product.rs
 ├── models/
 │   ├── user.rs
 │   ├── order.rs
 │   └── product.rs
 ├── services/
-│   ├── user_service.rs
-│   ├── order_service.rs
-│   └── product_service.rs
+│   ├── user.rs
+│   ├── order.rs
+│   └── product.rs
 └── repositories/
-    ├── user_repository.rs
-    ├── order_repository.rs
-    └── product_repository.rs
+    ├── user.rs
+    ├── order.rs
+    └── product.rs
 ```
 
-## Good
+If most changes are feature-local, this layout makes each feature span several directories.
 
-```
+## Feature-Oriented Alternative
+
+```text
 src/
 ├── user/
-│   ├── mod.rs           # Re-exports public items
-│   ├── model.rs         # User struct, types
-│   ├── repository.rs    # Database operations
-│   ├── service.rs       # Business logic
-│   └── handler.rs       # HTTP handlers
+│   ├── mod.rs
+│   ├── model.rs
+│   ├── repository.rs
+│   ├── service.rs
+│   └── handler.rs
 ├── order/
 │   ├── mod.rs
 │   ├── model.rs
@@ -52,79 +56,108 @@ src/
 └── lib.rs
 ```
 
-## Benefits
+The useful property is cohesion: code that usually changes together is near each other.
 
-| Aspect | Type-Based | Feature-Based |
-|--------|------------|---------------|
-| Finding code | Search across folders | One folder per feature |
-| Adding feature | Touch 4+ folders | Create one folder |
-| Understanding feature | Jump between folders | Everything in one place |
-| Deleting feature | Hunt through codebase | Delete one folder |
-| Code ownership | Unclear | Clear feature owners |
-
-## Module Structure
+## Module Boundary Example
 
 ```rust
-// src/user/mod.rs
-mod model;
-mod repository;
-mod service;
-mod handler;
+mod user {
+    mod model {
+        #[derive(Debug)]
+        pub struct User {
+            pub id: u64,
+        }
 
-// Re-export public API
-pub use model::{User, UserId, CreateUserRequest};
-pub use handler::router;
-pub(crate) use service::UserService;
+        #[derive(Debug, Clone, Copy)]
+        pub struct UserId(pub u64);
+
+        pub struct CreateUserRequest {
+            pub id: u64,
+        }
+    }
+
+    mod repository {
+        use super::model::User;
+
+        pub(crate) fn load(id: u64) -> User {
+            User { id }
+        }
+    }
+
+    mod service {
+        use super::{model::User, repository};
+
+        pub struct UserService;
+
+        impl UserService {
+            pub fn load(&self, id: u64) -> User {
+                repository::load(id)
+            }
+        }
+    }
+
+    mod handler {
+        pub fn router() -> &'static str {
+            "/users"
+        }
+    }
+
+    pub use self::handler::router;
+    pub use self::model::{CreateUserRequest, User, UserId};
+    pub(crate) use self::service::UserService;
+}
+
+fn main() {
+    let service = user::UserService;
+    let user = service.load(7);
+    assert_eq!(user.id, 7);
+    assert_eq!(user::router(), "/users");
+}
 ```
 
-## Shared Code
+Private submodules let the feature expose a small public surface while its internal layers remain reorganizable.
 
-```
+## Shared and Cross-Cutting Code
+
+Do not force infrastructure into arbitrary feature folders:
+
+```text
 src/
 ├── user/
 ├── order/
-├── shared/              # Cross-cutting concerns
-│   ├── mod.rs
-│   ├── database.rs      # Connection pool
-│   ├── error.rs         # Common error types
-│   └── middleware.rs    # Auth, logging
+├── database.rs
+├── telemetry.rs
+├── config.rs
 └── lib.rs
 ```
+
+A `shared/` or `common/` directory can be useful, but watch for it becoming a miscellaneous dumping ground. Prefer names that describe a real capability when one emerges.
 
 ## When to Flatten
 
-Small modules don't need deep nesting:
+Small modules do not need five files merely to satisfy a pattern:
 
-```
+```text
 src/
-├── user/
-│   ├── mod.rs           # Contains User struct + simple functions
-│   └── repository.rs    # Only if complex enough
-├── config.rs            # Simple enough for single file
+├── user.rs
+├── config.rs
 └── lib.rs
 ```
 
-## Hybrid Approach
+Split a feature when the extra boundary improves navigation, ownership, testing, or reuse—not because every conceptual layer deserves a file.
 
-For larger features, nest further by concern:
+## Decision Guide
 
-```
-src/
-├── billing/
-│   ├── mod.rs
-│   ├── invoice/
-│   │   ├── mod.rs
-│   │   ├── model.rs
-│   │   └── service.rs
-│   ├── payment/
-│   │   ├── mod.rs
-│   │   ├── model.rs
-│   │   └── processor.rs
-│   └── shared.rs
-```
+| Dominant change pattern | Often clearer |
+|---|---|
+| Features change mostly independently | Feature/domain modules |
+| Infrastructure reused across many features | Cross-cutting modules |
+| Small crate with few items | Flat module tree |
+| Public reusable library organized around concepts/types | API-oriented modules |
+| Strong architectural layer boundaries are themselves important | Layered or hybrid layout |
 
 ## See Also
 
 - [proj-flat-small](./proj-flat-small.md) - Keep small projects flat
-- [proj-pub-use-reexport](./proj-pub-use-reexport.md) - Clean public API
-- [proj-lib-main-split](./proj-lib-main-split.md) - Lib/main separation
+- [proj-pub-use-reexport](./proj-pub-use-reexport.md) - Curate module public APIs
+- [proj-lib-main-split](./proj-lib-main-split.md) - Library/binary separation
