@@ -20,8 +20,9 @@ python3 "$ROOT/checks/test_gen_metadata.py"
 echo "==> generating example files from rules"
 cd "$ROOT/checks"
 python3 gen.py
+python3 check_contract_inventory.py
 
-echo "==> compile-checking examples (target: $TARGET)"
+echo "==> compile-checking ordinary examples (target: $TARGET)"
 cargo check --examples --target "$TARGET" --keep-going --message-format=json \
     > check.json 2> check.err || true
 
@@ -30,30 +31,7 @@ python3 analyze.py check.json \
     --check-baseline baseline.txt \
     --good-exceptions good-exceptions.txt
 
-echo "==> additive feature-matrix fixture"
-FEATURE_FIXTURE="$ROOT/checks/fixtures/feature-additive/Cargo.toml"
-FEATURE_TARGET="$ROOT/checks/target/feature-additive"
-CARGO_TARGET_DIR="$FEATURE_TARGET" cargo check \
-    --manifest-path "$FEATURE_FIXTURE" \
-    --lib \
-    --target "$TARGET" \
-    --locked \
-    --quiet
-CARGO_TARGET_DIR="$FEATURE_TARGET" cargo check \
-    --manifest-path "$FEATURE_FIXTURE" \
-    --lib \
-    --target "$TARGET" \
-    --no-default-features \
-    --locked \
-    --quiet
-
-echo "==> Tokio unstable instrumentation fixture"
-TOKIO_FIXTURE="$ROOT/checks/fixtures/tokio-special/Cargo.toml"
-TOKIO_TARGET="$ROOT/checks/target/tokio-special"
-RUSTFLAGS="--cfg tokio_unstable" CARGO_TARGET_DIR="$TOKIO_TARGET" cargo check \
-    --manifest-path "$TOKIO_FIXTURE" \
-    --target "$TARGET" \
-    --locked \
-    --quiet
+echo "==> fixture-backed contracts"
+python3 run_fixture_contracts.py "$TARGET"
 
 echo "All checks passed."
