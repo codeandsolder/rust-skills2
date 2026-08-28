@@ -159,7 +159,7 @@ Reference these guidelines when:
 - [`api-impl-into`](rules/api-impl-into.md) - Accept `Into<T>` when the API intentionally takes ownership and useful caller types can convert into `T`
 - [`api-impl-asref`](rules/api-impl-asref.md) - Use `AsRef<T>` for cheap generic borrowed views when accepting several source types is genuinely useful
 - [`api-must-use`](rules/api-must-use.md) - Add `#[must_use]` when silently discarding a value is plausibly a bug; rely on the built-in `unused_must_use` semantics instead of treating every return value alike
-- [`api-non-exhaustive`](rules/api-non-exhaustive.md) - Use `#[non_exhaustive]` on public enums and structs for forward compatibility
+- [`api-non-exhaustive`](rules/api-non-exhaustive.md) - Use `#[non_exhaustive]` when a public struct, enum, or enum variant is intentionally open to compatible growth
 - [`api-from-not-into`](rules/api-from-not-into.md) - Implement `From<Source> for Destination` for clear infallible conversions you own; use `Into<Destination>` primarily as a caller-side bound
 - [`api-default-impl`](rules/api-default-impl.md) - Implement `Default` only when the type has a sensible canonical default value
 - [`api-common-traits`](rules/api-common-traits.md) - Implement standard traits when their semantics are useful and appropriate for the public type
@@ -294,7 +294,7 @@ Reference these guidelines when:
 - [`macro-rules-hygiene`](rules/macro-rules-hygiene.md) - Understand `macro_rules!` mixed-site hygiene and use `$crate` for defining-crate paths
 - [`macro-fragment-specifiers`](rules/macro-fragment-specifiers.md) - Capture with precise fragment specifiers, not raw `:tt`, where you can
 - [`macro-export-crate-path`](rules/macro-export-crate-path.md) - Use `#[macro_export]` when a `macro_rules!` macro is part of the public crate API
-- [`macro-private-helpers`](rules/macro-private-helpers.md) - Hide macro-generated helper items behind a `#[doc(hidden)] pub mod __private`
+- [`macro-private-helpers`](rules/macro-private-helpers.md) - Route exported-macro support items through a clearly marked `#[doc(hidden)]` module when call-site visibility requires them to be public
 - [`macro-proc-two-crate`](rules/macro-proc-two-crate.md) - Put procedural macros in a dedicated `proc-macro = true` crate and re-export them from the ordinary library facade
 - [`macro-proc-syn-quote`](rules/macro-proc-syn-quote.md) - Put proc-macro parsing and generation in testable `syn`/`quote` helpers
 - [`macro-proc-error-spans`](rules/macro-proc-error-spans.md) - Turn expected proc-macro input errors into spanned compile errors instead of panics
@@ -332,7 +332,7 @@ Reference these guidelines when:
 - [`name-iter-method`](rules/name-iter-method.md) - Implement `IntoIterator` delegation for `for` loop support
 - [`name-iter-type-match`](rules/name-iter-type-match.md) - Name public iterator types after the methods or functions that produce them
 - [`name-acronym-word`](rules/name-acronym-word.md) - In `UpperCamelCase`, treat acronyms as ordinary words: `HttpServer`, `Uuid`, `TcpStream`
-- [`name-crate-no-rs`](rules/name-crate-no-rs.md) - Don't suffix crate names with `-rs` or `-rust`
+- [`name-crate-no-rs`](rules/name-crate-no-rs.md) - Avoid `-rs`, `-rust`, `rust-`, and similar language-only affixes in crate/package names
 - [`name-feature`](rules/name-feature.md) - Name Cargo features without placeholder words like `abc`, `use-abc`, or `with-abc`
 - [`name-word-order`](rules/name-word-order.md) - Keep compound names in a consistent, idiomatic word order
 
@@ -347,10 +347,10 @@ Reference these guidelines when:
 - [`test-mockall-mocking`](rules/test-mockall-mocking.md) - Use mockall for trait mocking
 - [`test-mock-traits`](rules/test-mock-traits.md) - Put meaningful external dependencies behind replaceable boundaries when that improves testing
 - [`test-fixture-raii`](rules/test-fixture-raii.md) - Use RAII for owned test resources; do not confuse cleanup with safe mutation of process-global state
-- [`test-tokio-async`](rules/test-tokio-async.md) - Use `#[tokio::test]` for async tests
+- [`test-tokio-async`](rules/test-tokio-async.md) - Use `#[tokio::test]` for ordinary Tokio-driven async tests, and configure the runtime flavor only when the test needs it
 - [`test-should-panic`](rules/test-should-panic.md) - Use `#[should_panic]` for tests whose success condition is a deliberate panic
 - [`test-criterion-bench`](rules/test-criterion-bench.md) - Use `criterion` for benchmarking (or `divan` for simpler workflows)
-- [`test-doctest-examples`](rules/test-doctest-examples.md) - Keep documentation examples as executable doctests
+- [`test-doctest-examples`](rules/test-doctest-examples.md) - Keep public documentation examples executable as doctests when practical
 - [`test-loom-concurrency`](rules/test-loom-concurrency.md) - Use `loom` to exhaustively test lock-free and concurrent code
 - [`test-snapshot-testing`](rules/test-snapshot-testing.md) - Use snapshot tests for complex output that humans should review as a whole
 - [`test-assert-matches`](rules/test-assert-matches.md) - Use `assert_matches!` / `debug_assert_matches!` (Rust 1.96+) for pattern-based assertions
@@ -377,7 +377,7 @@ Reference these guidelines when:
 - [`doc-cfg-patterns`](rules/doc-cfg-patterns.md) - Use real `#[cfg(...)]` attributes for availability; on docs.rs, optionally add `doc(cfg)` badges behind `cfg(docsrs)` because `doc_cfg` is still unstable on stable Rust
 - [`doc-hidden-public`](rules/doc-hidden-public.md) - Use `#[doc(hidden)]` only when a public item must remain callable but should be omitted from normal generated documentation
 - [`doc-include-str`](rules/doc-include-str.md) - Use `#[doc = include_str!("...")]` when an external text file is intentionally part of an item's generated documentation
-- [`doc-test-edition-2024`](rules/doc-test-edition-2024.md) - Edition 2024 changes for doc tests: combined binary, `standalone_crate`, nested includes, and `$crate`
+- [`doc-test-edition-2024`](rules/doc-test-edition-2024.md) - Account for Edition 2024 rustdoc doctest merging, `standalone_crate`, and source-relative nested includes
 
 ### 22. Observability (MEDIUM)
 
@@ -413,14 +413,14 @@ Reference these guidelines when:
 ### 24. Project Structure (LOW)
 
 - [`proj-lib-main-split`](rules/proj-lib-main-split.md) - Put reusable or directly importable application logic in a library target; keep binary entry points thin when that separation helps.
-- [`proj-mod-by-feature`](rules/proj-mod-by-feature.md) - Organize modules by feature, not type
+- [`proj-mod-by-feature`](rules/proj-mod-by-feature.md) - Prefer domain/feature-oriented modules when they keep code that changes together in one place
 - [`proj-flat-small`](rules/proj-flat-small.md) - Keep small projects flat
 - [`proj-mod-rs-dir`](rules/proj-mod-rs-dir.md) - Choose a consistent multi-file module layout; both `foo.rs` + `foo/` and `foo/mod.rs` are supported
-- [`proj-pub-crate-internal`](rules/proj-pub-crate-internal.md) - Use pub(crate) for internal APIs
+- [`proj-pub-crate-internal`](rules/proj-pub-crate-internal.md) - Use the narrowest visibility that matches the intended module boundary; use `pub(crate)` for APIs shared across the crate but not exposed downstream
 - [`proj-pub-super-parent`](rules/proj-pub-super-parent.md) - Use `pub(super)` when an item declared in a child module must be visible in its parent module scope
 - [`proj-pub-use-reexport`](rules/proj-pub-use-reexport.md) - Use `pub use` to curate intentional public paths; do not expose internal module layout or dependency types accidentally.
 - [`proj-prelude-module`](rules/proj-prelude-module.md) - Offer a small opt-in `prelude` only when callers repeatedly need the same coherent set of imports.
-- [`proj-bin-dir`](rules/proj-bin-dir.md) - Put multiple binaries in src/bin/
+- [`proj-bin-dir`](rules/proj-bin-dir.md) - Use `src/bin/` for conventionally discovered additional binary targets
 - [`proj-workspace-large`](rules/proj-workspace-large.md) - Use workspaces for large projects
 - [`proj-workspace-deps`](rules/proj-workspace-deps.md) - Use workspace dependency inheritance for consistent versions across crates
 - [`proj-feature-additive`](rules/proj-feature-additive.md) - Design Cargo features to be additive whenever feature unification can combine them
