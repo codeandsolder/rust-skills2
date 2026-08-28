@@ -1,184 +1,173 @@
 # test-tokio-async
 
-> Use `#[tokio::test]` for async tests
+> Use `#[tokio::test]` for ordinary Tokio-driven async tests, and configure the runtime flavor only when the test needs it
 
 ## Why It Matters
 
-Async functions can't be called directly—they need a runtime to drive them. `#[tokio::test]` provides a Tokio runtime for your test, handling setup automatically. This is simpler than manually creating a runtime and essential for testing async code.
+Calling an `async fn` produces a future; something still has to poll that future. Rust's built-in `#[test]` harness expects a synchronous test function, so Tokio tests commonly use `#[tokio::test]` to create a runtime and drive the async body.
 
-## Bad
+A manually built runtime is valid when you need custom setup. `#[tokio::test]` is the concise default, not the only correct approach.
+
+## Basic Async Test
 
 ```rust
-// Won't compile - async fn can't be called without runtime
-#[test]
-async fn test_async_function() {  // Error!
-    let result = fetch_data().await;
-    assert!(result.is_ok());
+async fn fetch_data() -> Result<&'static str, std::io::Error> {
+    Ok("data")
 }
 
-// Manual runtime - verbose and error-prone
+#[tokio::test]
+async fn fetches_data() {
+    assert_eq!(fetch_data().await.unwrap(), "data");
+}
+
+fn main() {}
+```
+
+## Default Runtime Flavor
+
+The default **test** runtime is `current_thread`: each `#[tokio::test]` gets a separate single-threaded runtime. This differs from `#[tokio::main]`, whose normal default is the multi-thread scheduler.
+
+```rust
+#[tokio::test]
+async fn default_current_thread() {
+    assert_eq!(2 + 2, 4);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn explicit_multi_thread() {
+    let a = tokio::spawn(async { 20 });
+    let b = tokio::spawn(async { 22 });
+    assert_eq!(a.await.unwrap() + b.await.unwrap(), 42);
+}
+
+fn main() {}
+```
+
+Use the multi-thread flavor when the behavior under test actually depends on multiple worker threads, thread migration, or concurrent worker execution. Do not select it merely because the application uses a multi-thread runtime in production.
+
+## Manual Runtime When You Need Builder Control
+
+```rust
 #[test]
-fn test_async_function() {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-        let result = fetch_data().await;
-        assert!(result.is_ok());
+fn manually_configured_runtime() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    runtime.block_on(async {
+        tokio::task::yield_now().await;
+        assert!(true);
     });
 }
+
+fn main() {}
 ```
 
-## Good
+The builder is useful for settings that the test attribute does not expose or when runtime ownership/lifetime is itself part of the test.
 
-```rust
-#[tokio::test]
-async fn test_async_function() {
-    let result = fetch_data().await;
-    assert!(result.is_ok());
-}
+## Paused Time
 
-#[tokio::test]
-async fn test_concurrent_operations() {
-    let (a, b) = tokio::join!(
-        fetch_user(1),
-        fetch_user(2),
-    );
-    assert!(a.is_ok());
-    assert!(b.is_ok());
-}
-```
-
-## Runtime Configuration
-
-```rust
-// Multi-threaded runtime (default)
-#[tokio::test]
-async fn test_default_runtime() {
-    // Uses multi-thread runtime
-}
-
-// Single-threaded (current_thread)
-#[tokio::test(flavor = "current_thread")]
-async fn test_single_threaded() {
-    // Simpler, deterministic
-}
-
-// With specific thread count
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_with_workers() {
-    // Exactly 2 worker threads
-}
-
-// With time control
-#[tokio::test(start_paused = true)]
-async fn test_with_time_control() {
-    // Time starts paused for deterministic testing
-    tokio::time::advance(Duration::from_secs(60)).await;
-}
-```
-
-## Testing Timeouts
-
-```rust
-use tokio::time::{timeout, Duration};
-
-#[tokio::test]
-async fn test_operation_completes_in_time() {
-    let result = timeout(
-        Duration::from_secs(5),
-        slow_operation()
-    ).await;
-    
-    assert!(result.is_ok(), "Operation timed out");
-}
-
-#[tokio::test]
-async fn test_timeout_triggers() {
-    let result = timeout(
-        Duration::from_millis(100),
-        never_completes()
-    ).await;
-    
-    assert!(result.is_err(), "Expected timeout");
-}
-```
-
-## rstest Async Fixtures
-
-```rust
-use rstest::*;
-
-#[fixture]
-async fn db_pool() -> PgPool {
-    PgPool::connect("postgres://localhost/test").await.unwrap()
-}
-
-#[fixture]
-async fn client(db_pool: PgPool) -> ApiClient {
-    ApiClient::new(db_pool)
-}
-
-#[rstest]
-#[tokio::test]
-async fn test_query_users(client: ApiClient) {
-    let users = client.get_users().await.unwrap();
-    assert!(!users.is_empty());
-}
-```
-
-## Time Manipulation
+Tokio's paused-time testing APIs require the `test-util` feature. `start_paused = true` starts the test runtime with time frozen, and `time::advance` moves Tokio's clock without sleeping in wall-clock time.
 
 ```rust
 use tokio::time::{self, Duration};
 
 #[tokio::test(start_paused = true)]
-async fn test_timeout_with_paused_time() {
-    // Time is paused — operations complete instantly
-    let handle = tokio::spawn(async {
-        time::sleep(Duration::from_secs(3600)).await;
+async fn advances_virtual_time() {
+    let task = tokio::spawn(async {
+        time::sleep(Duration::from_secs(60)).await;
         42
     });
 
-    // Advance time manually
-    time::advance(Duration::from_secs(3600)).await;
-
-    assert_eq!(handle.await.unwrap(), 42);
+    time::advance(Duration::from_secs(60)).await;
+    assert_eq!(task.await.unwrap(), 42);
 }
 
-#[tokio::test(start_paused = true)]
-async fn test_timer_with_advance() {
-    let interval = time::interval(Duration::from_secs(10));
-    // Test without waiting real time
-}
+fn main() {}
 ```
 
-## Tracing Test (Capturing Logs)
+A typical test dependency configuration is therefore:
+
+```toml
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "time", "test-util"] }
+```
+
+Add `rt-multi-thread` only when tests request the multi-thread flavor.
+
+## Testing Timeouts
 
 ```rust
+use std::future::pending;
+use tokio::time::{timeout, Duration};
+
+#[tokio::test]
+async fn timeout_triggers() {
+    let result = timeout(Duration::from_millis(1), pending::<()>()).await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn operation_finishes_before_timeout() {
+    let result = timeout(Duration::from_secs(1), async { 42 }).await;
+    assert_eq!(result.unwrap(), 42);
+}
+
+fn main() {}
+```
+
+For timeout-heavy suites, paused time is often faster and less flaky than relying on tiny real-time durations.
+
+## Testing Concurrent Work
+
+`tokio::join!` polls several futures concurrently on the current task; it does not by itself move them onto worker threads.
+
+```rust
+async fn fetch_user(id: u64) -> Result<u64, std::io::Error> {
+    tokio::task::yield_now().await;
+    Ok(id)
+}
+
+#[tokio::test]
+async fn joins_operations() {
+    let (a, b) = tokio::join!(fetch_user(1), fetch_user(2));
+    assert_eq!(a.unwrap(), 1);
+    assert_eq!(b.unwrap(), 2);
+}
+
+fn main() {}
+```
+
+Use `tokio::spawn` when independent Tokio tasks are part of the behavior you need to test.
+
+## Capturing Tracing Output
+
+The `tracing-test` crate provides a purpose-built `#[traced_test]` attribute and injects helpers such as `logs_contain` for assertions. It works with async Tokio tests:
+
+<!-- rust-check: compile -->
+```rust
+use tracing::info;
 use tracing_test::traced_test;
 
-// Captures all tracing output during the test
+async fn emit_completion_log() {
+    info!(operation = "demo", "processing completed");
+}
+
 #[traced_test]
 #[tokio::test]
-async fn test_logs_are_emitted() {
-    my_async_function().await;
-
-    // Assert on captured logs
+async fn captures_logs() {
+    emit_completion_log().await;
     assert!(logs_contain("processing completed"));
     assert!(!logs_contain("ERROR"));
 }
 
-// Alternative: use tracing-subscriber directly
-#[tokio::test]
-async fn test_with_tracing_subscriber() {
-    let subscriber = tracing_subscriber::fmt()
-        .with_test_writer()
-        .with_env_filter("my_crate=debug")
-        .finish();
-    tracing::subscriber::with_default(subscriber, || async {
-        my_async_function().await;
-    }).await;
-}
+fn main() {}
 ```
+
+`tracing-test` installs filtering/capture behavior of its own. In integration tests, which compile as a separate crate from the library under test, consult its current `no-env-filter` guidance if you need to capture events emitted by the library crate rather than only the test crate.
+
+For custom subscribers, be careful with scoped defaults and async work. A synchronous `with_default(|| async { ... })` call returns a future **after** the scoped default has been restored, so merely awaiting that returned future does not keep the subscriber installed. Use a guard whose lifetime actually covers polling, an instrumented future/dispatch, or a testing helper designed for async capture.
 
 ## Testing Channels
 
@@ -186,48 +175,31 @@ async fn test_with_tracing_subscriber() {
 use tokio::sync::mpsc;
 
 #[tokio::test]
-async fn test_channel_communication() {
-    let (tx, mut rx) = mpsc::channel(10);
-    
+async fn channel_communication() {
+    let (tx, mut rx) = mpsc::channel(4);
+
     tokio::spawn(async move {
         tx.send("hello").await.unwrap();
         tx.send("world").await.unwrap();
     });
-    
+
     assert_eq!(rx.recv().await, Some("hello"));
     assert_eq!(rx.recv().await, Some("world"));
     assert_eq!(rx.recv().await, None);
 }
-```
 
-## Testing with Mocks
-
-```rust
-use mockall::*;
-
-#[automock]
-trait Database {
-    // Edition 2024: native async fn in traits
-    async fn get_user(&self, id: u64) -> Option<User>;
-}
-
-#[tokio::test]
-async fn test_with_mock_database() {
-    let mut mock = MockDatabase::new();
-    mock.expect_get_user()
-        .with(eq(42))
-        .returning(|_| Some(User { id: 42, name: "Alice".into() }));
-    
-    let service = UserService::new(mock);
-    let user = service.find_user(42).await;
-    
-    assert_eq!(user.unwrap().name, "Alice");
-}
+fn main() {}
 ```
 
 ## See Also
 
-- [test-rstest-fixtures](./test-rstest-fixtures.md) - rstest async fixtures
+- [test-rstest-fixtures](./test-rstest-fixtures.md) - Parameterized tests and fixtures
 - [async-tokio-runtime](./async-tokio-runtime.md) - Runtime configuration
-- [test-mock-traits](./test-mock-traits.md) - Mocking async traits
-- [test-fixture-raii](./test-fixture-raii.md) - Async test cleanup
+- [test-mock-traits](./test-mock-traits.md) - Mocking async-facing abstractions
+- [test-fixture-raii](./test-fixture-raii.md) - Test cleanup
+
+## References
+
+- [Tokio `#[test]` macro](https://docs.rs/tokio/latest/tokio/attr.test.html)
+- [Tokio feature flags](https://docs.rs/tokio/latest/tokio/#feature-flags)
+- [`tracing-test`](https://docs.rs/tracing-test/latest/tracing_test/)
