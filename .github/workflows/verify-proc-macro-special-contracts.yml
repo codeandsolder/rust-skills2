@@ -1,0 +1,60 @@
+name: Verify proc-macro special contracts
+
+on:
+  push:
+    branches: [fix/proc-macro-special-contracts]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: checks -> target
+      - name: Lock proc-macro fixture
+        run: cargo generate-lockfile --manifest-path checks/fixtures/proc-macro-contracts/Cargo.toml
+      - name: Regenerate index
+        run: python3 checks/gen_index.py
+      - name: Run complete verifier
+        run: bash checks/check.sh
+      - name: Show contract inventory
+        run: |
+          cd checks
+          python3 gen.py
+          python3 - <<'PY'
+          import json
+          from collections import Counter
+
+          manifest = json.load(open('manifest.json'))
+          counts = Counter(info['expect'] for info in manifest.values())
+          print('COUNTS ' + ' '.join(f'{key}={counts[key]}' for key in sorted(counts)))
+          fixture_rows = sorted(
+              (info['file'], info['line'], info['section'], info['expect'])
+              for info in manifest.values()
+              if info['expect'].startswith('fixture:')
+          )
+          print(f'FIXTURE_BLOCKS {len(fixture_rows)}')
+          for row in fixture_rows:
+              print('\t'.join(map(str, row)))
+          PY
+      - name: Commit generated state
+        run: |
+          if [[ -z "$(git status --porcelain -- SKILL.md checks/fixtures/proc-macro-contracts/Cargo.lock)" ]]; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- SKILL.md checks/fixtures/proc-macro-contracts/Cargo.lock
+          git commit -m 'Lock proc-macro special-contract fixture'
+          git push
