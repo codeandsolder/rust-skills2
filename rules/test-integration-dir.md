@@ -110,6 +110,39 @@ fn main() {}
 
 In the real integration target, the `mod my_crate { ... }` scaffolding is absent and the `use my_crate::...` line resolves to the package's library target.
 
+## Test the Canonical External Contract
+
+An integration test can still false-green if it exercises an alias, fallback, compatibility shim, or synthetic fixture that production clients do not actually use. Prefer the canonical public path, asset name, protocol event, executable, or serialization format that the application ships.
+
+For example, if a web build is expected to publish `pkg/app.js` and `pkg/app_bg.wasm`, the browser test should request those exact assets. Creating extra aliases only for the test can hide a broken production loader while the integration suite remains green.
+
+The same principle applies beyond files:
+
+- test the documented route rather than an internal compatibility route;
+- launch the packaged executable rather than calling its private entry helper;
+- wait for the application's explicit ready/hello event when that is the public protocol contract;
+- use the wire representation a real client sends instead of a more permissive internal type.
+
+The goal is not maximal realism at every layer. It is to make the integration boundary fail when the actual external contract is broken.
+
+## Invalidation Tests Should Reuse the Old Capability
+
+For logout, revocation, token rotation, session-ID rotation, permission removal, or similar invalidation behavior, do not stop after asserting that the invalidation operation returned success. Retain the exact old capability and try to use it again.
+
+A strong regression has this shape:
+
+```text
+old = obtain_credential()
+assert usable(old)
+
+new = rotate_or_revoke(old)
+
+assert not_usable(old)
+assert usable(new)       # when rotation returns a replacement
+```
+
+This catches implementations that update bookkeeping or issue a replacement while accidentally leaving the stale credential authorized. Database flags and successful HTTP responses are useful intermediate observations, but the security-relevant contract is whether the old capability still works.
+
 ## Shared Test Utilities
 
 Use a module that is not itself a top-level test target:
