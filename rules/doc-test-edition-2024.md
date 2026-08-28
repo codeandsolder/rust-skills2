@@ -1,133 +1,147 @@
 # doc-test-edition-2024
 
-> Edition 2024 changes for doc tests: combined binary, `standalone_crate`, nested includes, and `$crate`
+> Account for Edition 2024 rustdoc doctest merging, `standalone_crate`, and source-relative nested includes
 
 ## Why It Matters
 
-Rust Edition 2024 compiles all doc tests in a single binary instead of
-one per doc test. This improves compilation speed and test parallelism,
-but introduces subtle breaking changes:
+Starting in Edition 2024, rustdoc **attempts to merge compatible doctests** into one compiled test crate. This reduces compilation overhead. The individual doctests are still run in separate processes, so merging does not make their runtime globals shared.
 
-- `Location::caller()` and `type_name` values change
-- `$crate` in doc tests may resolve differently
-- Nested `include_str!` paths resolve relative to the outermost file
-- Some doc tests that accidentally relied on separate compilation may break
+Rustdoc automatically keeps some incompatible examples separate, including `compile_fail` tests, examples with edition tags or crate-wide attributes, and macro definitions that use `$crate`. A smaller set of examples depend on compilation layout in ways rustdoc cannot infer; those may need the `standalone_crate` fence attribute.
 
-## Key Changes
+Edition 2024 also changes nested `include!`, `include_str!`, and `include_bytes!` path resolution for doctests originating in included Markdown: paths are now relative to the Markdown file containing the doctest.
 
-| Change | Impact |
-|--------|--------|
-| **Combined binary** | All doc tests share one compilation unit |
-| **`$crate` resolution** | Refers to the crate being documented (correct in most cases) |
-| **`Location::caller()`** | File/line values point to the combined test, not the doc comment |
-| **`type_name`** | Values may differ due to unification |
-| **Nested include paths** | `include_str!` inside a doc `include_str!` resolves relative to the outer file |
+## Combined Doctests
 
-## standalone_crate Tag
-
-If a doc test must compile as its own crate (e.g., `#![no_std]`,
-`extern crate`, or tests relying on `Location` values), use the
-`standalone_crate` language tag:
+A normal pair of doctests can be compiled into the same generated test crate:
 
 ```rust
-/// # Examples
+/// Adds two numbers.
+///
+/// ```
+/// assert_eq!(1 + 1, 2);
+/// ```
+pub fn add_one_plus_one() -> i32 {
+    2
+}
+
+/// Multiplies two numbers.
+///
+/// ```
+/// assert_eq!(2 * 3, 6);
+/// ```
+pub fn multiply_two_by_three() -> i32 {
+    6
+}
+
+fn main() {}
+```
+
+Do not write tests that depend on the exact generated module path, line number, or other details of rustdoc's combined source layout.
+
+## `standalone_crate` for Layout-Sensitive Tests
+
+Use `standalone_crate` when the doctest is sensitive to generated-crate layout and rustdoc cannot automatically detect that requirement. `Location::caller()` assertions are the canonical example:
+
+```rust
+/// A layout-sensitive documentation test.
 ///
 /// ```standalone_crate
-/// #![no_std]
-/// #![no_main]
-///
-/// // This compiles as its own binary crate
-/// #[panic_handler]
-/// fn panic(_: &core::panic::PanicInfo) -> ! {
-///     loop {}
-/// }
+/// let location = std::panic::Location::caller();
+/// assert!(location.line() > 0);
 /// ```
+pub fn layout_sensitive_example() {}
+
+fn main() {}
 ```
 
+Do **not** add `standalone_crate` mechanically to every `no_std`, `compile_fail`, edition-specific, or crate-attribute example. Rustdoc already detects several classes that cannot be merged. Run `cargo test --doc` after an edition migration and add `standalone_crate` only when the example actually needs independent compilation and rustdoc does not infer it.
+
+## `$crate` in Macro Definitions
+
+`$crate` is a declarative-macro metavariable used inside macro definitions; it is not a path you can write directly in ordinary Rust expressions. For example:
+
 ```rust
-/// ```standalone_crate
-/// extern crate my_crate;
-///
-/// // Tests that require explicit crate linkage
-/// use my_crate::some_item;
-/// ```
+pub const VERSION: &str = "1.0.0";
+
+#[macro_export]
+macro_rules! crate_version {
+    () => {
+        $crate::VERSION
+    };
+}
+
+fn main() {
+    assert_eq!(crate_version!(), "1.0.0");
+}
 ```
 
-### When to Use standalone_crate
+For Edition 2024 doctest merging, rustdoc recognizes macro definitions that use `$crate` as incompatible with merging and keeps those doctests separate. That is different from claiming that `$crate` suddenly became available as an ordinary expression inside doctests.
 
-| Condition | Example |
-|-----------|---------|
-| `#![no_std]` or `#![no_main]` | Embedded or kernel tests |
-| `extern crate` declarations | Crate-style imports |
-| `Location::caller()` sensitivity | Tests checking file/line values |
-| Unique `type_name` values needed | Type introspection tests |
-| `$crate` resolution issues | Macros that use `$crate` in doc tests |
+## Nested Include Paths
 
-## `$crate` in Doc Tests
+Suppose the project layout is:
 
-In Edition 2024 combined mode, `$crate` in doc tests resolves to the
-crate being documented. This is the correct behavior in most cases, but
-may break tests that previously relied on `$crate` being unavailable
-or resolving to something else.
-
-```rust
-// Before (Edition 2021): $crate was not available in doc tests
-// After (Edition 2024): $crate resolves to the documented crate
-
-/// ```rust
-/// assert_eq!($crate::VERSION, "1.0.0");
-/// ```
+```text
+project/
+├── README.md
+├── examples/
+│   └── data.bin
+└── src/
+    └── lib.rs
 ```
 
-If you need the old behavior, use `standalone_crate`.
+and `src/lib.rs` contains:
 
-## Nested include_str Paths
-
-When a `#[doc = include_str!("...")]` file itself contains `include_str!`,
-the path resolves **relative to the outermost file** from Rust 2024 onward.
-
-```rust
-// lib.rs
-//! # My Crate
+```text
 #![doc = include_str!("../README.md")]
-
-// README.md
-// ## Quick Start
-// ```rust
-// # use my_crate::*;
-// // ...
-// ```
-// #[doc = include_str!("examples/basic.rs")]  ← resolves relative to README.md
 ```
 
-Previously (Edition 2021), nested includes resolved relative to `lib.rs`.
+If `README.md` contains this doctest (shown with `~` fences here so this rule's single-file verifier does not treat the illustrative external-file snippet as one of its own Rust examples):
 
-**Migration**: Move shared examples to the `examples/` directory and use
-paths relative to the outermost file.
+```text
+~~~rust
+let bytes = include_bytes!("examples/data.bin");
+assert!(!bytes.is_empty());
+~~~
+```
+
+then in Edition 2024 the nested `include_bytes!` path is resolved relative to `README.md`, the file containing that doctest. Before Edition 2024, the equivalent path was resolved relative to the Rust source file that performed the outer `include_str!`.
+
+This is a source-location rule, so it is best verified in a real fixture with the referenced files rather than pretending a standalone code block can provide those files.
 
 ## Migration Checklist
 
-1. **Run your tests**: `cargo test --doc` with `edition = "2024"`
-2. **Check `$crate` usage**: Update macros that reference `$crate` in doc tests
-3. **Check `Location`/`type_name`**: Update tests that assert specific values
-4. **Apply `standalone_crate`** where needed: `#![no_std]`, `extern crate`, etc.
-5. **Update nested `include_str!` paths**: Relative to outermost file now
-6. **Remove unnecessary `fn main()` wrappers**: `needless_doctest_main` lint
+1. Set the crate to Edition 2024 and run `cargo test --doc`.
+2. Fix doctests that assert exact `Location` or `type_name` values if merged source layout changes them.
+3. Add `standalone_crate` only where separate compilation is actually required and not already inferred by rustdoc.
+4. Recheck macros used in doctests, especially definitions involving `$crate`.
+5. Update nested include paths in included Markdown so they are relative to the file containing the doctest.
 
 ## Lints
 
 ```rust
 #![warn(clippy::needless_doctest_main)]
-```
 
-The `needless_doctest_main` clippy lint catches doc tests wrapping code
-in an unnecessary `fn main() { }` — which is especially common in
-Edition 2024 combined mode.
+/// ```
+/// // rustdoc supplies the wrapper for ordinary snippets; an explicit
+/// // `fn main()` is usually unnecessary.
+/// let value = 2 + 2;
+/// assert_eq!(value, 4);
+/// ```
+pub fn example() {}
+
+fn main() {}
+```
 
 ## See Also
 
 - [doc-examples-section](./doc-examples-section.md) - Writing examples
-- [doc-hidden-setup](./doc-hidden-setup.md) - Hiding setup code with #
-- [doc-question-mark](./doc-question-mark.md) - Using ? in examples
-- [doc-include-str](./doc-include-str.md) - include_str patterns
-- [name-feature](./name-feature.md) - Feature naming conventions
+- [doc-hidden-setup](./doc-hidden-setup.md) - Hiding setup code with `#`
+- [doc-question-mark](./doc-question-mark.md) - Using `?` in examples
+- [doc-include-str](./doc-include-str.md) - `include_str!` documentation patterns
+
+## References
+
+- [Rust Edition Guide: rustdoc combined tests](https://doc.rust-lang.org/edition-guide/rust-2024/rustdoc-doctests.html)
+- [Rust Edition Guide: nested include change](https://doc.rust-lang.org/edition-guide/rust-2024/rustdoc-nested-includes.html)
+- [rustdoc book: documentation tests](https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html)
