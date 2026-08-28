@@ -1,175 +1,190 @@
 # proj-prelude-module
 
-> Create prelude module for common imports
+> Offer a small opt-in `prelude` only when callers repeatedly need the same coherent set of imports.
 
 ## Why It Matters
 
-A `prelude` module collects the most commonly used types and traits for glob import. Users write `use my_crate::prelude::*` instead of many individual imports. This follows the pattern established by `std::prelude`.
+A crate prelude is a conventional module whose contents users import explicitly with `use my_crate::prelude::*`. Unlike Rust's language/standard preludes, a library-defined prelude is **not imported automatically**.
 
-## Bad
+A good prelude can reduce repetitive imports for APIs built around extension traits or a tightly related group of core types. A bad prelude hides where names come from, increases collision risk, and creates another public surface that must remain coherent over time.
 
-<!-- rust-check: fragment; reason=project-layout anti-pattern references surrounding crate modules -->
+Do not create a prelude merely because other crates have one. Explicit imports are often clearer.
+
+## Bad: A Grab-Bag Prelude
+
+<!-- rust-check: compile -->
 ```rust
-// Users must import everything individually
-use my_crate::Client;
-use my_crate::Config;
-use my_crate::Error;
-use my_crate::Request;
-use my_crate::Response;
-use my_crate::traits::Handler;
-use my_crate::traits::Middleware;
-use my_crate::types::Method;
-```
+pub struct Client;
+pub struct Config;
+pub struct Error;
+pub struct RareAdminTool;
 
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-// src/lib.rs
 pub mod prelude {
-    pub use crate::{
-        Client,
-        Config,
-        Error,
-        Request,
-        Response,
-    };
-    pub use crate::traits::{Handler, Middleware};
-    pub use crate::types::Method;
+    // BAD: unrelated/rare items make glob imports unpredictable.
+    pub use crate::{Client, Config, Error, RareAdminTool};
+
+    // BAD: re-exporting a whole large namespace greatly increases collision risk.
+    pub use std::collections::*;
 }
 
-// Users write:
-use my_crate::prelude::*;
-```
+fn consumer() {
+    use crate::prelude::*;
 
-## What to Include
-
-| Include | Don't Include |
-|---------|---------------|
-| Core types users always need | Rarely-used types |
-| Common traits | Implementation details |
-| Error types | Internal helpers |
-| Extension traits | Feature-gated items (usually) |
-| Type aliases | Everything |
-
-## Example: Web Framework Prelude
-
-```rust
-pub mod prelude {
-    // Core request/response
-    pub use crate::{Request, Response, Body};
-    
-    // Error handling
-    pub use crate::Error;
-    
-    // Common traits
-    pub use crate::traits::{FromRequest, IntoResponse};
-    
-    // Routing
-    pub use crate::Router;
-    
-    // HTTP types
-    pub use crate::http::{Method, StatusCode};
+    let _ = Client;
+    let _ = RareAdminTool;
+    let _map: HashMap<String, String> = HashMap::new();
 }
 ```
 
-## Example: Database Library Prelude
+This compiles. The problem is API design: the glob imports far more names than most callers need and makes future additions more likely to collide with downstream names.
 
+## Good: Small, Coherent, Opt-In
+
+<!-- rust-check: compile -->
 ```rust
+pub struct Client;
+pub struct Config;
+
+pub trait Execute {
+    fn execute(&self) -> &'static str;
+}
+
+impl Execute for Client {
+    fn execute(&self) -> &'static str {
+        "ok"
+    }
+}
+
 pub mod prelude {
-    // Connection and pool
-    pub use crate::{Connection, Pool};
-    
-    // Query building
-    pub use crate::query::{Query, Select, Insert, Update, Delete};
-    
-    // Traits for custom types
-    pub use crate::traits::{FromRow, ToSql};
-    
-    // Error type
-    pub use crate::Error;
+    pub use crate::{Client, Config, Execute};
+}
+
+fn consumer() {
+    use crate::prelude::*;
+
+    let client = Client;
+    let _config = Config;
+    assert_eq!(client.execute(), "ok");
 }
 ```
 
-## Pattern: Tiered Preludes
+This prelude has a reason to exist: callers commonly need the main types plus the trait that enables their methods.
 
+## Explicit Imports Must Remain First-Class
+
+A prelude is convenience, not a requirement.
+
+<!-- rust-check: compile -->
 ```rust
-// Minimal prelude
+pub struct Client;
+pub struct Config;
+
 pub mod prelude {
-    pub use crate::{Client, Config, Error};
+    pub use crate::{Client, Config};
 }
 
-// Full prelude for power users
-pub mod full_prelude {
+fn explicit_style() {
+    use crate::{Client, Config};
+    let _ = (Client, Config);
+}
+
+fn prelude_style() {
+    use crate::prelude::*;
+    let _ = (Client, Config);
+}
+```
+
+Documentation should still use explicit imports when the origin of a name matters to understanding the example.
+
+## What Belongs in a Prelude?
+
+Good candidates are names that are both:
+
+- needed by a large fraction of normal users, and
+- naturally used together.
+
+Common examples include extension traits whose methods otherwise appear to be missing, core context/handle types, and a few ubiquitous aliases.
+
+Usually leave out:
+
+- rare subsystems,
+- implementation helpers,
+- broad re-exports of another crate,
+- generic names such as `Error`, `Result`, `Future`, or `Context` unless the crate's ecosystem strongly expects them,
+- items callers only need in specialized modules.
+
+There is no fixed item-count threshold. Judge by actual call sites and namespace clarity.
+
+## Prelude Changes Have Compatibility Costs
+
+A prelude is public API. Removing or renaming an exported item is directly breaking for callers that import it.
+
+Even **adding** a name can cause downstream glob-import ambiguity when a caller already obtains the same identifier from another glob or local import. This is one reason to keep preludes deliberately small and stable.
+
+Do not treat a prelude as a dumping ground where every new public type is automatically added.
+
+## Feature-Gated Items
+
+Feature-gated items can be re-exported from a prelude when that is the ergonomic API, but gate the re-export with the same feature so the prelude remains valid in every supported feature combination.
+
+<!-- rust-check: compile -->
+```rust
+pub struct Client;
+
+#[cfg(feature = "experimental")]
+pub struct ExperimentalClient;
+
+pub mod prelude {
+    pub use crate::Client;
+
+    #[cfg(feature = "experimental")]
+    pub use crate::ExperimentalClient;
+}
+```
+
+Whether feature-specific names belong in the common prelude is an API-design question, not a blanket prohibition.
+
+## Tiered Convenience Modules
+
+If a crate has a genuinely common core and a large optional convenience surface, separate modules can be clearer than one enormous glob.
+
+<!-- rust-check: compile -->
+```rust
+pub struct Client;
+pub struct Config;
+pub struct AdvancedPlanner;
+
+pub mod prelude {
+    pub use crate::{Client, Config};
+}
+
+pub mod advanced_prelude {
     pub use crate::prelude::*;
-    pub use crate::advanced::*;
-    pub use crate::extensions::*;
+    pub use crate::AdvancedPlanner;
 }
 ```
 
-## Pattern: Feature-Gated Prelude Items
+Name such modules by semantics rather than inventing `full_prelude` solely to re-export everything.
 
-```rust
-pub mod prelude {
-    pub use crate::{Client, Error};
-    
-    #[cfg(feature = "async")]
-    pub use crate::async_client::AsyncClient;
-    
-    #[cfg(feature = "serde")]
-    pub use crate::serde::{Serialize, Deserialize};
-}
-```
+## Document the Contract
 
-## Caveat: Preludes Are Controversial
+Prelude module docs should say that it is optional and summarize the categories it exports. Users should not need to inspect source to discover why a trait method only appears after a glob import.
 
-Some in the Rust community argue against preludes entirely, advocating explicit imports instead. The criticism (see corrode.dev, 2025):
+When examples rely on prelude-provided traits, consider naming those traits in prose even if the code uses the glob.
 
-- **Hides dependencies** — `use crate::prelude::*` obscures where each name comes from.
-- **Encourages glob blindness** — readers can't tell which items come from your crate vs. std.
-- **Name conflicts** — `Error`, `Result`, or `Future` in a prelude can shadow standard items in confusing ways.
+## Decision Guide
 
-If you use a prelude, make it **opt-in convenience**, not a requirement. An explicit path import should always be equally viable:
-
-```rust
-// Same thing — both should work
-use my_crate::prelude::*;
-use my_crate::{Client, Config, Error};
-```
-
-For libraries, consider whether your prelude saves more than a few imports. A prelude with 2-3 items is rarely worth the glob.
-
-## Guidelines
-
-1. **Be conservative** - Only include truly common items
-2. **Avoid conflicts** - Don't include names that might clash (e.g., `Error`)
-3. **Document it** - List what's included in module docs
-4. **Stay stable** - Removing items is breaking change
-
-## Documenting the Prelude
-
-```rust
-//! Common imports for convenient glob importing.
-//!
-//! # Usage
-//!
-//! ```
-//! use my_crate::prelude::*;
-//! ```
-//!
-//! # Contents
-//!
-//! This prelude re-exports:
-//! - [`Client`] - The main API client
-//! - [`Config`] - Client configuration
-//! - [`Error`] - Error type
-pub mod prelude {
-    // ...
-}
-```
+| Situation | Recommendation |
+|---|---|
+| A few obvious explicit imports | Prefer explicit imports |
+| Many call sites repeat the same coherent imports | Consider a small prelude |
+| Extension traits are essential to normal use | Prelude can improve discoverability |
+| Prelude would mostly contain rare modules | Skip it |
+| New item is public | Do not automatically add it to the prelude |
+| Specialized feature/subsystem | Prefer its own module/import path unless common usage justifies inclusion |
 
 ## See Also
 
-- [proj-pub-use-reexport](./proj-pub-use-reexport.md) - Re-export patterns
+- [proj-pub-use-reexport](./proj-pub-use-reexport.md) - Curating public paths
 - [api-extension-trait](./api-extension-trait.md) - Extension traits
 - [doc-module-inner](./doc-module-inner.md) - Module documentation
