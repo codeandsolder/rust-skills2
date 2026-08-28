@@ -1,76 +1,132 @@
 # lint-clippy-nursery-selected
 
-> Enable high-value `clippy::nursery` lints selectively, not the whole group
+> Enable `clippy::nursery` lints selectively and re-check group membership when the toolchain changes
 
 ## Why It Matters
 
-The `clippy::nursery` group contains lints that are correct and useful but still being refined — their suggestions may be noisy or have edge cases that haven't been polished yet. Enabling the entire group (`#![warn(clippy::nursery)]`) floods you with false positives and creates churn as nursery lints graduate or change. Cherry-picking individual lints gives you the signal without the noise. Several nursery lints are especially valuable: `significant_drop_tightening` catches lock guards held across `.await` or longer than necessary, `redundant_clone` flags clones that could be moves, and `use_self` keeps type names DRY inside impl blocks.
+Clippy's `nursery` group is explicitly opt-in: these lints are useful but may still have known limitations or evolving diagnostics. Enabling the whole group can create churn as lints change, graduate to another group, or reveal edge cases in a new toolchain.
 
-## Bad
+Select individual lints whose trade-offs fit the codebase and pin/review them with the project's Rust toolchain.
+
+## Bad: Enable the Whole Nursery Group Without Review
 
 ```toml
-# Cargo.toml — enables every nursery lint, including noisy ones
 [lints.clippy]
 nursery = "warn"
 ```
 
-## Good
+This makes every current and future nursery lint part of the project's warning policy.
+
+## Good: Select Current Nursery Lints Deliberately
+
+For Rust/Clippy 1.98, examples of nursery lints include:
 
 ```toml
-# Cargo.toml — selectively enable high-value nursery lints
 [lints.clippy]
-# Catches lock/guard held longer than necessary (overlaps with async issues)
 significant_drop_tightening = "warn"
-# Flags .clone() calls that could be avoided by moving
 redundant_clone = "warn"
-# Replace TypeName with Self inside impl blocks
 use_self = "warn"
-# Avoid redundant else after a diverging if
-redundant_else = "warn"
-# Prefer or_default() over or(Default::default())
 or_fun_call = "warn"
 ```
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+`redundant_else` is **not** in the nursery group on this toolchain; it is a `pedantic` lint. If you want it, enable it deliberately as a pedantic lint rather than documenting it as nursery.
+
+## What These Lints Target
+
+| Lint | Current group | Typical signal |
+|---|---|---|
+| `significant_drop_tightening` | nursery | Significant drop types kept alive longer than needed |
+| `redundant_clone` | nursery | A clone whose value can be moved instead |
+| `use_self` | nursery | Repeating the implementing type where `Self` is clearer |
+| `or_fun_call` | nursery | Eager fallback construction where a lazy alternative is preferable |
+| `redundant_else` | pedantic | `else` following a branch that always diverges |
+
+Do not rely on this table forever. Clippy group membership is toolchain-versioned policy, not a language guarantee.
+
+## Self-Contained Examples
+
+The code patterns are ordinary Rust; Clippy adds diagnostics when the corresponding lint is enabled.
+
+<!-- rust-check: compile -->
 ```rust
-// significant_drop_tightening example — lint fires here:
-fn process(state: &Mutex<Vec<u32>>) -> usize {
-    let guard = state.lock().unwrap();
-    let len = guard.len();
-    drop(guard);          // lint suggests dropping earlier, before the return
+use std::sync::Mutex;
+
+struct State {
+    values: Vec<u32>,
+}
+
+fn length_then_work(state: &Mutex<State>) -> usize {
+    let len = {
+        let guard = state.lock().unwrap();
+        guard.values.len()
+    };
+
     expensive_work();
     len
 }
 
-// use_self example — lint fires here:
-impl MyStruct {
-    fn new() -> MyStruct {   // should be -> Self
-        MyStruct { value: 0 }
+fn expensive_work() {}
+
+struct Widget {
+    value: u32,
+}
+
+impl Widget {
+    fn new(value: u32) -> Self {
+        Self { value }
+    }
+
+    fn value(&self) -> u32 {
+        self.value
     }
 }
 
-// Correct:
-impl MyStruct {
-    fn new() -> Self {
-        Self { value: 0 }
-    }
+fn main() {
+    let state = Mutex::new(State { values: vec![1, 2, 3] });
+    assert_eq!(length_then_work(&state), 3);
+    assert_eq!(Widget::new(7).value(), 7);
 }
 ```
 
-## Suggested Starter Set
+For `redundant_clone`, prefer moving an owned value when the original is no longer needed:
 
-| Lint | What it catches |
-|------|----------------|
-| `significant_drop_tightening` | Guards/locks held longer than needed |
-| `redundant_clone` | `.clone()` where a move suffices |
-| `use_self` | Type name repeated inside `impl` block |
-| `redundant_else` | `else` after diverging `if` branch |
-| `or_fun_call` | `or(Default::default())` → `or_default()` |
+<!-- rust-check: compile -->
+```rust
+fn consume(value: String) -> usize {
+    value.len()
+}
 
-Start with this set. Add more only after reviewing what they flag in your codebase.
+fn main() {
+    let value = String::from("hello");
+    let len = consume(value);
+    assert_eq!(len, 5);
+}
+```
+
+For lazy fallback construction, use the API that matches the type and desired laziness rather than memorizing a textual rewrite:
+
+<!-- rust-check: compile -->
+```rust
+fn make_default() -> String {
+    String::from("fallback")
+}
+
+fn main() {
+    let value: Option<String> = None;
+    let selected = value.unwrap_or_else(make_default);
+    assert_eq!(selected, "fallback");
+}
+```
+
+## Policy Guidance
+
+- Prefer `[lints.clippy]` in `Cargo.toml` when the lint policy should apply crate-wide.
+- Review a lint's current documentation before adding it to `deny`; nursery lints may document known problems.
+- When upgrading Rust, run Clippy and review changed group membership or diagnostics instead of assuming the old policy description is still exact.
+- Do not label a lint “nursery” merely because it once lived there.
 
 ## See Also
 
-- [lint-pedantic-selective](lint-pedantic-selective.md) - same strategy for clippy::pedantic
-- [lint-warn-perf](lint-warn-perf.md) - enable the performance lint group
-- [anti-lock-across-await](anti-lock-across-await.md) - don't hold locks across `.await`
+- [lint-pedantic-selective](lint-pedantic-selective.md) - selectively enable pedantic lints
+- [lint-warn-perf](lint-warn-perf.md) - performance lint policy
+- [anti-lock-across-await](anti-lock-across-await.md) - async lock lifetime guidance
