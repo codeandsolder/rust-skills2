@@ -1,14 +1,14 @@
-name: Verify final fragment contracts
+name: Inventory remaining explicit ignores
 
 on:
   push:
     branches: [fix/final-fragment-contracts]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  verify:
+  inventory:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -16,30 +16,23 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.x'
-      - uses: dtolnay/rust-toolchain@1.98.0
-        with:
-          targets: x86_64-unknown-linux-gnu
-      - name: Regenerate index
-        run: python3 checks/gen_index.py
-      - name: Run complete verifier
-        run: bash checks/check.sh
-      - name: Show contract counts
+      - name: Print remaining ignores
         run: |
           cd checks
           python3 gen.py
           python3 - <<'PY'
           import json
-          from collections import Counter
-          c = Counter(x['expect'] for x in json.load(open('manifest.json')).values())
-          print(' '.join(f'{k}={c[k]}' for k in sorted(c)))
+
+          manifest = json.load(open('manifest.json'))
+          rows = [
+              info for info in manifest.values()
+              if info.get('expect') == 'ignore'
+          ]
+          rows.sort(key=lambda info: (info['file'], info['line'], info['section']))
+
+          print(f'REMAINING_IGNORES {len(rows)}')
+          for info in rows:
+              print(
+                  f"{info['file']}\t{info['line']}\t{info['section']}\t{info.get('reason', '')}"
+              )
           PY
-      - name: Commit generated index
-        run: |
-          if git diff --quiet; then
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add SKILL.md
-          git commit -m 'Regenerate final strict rule index'
-          git push
