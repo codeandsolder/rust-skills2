@@ -134,14 +134,14 @@ fn main() {}
 
 External Markdown can be included into an item's documentation when sharing a substantial example is worthwhile:
 
-<!-- rust-check: ignore; reason=requires repository Markdown file at the documented path -->
+<!-- rust-check: compile -->
 ```rust
 /// # Examples
 #[doc = include_str!("../examples/basic_usage.md")]
 pub fn function_a() {}
 ```
 
-The corpus checker cannot make that repository-specific path exist in its generated standalone example crate, so this is explicitly classified rather than baselined as a compiler failure.
+The verifier provides a small UTF-8 Markdown fixture at this exact repository-relative path, so the example checks the `include_str!` path and attribute syntax rather than being skipped. That fixture does not prove that arbitrary real-world Markdown is good documentation; documentation rendering and doctests still belong in a real crate's `cargo doc` / `cargo test --doc` checks.
 
 For ordinary `include_str!`, the path is resolved relative to the Rust source file containing the macro invocation. Edition 2024 adds a more specific doctest rule: if an included Markdown document contains a doctest that itself calls `include!`, `include_str!`, or `include_bytes!`, those nested paths are resolved relative to the Markdown file. It does not mean arbitrary `#[doc = include_str!(...)]` text inside Markdown becomes a Rust attribute.
 
@@ -165,7 +165,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 - Keep the visible code focused; hide only incidental setup.
 - Prefer doctests that actually compile and run.
 - Use `no_run`, `compile_fail`, `ignore`, and `standalone_crate` for their documented semantics rather than as generic escape hatches.
-- Keep repository-dependent external-file examples explicitly classified in this corpus.
+- In a compile-check harness, provide deterministic external-file fixtures when the path dependency itself is what the example needs to verify.
 
 ## See Also
 

@@ -14,7 +14,7 @@ Do not use external files merely to avoid writing ordinary short doc comments ne
 
 A crate can make a README part of its crate-level rustdoc:
 
-<!-- rust-check: ignore; reason=requires repository README file at the documented path -->
+<!-- rust-check: compile -->
 ```rust
 #![doc = include_str!("../README.md")]
 
@@ -23,7 +23,7 @@ pub fn version() -> &'static str {
 }
 ```
 
-For an ordinary `include_str!` invocation, the relative path is resolved relative to the Rust source file containing the macro invocation.
+For an ordinary `include_str!` invocation, the relative path is resolved relative to the Rust source file containing the macro invocation. The verifier's generated examples live under `checks/examples/`, so this exact path resolves to the existing `checks/README.md` and is compile-checked.
 
 The `readme = "README.md"` Cargo package field is separate metadata; it tells Cargo/crates.io which README belongs to the package. It does not itself make that README rustdoc content.
 
@@ -31,7 +31,7 @@ The `readme = "README.md"` Cargo package field is separate metadata; it tells Ca
 
 External Markdown can also document one item:
 
-<!-- rust-check: ignore; reason=requires repository Markdown file at the documented path -->
+<!-- rust-check: compile -->
 ```rust
 #[doc = include_str!("../docs/migrations.md")]
 pub fn run_migrations() -> Result<(), std::io::Error> {
@@ -45,7 +45,7 @@ Use this when maintaining the documentation as a separate Markdown document is a
 
 The same source document can be included at multiple documentation sites:
 
-<!-- rust-check: ignore; reason=requires repository Markdown file at the documented path -->
+<!-- rust-check: compile -->
 ```rust
 #[doc = include_str!("../examples/client_basic.md")]
 pub fn create_client() {}
@@ -60,13 +60,15 @@ Sharing content avoids duplicated prose, but it can also make the document less 
 
 Clippy's `doc_include_without_cfg` restriction lint can flag documentation `include_str!` usage that is evaluated during ordinary non-doc builds. A common pattern is:
 
-<!-- rust-check: ignore; reason=requires repository Markdown file at the documented path -->
+<!-- rust-check: compile -->
 ```rust
 #[cfg_attr(doc, doc = include_str!("../docs/advanced.md"))]
 pub mod advanced {}
 ```
 
 This avoids reading the external documentation file unless the `doc` cfg is active. It is a trade-off, not a universal requirement: documentation metadata can participate in cross-crate rustdoc/inlining behavior, so decide whether the docs must be present outside direct documentation builds before adopting the restriction lint mechanically.
+
+The verifier supplies deterministic UTF-8 Markdown fixtures for the repository-relative paths in these examples. That makes path resolution and Rust attribute syntax strict compile contracts. It does not substitute for building a real project's actual documentation with rustdoc.
 
 ## Edition 2024: Nested Includes Inside Included Markdown Doctests
 
@@ -101,7 +103,7 @@ Whether an external guide should be included only in documentation builds and wh
 
 ## Verifying External Documentation
 
-Because the file is part of compilation when the macro is evaluated, broken paths are compile errors. Rustdoc can also run Rust code fences inside included Markdown as doctests when they are part of generated documentation.
+Because the file is part of compilation when the macro is evaluated, broken paths or non-UTF-8 content are compile errors. Rustdoc can also run Rust code fences inside included Markdown as doctests when they are part of generated documentation.
 
 For a real crate, verify both documentation construction and doctests:
 
@@ -110,7 +112,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 cargo test --doc
 ```
 
-This rule corpus cannot provide arbitrary repository-relative fixture files to each generated standalone example, so external-file snippets are explicitly marked `ignore` rather than kept as exact baseline failures.
+The corpus fixtures intentionally cover only deterministic path/UTF-8 availability for the teaching snippets. They are not copies of a user's README or guide and therefore cannot validate project-specific links, prose, or embedded doctests.
 
 ## Practical Guidance
 
@@ -118,7 +120,7 @@ This rule corpus cannot provide arbitrary repository-relative fixture files to e
 - Remember that ordinary relative `include_str!` paths start from the containing Rust source file.
 - Apply the Edition 2024 Markdown-relative rule only to nested includes inside doctests from included Markdown.
 - Consider `cfg_attr(doc, ...)` when documentation files should not be evaluated during normal builds, but account for your rustdoc/re-export needs.
-- Keep repository-dependent snippets explicitly classified in compile-checking harnesses that do not copy those files.
+- A compile harness can provide small deterministic fixture files to keep repository-relative include examples strict without pretending those fixtures validate real documentation content.
 
 ## See Also
 

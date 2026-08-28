@@ -137,14 +137,16 @@ Do not add `standalone_crate` merely because hidden setup uses `$crate` or a hel
 
 ## Shared Setup in External Markdown
 
-For substantial documentation reused across items, `#[doc = include_str!(...)]` can include a Markdown file. That example depends on a real repository file, so this corpus marks it explicitly instead of recording a missing-file compiler error:
+For substantial documentation reused across items, `#[doc = include_str!(...)]` can include a Markdown file:
 
-<!-- rust-check: ignore; reason=requires repository Markdown file at the documented path -->
+<!-- rust-check: compile -->
 ```rust
 /// # Examples
 #[doc = include_str!("../doc_tests/setup_and_example.md")]
 pub fn shared_example() {}
 ```
+
+The corpus verifier provides a small UTF-8 fixture at that exact path, so the attribute and repository-relative include are type-checked instead of skipped. The fixture is deliberately minimal; a real crate should separately validate the actual external Markdown with `cargo doc` and `cargo test --doc` when it contains doctests.
 
 For ordinary `include_str!`, the path is relative to the Rust source containing the macro invocation. In Edition 2024, if an included Markdown file contains a **doctest** that itself invokes `include!`, `include_str!`, or `include_bytes!`, that nested path is resolved relative to the Markdown file.
 
@@ -154,7 +156,7 @@ For ordinary `include_str!`, the path is relative to the Rust source containing 
 - Keep configuration and construction visible when they teach the API contract.
 - Remember that every hidden line still has to compile.
 - Keep testing semantics (`no_run`, `compile_fail`, `ignore`) separate from presentation semantics (`# `).
-- Classify external-file examples explicitly when the verifier's standalone harness cannot provide those files.
+- When an example's only external dependency is a deterministic file path, a verifier fixture can preserve a strict compile contract.
 
 ## See Also
 

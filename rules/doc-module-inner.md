@@ -78,7 +78,7 @@ Keep inner doc comments with other inner attributes at the beginning of the cont
 
 A large README or guide can become crate-level documentation:
 
-<!-- rust-check: ignore; reason=requires repository README file at the documented path -->
+<!-- rust-check: compile -->
 ```rust
 #![doc = include_str!("../README.md")]
 
@@ -87,7 +87,9 @@ pub fn version() -> &'static str {
 }
 ```
 
-Use this only when the README is intentionally suitable as API documentation. Marketing/project-installation text and API reference material do not always have the same audience.
+The verifier's generated examples live under `checks/examples/`, so this path resolves to the existing `checks/README.md` and the crate-level `doc` attribute is compile-checked rather than skipped. That proves path/UTF-8 availability and Rust syntax, not that an arbitrary project README is suitable API documentation.
+
+Use README inclusion only when the README is intentionally suitable as API documentation. Marketing/project-installation text and API reference material do not always have the same audience.
 
 For ordinary `include_str!`, the path is relative to the Rust source containing the macro. In Edition 2024, a nested `include!`, `include_str!`, or `include_bytes!` **inside a doctest from included Markdown** resolves relative to that Markdown file; see [doc-include-str](./doc-include-str.md).
 
@@ -175,6 +177,7 @@ Do not force every module into a fixed template. Small modules need less prose t
 - Treat README inclusion as a content-design decision, not a default.
 - Document Cargo feature behavior on stable Rust even when you cannot use unstable `#[doc(cfg)]` annotations.
 - Do not claim `--cfg docsrs` enables `doc_cfg`.
+- In a compile harness, a deterministic README fixture can keep the repository-relative include example strict while real documentation quality remains a rustdoc concern.
 
 ## See Also
 
