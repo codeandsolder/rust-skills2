@@ -93,7 +93,8 @@ Do not present unstable-only methods as ordinary stable-Tokio APIs without stati
 
 A representative unstable-metrics helper is:
 
-```text
+<!-- rust-check: fixture(tokio-special) -->
+```rust
 use tokio::runtime::Handle;
 
 fn report_unstable_metrics() {
