@@ -1,164 +1,206 @@
 # proj-pub-use-reexport
 
-> Use pub use for clean public API
+> Use `pub use` to curate intentional public paths; do not expose internal module layout or dependency types accidentally.
 
 ## Why It Matters
 
-`pub use` re-exports items from submodules at the current module level. This creates a flat, ergonomic public API while keeping internal organization flexible. Users import from one place; you can reorganize internals without breaking their code.
+A public `use` declaration re-exports a name. It can give callers a stable, ergonomic path even when the item's defining module is private.
 
-## Bad
+That separation is useful: internal modules can reflect implementation structure while the crate root or another public facade presents the API callers are expected to depend on.
 
-<!-- rust-check: fragment; reason=project-layout anti-pattern references surrounding crate modules -->
+But a re-export is still **public API**. Moving, removing, renaming, or changing the meaning of that public path can break downstream code. Re-exporting a dependency's type also makes that dependency type part of your compatibility surface; it does not magically hide the dependency.
+
+## Bad: Internal Module Tree Becomes the API by Accident
+
+<!-- rust-check: compile -->
 ```rust
-// lib.rs - Deep module paths exposed
-pub mod error;
-pub mod config;
-pub mod client;
-pub mod types;
+pub mod implementation {
+    pub mod transport {
+        pub mod http {
+            pub struct Client;
+        }
+    }
 
-// Users must write:
-use my_crate::error::MyError;
-use my_crate::config::Config;
-use my_crate::client::http::HttpClient;
-use my_crate::types::request::Request;
+    pub mod config {
+        pub struct Config;
+    }
+}
+
+fn internal_user() {
+    let _client = implementation::transport::http::Client;
+    let _config = implementation::config::Config;
+}
 ```
 
-## Good
+This is valid, but every public ancestor module forms part of the path downstream users can name. Reorganizing `implementation::transport::http` later can therefore break callers that adopted that path.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Good: Private Organization, Curated Public Paths
+
+<!-- rust-check: compile -->
 ```rust
-// lib.rs - Flat public API
-mod error;
-mod config;
-mod client;
-mod types;
+mod implementation {
+    pub mod transport {
+        pub mod http {
+            pub struct Client;
+        }
+    }
 
-pub use error::MyError;
-pub use config::Config;
-pub use client::http::HttpClient;
-pub use types::request::Request;
+    pub mod config {
+        pub struct Config;
+    }
+}
 
-// Users write:
-use my_crate::{Config, HttpClient, MyError, Request};
+pub use implementation::config::Config;
+pub use implementation::transport::http::Client;
+
+fn consumer() {
+    let _client = Client;
+    let _config = Config;
+}
 ```
 
-## Pattern: Selective Re-export
+The defining modules remain private, but `Client` and `Config` are publicly reachable through the re-export paths.
 
+## Re-Exports Can Cross Private Ancestors
+
+Rust specifically allows a public re-export to provide access to a public item whose canonical module path contains private ancestors.
+
+<!-- rust-check: compile -->
 ```rust
-// src/lib.rs
-mod internal;
+mod hidden {
+    pub mod nested {
+        pub struct PublicType;
+    }
+}
 
-// Only re-export what users need
-pub use internal::{
-    PublicStruct,
-    PublicTrait,
-    public_function,
-};
+pub use hidden::nested::PublicType;
 
-// Keep implementation details hidden
-// internal::helper_function is NOT exported
+fn use_public_path() {
+    let _ = PublicType;
+}
 ```
 
-## Pattern: Rename on Re-export
+This is a useful tool for decoupling file/module layout from the names documented as your crate's API.
 
+## Selective Re-Export Beats `pub use module::*`
+
+<!-- rust-check: compile -->
+```rust
+mod internal {
+    pub struct Client;
+    pub struct Config;
+    pub struct DebugDump;
+    pub fn internal_probe() {}
+}
+
+pub use internal::{Client, Config};
+
+fn public_consumer() {
+    let _ = (Client, Config);
+}
+```
+
+Selective lists make API review obvious. A glob re-export can be appropriate for a deliberately facade-like module, but it also means newly added source-module names may silently become public API.
+
+## Renaming on Re-Export
+
+<!-- rust-check: compile -->
 ```rust
 mod v1 {
-    pub struct Client { /* old implementation */ }
+    pub struct Client;
 }
 
 mod v2 {
-    pub struct Client { /* new implementation */ }
+    pub struct Client;
 }
 
-// Re-export with clear names
-pub use v2::Client;
 pub use v1::Client as LegacyClient;
+pub use v2::Client;
+
+fn consumer() {
+    let _new = Client;
+    let _old = LegacyClient;
+}
 ```
 
-## Pattern: Prelude Module
+Aliases are useful for migrations or when two source modules expose colliding names. Remember that both exported names become compatibility commitments while public.
 
+## Re-Exporting Dependency Types Is a Public-Dependency Decision
+
+Sometimes callers really should use the exact dependency type accepted or returned by your API. Re-exporting it can give them one canonical path.
+
+<!-- rust-check: compile -->
 ```rust
-// src/lib.rs
-pub mod prelude {
-    pub use crate::{
-        Config,
-        Client,
-        Error,
-        Request,
-        Response,
-    };
+pub use bytes::Bytes;
+
+pub fn encode(text: &str) -> Bytes {
+    Bytes::copy_from_slice(text.as_bytes())
+}
+```
+
+This is convenient, but `bytes::Bytes` is now deliberately visible in your API. Upgrading to a semver-incompatible version or replacing it with another type can be a breaking API change even though callers spelled the type through your crate's re-export.
+
+If the dependency is an implementation detail, prefer your own type/trait boundary instead of re-exporting it merely to save callers a dependency declaration.
+
+Also do not assume re-exporting means consumers will **never** need a direct dependency. They may need dependency-specific macros, traits, feature flags, companion types, or APIs you do not re-export.
+
+## Feature-Gated Re-Exports
+
+If an item only exists behind a feature, gate the public path consistently.
+
+<!-- rust-check: compile -->
+```rust
+mod core_api {
+    pub struct Client;
 }
 
-// Users can glob import common items
-use my_crate::prelude::*;
+#[cfg(feature = "async-client")]
+mod async_api {
+    pub struct AsyncClient;
+}
+
+pub use core_api::Client;
+
+#[cfg(feature = "async-client")]
+pub use async_api::AsyncClient;
 ```
 
-## Pattern: Feature-Gated Re-exports
+Document which feature controls the path. A caller should not discover feature requirements only from an unresolved import.
 
-```rust
-// src/lib.rs
-mod core;
-mod serde_impl;
-mod async_impl;
+## Facade Crates Are a Deliberate Special Case
 
-pub use core::*;
+Some crates intentionally exist mostly to re-export APIs from several dependencies. In that design, broad re-exports may be the product rather than leakage.
 
-#[cfg(feature = "serde")]
-pub use serde_impl::*;
+The same compatibility consequence still applies: the facade owns the public paths it exposes and must consider upstream dependency changes as changes to its own API.
 
-#[cfg(feature = "async")]
-pub use async_impl::*;
-```
+## Re-Export vs Type Alias vs Wrapper
 
-## Comparison: Module Structure vs Public API
+Use the mechanism that matches the compatibility goal:
 
-```rust
-// Internal structure (complex)
-src/
-├── transport/
-│   ├── http/
-│   │   └── client.rs    // HttpClient
-│   └── grpc/
-│       └── client.rs    // GrpcClient
-├── auth/
-│   └── token.rs         // Token
-└── lib.rs
+- **`pub use dep::Type`** — expose the exact same type and its identity.
+- **`pub type Alias = dep::Type`** — provide another name for the exact same type; dependency identity still leaks.
+- **newtype/wrapper** — create your own type identity and conversion boundary; more work, more encapsulation.
+- **trait/interface owned by your crate** — useful when callers should program to behavior rather than a concrete dependency type.
 
-// Public API (flat)
-pub use transport::http::client::HttpClient;
-pub use transport::grpc::client::GrpcClient;
-pub use auth::token::Token;
+## Public Paths Are Part of SemVer
 
-// Users see:
-my_crate::HttpClient
-my_crate::GrpcClient
-my_crate::Token
-```
+Before changing module visibility or re-exports, ask which paths users can currently name. Making a formerly public module private is breaking unless every public path callers relied on is intentionally preserved and behavior/type identity remains compatible.
 
-## Re-export External Types
+Conversely, keeping implementation modules private from the start preserves more freedom to reorganize them behind stable re-export paths.
 
-```rust
-// Re-export dependencies users will need
-pub use bytes::Bytes;
-pub use http::{Method, StatusCode};
+## Decision Guide
 
-// Now users don't need to depend on these crates directly
-```
-
-## Glob Re-exports
-
-Use sparingly:
-
-```rust
-// OK for internal modules
-pub use internal::*;
-
-// Careful with external crates - pollutes namespace
-pub use serde::*;  // Usually too broad
-```
+| Goal | Typical approach |
+|---|---|
+| Hide internal module nesting | Private modules + selective root re-exports |
+| Expose a small curated facade | Explicit `pub use` list |
+| Preserve two names during migration | Re-export with alias |
+| Exact dependency type is intentionally public | Re-export it and treat dependency as public API |
+| Dependency should remain swappable | Own a wrapper/trait boundary |
+| Crate is intentionally a facade | Broader re-exports can be appropriate |
 
 ## See Also
 
-- [proj-prelude-module](./proj-prelude-module.md) - Prelude pattern
+- [proj-prelude-module](./proj-prelude-module.md) - Optional convenience imports
 - [proj-pub-crate-internal](./proj-pub-crate-internal.md) - Internal visibility
-- [api-non-exhaustive](./api-non-exhaustive.md) - API stability
+- [api-non-exhaustive](./api-non-exhaustive.md) - Future-proof public types
