@@ -412,20 +412,20 @@ Reference these guidelines when:
 
 ### 24. Project Structure (LOW)
 
-- [`proj-lib-main-split`](rules/proj-lib-main-split.md) - Keep `main.rs` minimal, logic in `lib.rs`
+- [`proj-lib-main-split`](rules/proj-lib-main-split.md) - Put reusable or directly importable application logic in a library target; keep binary entry points thin when that separation helps.
 - [`proj-mod-by-feature`](rules/proj-mod-by-feature.md) - Organize modules by feature, not type
 - [`proj-flat-small`](rules/proj-flat-small.md) - Keep small projects flat
 - [`proj-mod-rs-dir`](rules/proj-mod-rs-dir.md) - Choose a consistent multi-file module layout; both `foo.rs` + `foo/` and `foo/mod.rs` are supported
 - [`proj-pub-crate-internal`](rules/proj-pub-crate-internal.md) - Use pub(crate) for internal APIs
 - [`proj-pub-super-parent`](rules/proj-pub-super-parent.md) - Use `pub(super)` when an item declared in a child module must be visible in its parent module scope
-- [`proj-pub-use-reexport`](rules/proj-pub-use-reexport.md) - Use pub use for clean public API
-- [`proj-prelude-module`](rules/proj-prelude-module.md) - Create prelude module for common imports
+- [`proj-pub-use-reexport`](rules/proj-pub-use-reexport.md) - Use `pub use` to curate intentional public paths; do not expose internal module layout or dependency types accidentally.
+- [`proj-prelude-module`](rules/proj-prelude-module.md) - Offer a small opt-in `prelude` only when callers repeatedly need the same coherent set of imports.
 - [`proj-bin-dir`](rules/proj-bin-dir.md) - Put multiple binaries in src/bin/
 - [`proj-workspace-large`](rules/proj-workspace-large.md) - Use workspaces for large projects
 - [`proj-workspace-deps`](rules/proj-workspace-deps.md) - Use workspace dependency inheritance for consistent versions across crates
 - [`proj-feature-additive`](rules/proj-feature-additive.md) - Design Cargo features to be additive whenever feature unification can combine them
 - [`proj-msrv-declare`](rules/proj-msrv-declare.md) - Declare `rust-version` (MSRV) in Cargo.toml and test it in CI
-- [`proj-build-rs-minimal`](rules/proj-build-rs-minimal.md) - Keep `build.rs` minimal, deterministic, and idempotent
+- [`proj-build-rs-minimal`](rules/proj-build-rs-minimal.md) - Keep `build.rs` deterministic, narrow its declared inputs, and write generated artifacts under `OUT_DIR`.
 - [`proj-lints-table`](rules/proj-lints-table.md) - Use `[lints]` / `[workspace.lints]` for centralized lint configuration
 - [`proj-workspace-metadata`](rules/proj-workspace-metadata.md) - Use `[workspace.package]` for shared metadata inheritance
 - [`proj-workspace-publish`](rules/proj-workspace-publish.md) - Use `cargo publish --workspace` for native workspace publishing (Rust 1.90+)

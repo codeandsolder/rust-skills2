@@ -1,150 +1,206 @@
 # proj-lib-main-split
 
-> Keep `main.rs` minimal, logic in `lib.rs`
+> Put reusable or directly importable application logic in a library target; keep binary entry points thin when that separation helps.
 
 ## Why It Matters
 
-Putting your logic in `lib.rs` makes it testable, reusable, and keeps `main.rs` as a thin entry point. Integration tests can only access your library crate, not binary code in `main.rs`.
+A package can contain both a library target (`src/lib.rs`) and one or more binary targets (`src/main.rs`, `src/bin/*.rs`). Moving core logic into the library gives binaries, examples, benchmarks, and integration tests a normal Rust API they can import.
 
-## Bad
+That does **not** mean code in `main.rs` is untestable. Binary targets can contain unit tests, and Cargo integration tests can execute built binaries through `CARGO_BIN_EXE_<name>`. The distinction is about **importable API boundaries and reuse**, not whether testing is possible at all.
 
-<!-- rust-check: fragment; reason=project-layout anti-pattern references surrounding application functions -->
+A thin binary entry point is especially useful when several binaries share logic, integration tests need to call functions directly, or startup/orchestration code would otherwise bury domain behavior.
+
+## Bad: Domain Logic Exists Only Inside the Binary Target
+
+<!-- rust-check: compile -->
 ```rust
-// src/main.rs - everything here
-fn main() {
-    let args = parse_args();
-    let config = load_config(&args.config_path).unwrap();
-    let db = connect_database(&config.db_url).unwrap();
-    
-    // Hundreds of lines of application logic...
-    // All untestable from integration tests!
+#[derive(Debug)]
+struct Config {
+    port: u16,
 }
 
-fn parse_args() -> Args { /* ... */ }
-fn load_config(path: &str) -> Result<Config, Error> { /* ... */ }
-fn connect_database(url: &str) -> Result<Db, Error> { /* ... */ }
-// ... more functions that can't be tested
+fn parse_config(text: &str) -> Result<Config, &'static str> {
+    let port = text.parse::<u16>().map_err(|_| "invalid port")?;
+    Ok(Config { port })
+}
+
+fn handle_request(config: &Config, request: &str) -> String {
+    format!("{}:{}", config.port, request)
+}
+
+fn main() -> Result<(), &'static str> {
+    let config = parse_config("8080")?;
+    println!("{}", handle_request(&config, "health"));
+    Ok(())
+}
 ```
 
-## Good
+This is valid and can have unit tests in the binary target. The limitation is architectural: another target cannot import `parse_config` or `handle_request` through the package's library API because there is no such API.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Good: Importable Logic, Thin Entrypoint
+
+<!-- rust-check: compile -->
 ```rust
-// src/main.rs - thin entry point
+// In a real package this module body can live in src/lib.rs.
+mod my_app {
+    #[derive(Debug)]
+    pub struct Config {
+        pub port: u16,
+    }
+
+    impl Config {
+        pub fn parse(text: &str) -> Result<Self, &'static str> {
+            let port = text.parse::<u16>().map_err(|_| "invalid port")?;
+            Ok(Self { port })
+        }
+    }
+
+    pub fn handle_request(config: &Config, request: &str) -> String {
+        format!("{}:{}", config.port, request)
+    }
+
+    pub fn run(config: Config) -> Result<(), &'static str> {
+        let output = handle_request(&config, "health");
+        if output.is_empty() {
+            Err("empty response")
+        } else {
+            Ok(())
+        }
+    }
+}
+
+// src/main.rs would import these from the package library, e.g.
+// `use my_app::{Config, run};`.
 use my_app::{run, Config};
 
-fn main() -> anyhow::Result<()> {
-    let config = Config::from_env()?;
+fn main() -> Result<(), &'static str> {
+    let config = Config::parse("8080")?;
     run(config)
 }
-
-// src/lib.rs - all the logic
-pub mod config;
-pub mod database;
-pub mod handlers;
-
-pub use config::Config;
-
-pub fn run(config: Config) -> anyhow::Result<()> {
-    let db = database::connect(&config.db_url)?;
-    let app = handlers::build_app(db);
-    app.run()
-}
 ```
 
-## With CLI Arguments
+The binary owns process-level concerns—argument parsing, environment setup, logging initialization, exit status—while reusable behavior lives behind a library API.
 
+## What Belongs in `main.rs`?
+
+Keeping `main.rs` "thin" does not mean reducing it to exactly three lines. Binary-specific orchestration can reasonably stay there:
+
+- parse CLI arguments,
+- initialize tracing/logging,
+- read environment variables,
+- choose subcommands,
+- construct concrete adapters,
+- convert the library's result into an exit code or user-facing diagnostic.
+
+Move logic into the library when callers/tests benefit from importing it or when multiple targets share it. Do not create a public library abstraction for code that is genuinely specific to one tiny executable merely to satisfy a style slogan.
+
+## Direct Library Testing
+
+A library boundary makes ordinary integration tests straightforward because each file in `tests/` is a separate crate that can import the package library's **public** API.
+
+<!-- rust-check: compile -->
 ```rust
-// src/main.rs
-use clap::Parser;
-use my_app::{run, Args};
+mod my_app {
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct Config {
+        pub port: u16,
+    }
 
-fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
-    run(args)
+    pub fn parse_config(text: &str) -> Result<Config, &'static str> {
+        let port = text.parse::<u16>().map_err(|_| "invalid port")?;
+        Ok(Config { port })
+    }
 }
 
-// src/lib.rs
-use clap::Parser;
-
-#[derive(Parser, Debug)]
-#[command(name = "myapp", version, about)]
-pub struct Args {
-    #[arg(short, long)]
-    pub config: PathBuf,
-    
-    #[arg(short, long, default_value = "info")]
-    pub log_level: String,
-}
-
-pub fn run(args: Args) -> anyhow::Result<()> {
-    // All application logic here - testable!
+fn integration_style_test() {
+    let config = my_app::parse_config("9000").unwrap();
+    assert_eq!(config, my_app::Config { port: 9000 });
 }
 ```
 
-## Project Structure
+In a real `tests/config.rs`, the `my_app` module above is the package library crate itself.
 
-```
-my_app/
-├── Cargo.toml
-├── src/
-│   ├── main.rs       # Entry point only
-│   ├── lib.rs        # Library root, re-exports
-│   ├── config.rs     # Configuration
-│   ├── database.rs   # Database connection
-│   └── handlers/     # Request handlers
-│       ├── mod.rs
-│       └── users.rs
-└── tests/
-    └── integration.rs  # Can access lib.rs!
-```
+## Binary Integration Tests Still Exist
 
-## Testing Benefits
+Cargo also automatically builds binary targets when integration tests need them and sets `CARGO_BIN_EXE_<name>` to the executable path. Such a test can spawn the program and assert on stdout, stderr, files, sockets, or exit status.
 
-```rust
-// tests/integration.rs - can test everything!
-use my_app::{Config, run, database};
+That is useful for validating the actual CLI/process boundary. It is usually slower and less surgical than calling library functions directly, so a project often benefits from **both**:
 
-#[test]
-fn test_database_connection() {
-    let config = Config::test_config();
-    let db = database::connect(&config.db_url).unwrap();
-    assert!(db.is_connected());
-}
-
-#[test]
-fn test_full_workflow() {
-    let config = Config::test_config();
-    // Test the actual run function
-    assert!(my_app::run(config).is_ok());
-}
-```
+- many direct library tests for behavior,
+- a smaller set of end-to-end binary tests for wiring and user-visible behavior.
 
 ## Multiple Binaries
 
+A library target becomes particularly valuable when several binaries share domain code.
+
+<!-- rust-check: compile -->
 ```rust
-// src/lib.rs - shared code
-pub mod core;
-pub mod utils;
+mod app {
+    #[derive(Default)]
+    pub struct Store {
+        value: u64,
+    }
 
-// src/bin/server.rs
-use my_app::core::Server;
-
-fn main() -> anyhow::Result<()> {
-    Server::new()?.run()
+    impl Store {
+        pub fn increment(&mut self) -> u64 {
+            self.value += 1;
+            self.value
+        }
+    }
 }
 
-// src/bin/cli.rs
-use my_app::core::Client;
+fn server_entry() {
+    let mut store = app::Store::default();
+    println!("server value={}", store.increment());
+}
 
-fn main() -> anyhow::Result<()> {
-    let client = Client::new()?;
-    client.execute_command()
+fn admin_cli_entry() {
+    let mut store = app::Store::default();
+    println!("admin value={}", store.increment());
 }
 ```
 
+In a real package these entry functions can live in `src/bin/server.rs` and `src/bin/admin.rs`, both importing `Store` from `src/lib.rs`.
+
+## Library API Does Not Need to Mirror Internal Modules
+
+`src/lib.rs` can define private modules and selectively re-export the stable surface:
+
+<!-- rust-check: compile -->
+```rust
+mod config {
+    pub struct Config {
+        pub port: u16,
+    }
+}
+
+mod engine {
+    use super::config::Config;
+
+    pub fn run(config: Config) -> u16 {
+        config.port
+    }
+}
+
+pub use config::Config;
+pub use engine::run;
+```
+
+This lets internal file/module organization evolve without forcing callers to depend on every internal path.
+
+## Decision Guide
+
+| Situation | Useful structure |
+|---|---|
+| Tiny single-purpose executable with little reusable logic | Binary-only may be sufficient |
+| Domain logic needs direct integration tests/imports | Library + thin binary |
+| Several binaries share code | Library + `src/bin/*` binaries |
+| Need end-to-end CLI behavior tests | Test the binary via `CARGO_BIN_EXE_<name>` |
+| Need both direct logic tests and CLI tests | Library API plus a small binary boundary |
+
 ## See Also
 
-- [proj-bin-dir](proj-bin-dir.md) - Put multiple binaries in src/bin/
-- [proj-mod-by-feature](proj-mod-by-feature.md) - Organize modules by feature
-- [test-integration-dir](test-integration-dir.md) - Integration tests in tests/
+- [proj-bin-dir](./proj-bin-dir.md) - Multiple binaries in `src/bin/`
+- [proj-mod-by-feature](./proj-mod-by-feature.md) - Module organization
+- [test-integration-dir](./test-integration-dir.md) - Cargo integration tests
+- [proj-pub-use-reexport](./proj-pub-use-reexport.md) - Curating the library's public surface
