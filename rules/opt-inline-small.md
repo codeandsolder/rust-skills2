@@ -1,162 +1,119 @@
 # opt-inline-small
 
-> Use `#[inline]` for small hot functions
+> Use `#[inline]` selectively, especially when a small non-generic public function benefits from cross-crate inlining.
 
 ## Why It Matters
 
-Function call overhead (stack frame setup, register saves, jumps) can dominate small functions. Inlining eliminates this overhead and enables further optimizations by the compiler. The compiler often inlines automatically, but hints help for cross-crate calls.
+Rust's optimizer already inlines functions when it considers that profitable. `#[inline]` is a hint, not a guarantee that a call disappears.
 
-## Bad
+One place the attribute has a concrete compilation-model role is a **non-generic function used from another crate**: marking it `#[inline]` makes its body available to downstream code generation so the downstream optimizer can consider inlining it.
 
-<!-- rust-check: fragment; reason=optimization anti-pattern uses surrounding helper functions -->
+That does not mean every small function should carry the attribute. Extra body availability can increase compile work and aggressive inlining can increase code size. Use the hint where the API boundary and measurements justify it.
+
+## Bad: Adding `#[inline]` Because a Function Looks Small
+
+<!-- rust-check: compile -->
 ```rust
-// Small hot function without inline hint
-// May not be inlined across crate boundaries
-fn is_ascii_digit(b: u8) -> bool {
-    b >= b'0' && b <= b'9'
+fn is_ascii_digit(byte: u8) -> bool {
+    byte.is_ascii_digit()
 }
 
-// Called millions of times
-for byte in data {
-    if is_ascii_digit(*byte) {  // Function call overhead
-        count += 1;
+fn count_digits(data: &[u8]) -> usize {
+    data.iter().filter(|&&byte| is_ascii_digit(byte)).count()
+}
+
+assert_eq!(count_digits(b"a1b23"), 3);
+```
+
+There is nothing wrong with this code. Same-crate optimization may inline `is_ascii_digit` already. Adding an attribute without checking optimized code or performance would not make it inherently better.
+
+## Good: Use the Hint for a Deliberate Cross-Crate API Case
+
+<!-- rust-check: compile -->
+```rust
+pub struct Flags(u32);
+
+impl Flags {
+    #[inline]
+    pub fn contains(&self, mask: u32) -> bool {
+        self.0 & mask == mask
     }
 }
-```
 
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-#[inline]
-fn is_ascii_digit(b: u8) -> bool {
-    b >= b'0' && b <= b'9'
-}
-
-// Now the compiler will inline this
-for byte in data {
-    if is_ascii_digit(*byte) {  // Inlined, no call overhead
-        count += 1;
-    }
+fn local_consumer(flags: &Flags) -> bool {
+    flags.contains(0b0011)
 }
 ```
 
-## Inline Attributes
+For a real library, `#[inline]` makes this non-generic method body available to downstream crates for inlining and related optimization. The compiler still decides what actually happens at each call site.
 
+## Inline Modes
+
+<!-- rust-check: compile -->
 ```rust
-// No attribute - compiler decides (usually good for same-crate)
-fn auto_decide() { }
-
-// Suggest inlining - helps cross-crate
 #[inline]
-fn suggest_inline() { }
+fn suggest_inline(x: u32) -> u32 {
+    x.wrapping_add(1)
+}
 
-// Strongly suggest inlining - almost always inlined
 #[inline(always)]
-fn force_inline() { }
+fn strongly_suggest_inline(x: u32) -> u32 {
+    x.wrapping_add(1)
+}
 
-// Strongly suggest NOT inlining - for large/cold code
 #[inline(never)]
-fn prevent_inline() { }
+fn suggest_no_inline(x: u32) -> u32 {
+    x.wrapping_add(1)
+}
 ```
 
-## When to Use Each
+All three are hints. Do not document them as commands that the compiler must obey.
 
+## Generic Functions Are Different
+
+Generic function bodies are already available where they are instantiated, so they do not need `#[inline]` merely to make cross-crate inlining possible.
+
+<!-- rust-check: compile -->
 ```rust
-// #[inline] - Small functions, especially in libraries
-#[inline]
-pub fn len(&self) -> usize {
-    self.inner.len()
-}
-
-// #[inline(always)] - Critical hot path, verified by profiling
-#[inline(always)]
-fn hot_inner_loop_helper(x: u32) -> u32 {
-    x.wrapping_mul(0x9E3779B9)
-}
-
-// #[inline(never)] - Error handlers, cold paths
-#[inline(never)]
-fn handle_error(err: Error) -> ! {
-    eprintln!("Fatal: {}", err);
-    std::process::exit(1);
-}
-
-// No attribute - large functions, infrequent calls
-fn complex_processing(data: &mut Data) {
-    // Many lines of code...
+pub fn choose_min<T: Ord>(a: T, b: T) -> T {
+    if a <= b { a } else { b }
 }
 ```
 
-## Evidence from ripgrep
+An explicit hint can still influence a particular optimization decision, but add it for measured behavior rather than as generic-function boilerplate.
 
-```rust
-// https://github.com/BurntSushi/ripgrep/blob/master/crates/printer/src/standard.rs
+## Inlining Is Not a Simple Transitive Rule
 
-#[inline(always)]
-fn write_prelude(
-    &self,
-    absolute_byte_offset: u64,
-    line_number: Option<u64>,
-    column: Option<u64>,
-) -> io::Result<()> {
-    // Hot path in printing matches
-}
+Do not teach that every callee in a chain must carry `#[inline]` or else it “cannot” inline. The optimizer considers call graphs and available bodies; outcomes depend on crate boundaries, optimization settings, monomorphization, LTO, code size, and heuristics.
 
-#[inline(always)]
-fn write_line(&self, line: &[u8]) -> io::Result<()> {
-    // Called for every line
-}
-```
+If a particular nested call matters, inspect the optimized output instead of inferring it from attributes alone.
 
-## Generic Functions
+## Function-Call Overhead Is Only Part of the Story
 
-```rust
-// Generic functions are already candidates for per-monomorphization inlining
-// But #[inline] helps ensure it across crates
+Inlining can remove a call, but its larger value is often exposing the body for follow-on optimizations such as constant propagation, dead-code elimination, or vectorization. Conversely, copying a body into many callers can hurt instruction-cache behavior or binary size.
 
-#[inline]
-pub fn min<T: Ord>(a: T, b: T) -> T {
-    if a < b { a } else { b }
-}
-```
+That is why “tiny function = inline” is weaker guidance than “measured cross-crate hot path = consider inline.”
 
-## Cautions
+## LTO Changes the Tradeoff
 
-```rust
-// DON'T inline large functions - hurts instruction cache
-#[inline(always)]  // BAD for large function
-fn large_complex_function(data: &mut [u8]) {
-    // 100+ lines of code
-    // Inlining bloats every call site
-}
+Link-time optimization can expose more cross-crate code to the optimizer. If a project uses LTO, the marginal value of adding `#[inline]` purely for cross-crate visibility may differ from a non-LTO build.
 
-// DON'T assume inlining always helps - measure!
-// Sometimes the compiler makes better decisions
+Measure the release configuration you actually ship.
 
-// Inlining is non-transitive
-#[inline]
-fn outer() {
-    inner();  // inner() also needs #[inline] to be inlined together
-}
+## Verify the Result
 
-fn inner() { }  // Won't be inlined at outer's call sites
-```
+Useful checks include:
 
-## Verifying Inlining
+- benchmark the affected operation,
+- inspect optimized assembly or LLVM IR where necessary,
+- compare binary/code-section size,
+- test the important release profiles and targets.
 
-```bash
-# Check if function was inlined using cargo-show-asm
-cargo show-asm --rust --release my_crate::hot_function
-
-# Or examine assembly directly
-cargo rustc --release -- --emit=asm
-# Look for call instructions vs inlined code
-```
+Do not infer success from the mere presence of the attribute.
 
 ## See Also
 
-- [opt-inline-always-rare](opt-inline-always-rare.md) - Use #[inline(always)] sparingly
-- [opt-inline-never-cold](opt-inline-never-cold.md) - Use #[inline(never)] for cold paths
-- [opt-cold-unlikely](opt-cold-unlikely.md) - Use #[cold] for unlikely paths
-- [opt-lto-release](opt-lto-release.md) - LTO enables cross-crate inlining
+- [opt-inline-always-rare](./opt-inline-always-rare.md) - Stronger inline hints
+- [opt-inline-never-cold](./opt-inline-never-cold.md) - Keeping cold code separate
+- [opt-lto-release](./opt-lto-release.md) - Cross-crate optimization with LTO
+- [perf-profile-first](./perf-profile-first.md) - Measure first

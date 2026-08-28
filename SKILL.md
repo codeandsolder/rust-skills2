@@ -203,10 +203,10 @@ Reference these guidelines when:
 
 ### 8. Compiler Optimization (HIGH)
 
-- [`opt-inline-small`](rules/opt-inline-small.md) - Use `#[inline]` for small hot functions
-- [`opt-inline-always-rare`](rules/opt-inline-always-rare.md) - Use `#[inline(always)]` sparingly—only for critical hot paths proven by profiling
+- [`opt-inline-small`](rules/opt-inline-small.md) - Use `#[inline]` selectively, especially when a small non-generic public function benefits from cross-crate inlining.
+- [`opt-inline-always-rare`](rules/opt-inline-always-rare.md) - Treat `#[inline(always)]` as a strong optimization hint, not a command; use it only when measurement justifies it.
 - [`opt-inline-never-cold`](rules/opt-inline-never-cold.md) - Use cold-path and inlining annotations as measured optimization hints, not source-level guarantees
-- [`opt-cold-unlikely`](rules/opt-cold-unlikely.md) - Mark unlikely code paths with `#[cold]` to help compiler optimization
+- [`opt-cold-unlikely`](rules/opt-cold-unlikely.md) - Use `#[cold]` or `core::hint::cold_path()` only when an unlikely path is known or measured to matter.
 - [`opt-likely-hint`](rules/opt-likely-hint.md) - Use `cold_path()` and `select_unpredictable` for branch hints on stable Rust
 - [`opt-lto-release`](rules/opt-lto-release.md) - Enable LTO in release builds
 - [`opt-codegen-units`](rules/opt-codegen-units.md) - Set `codegen-units = 1` for maximum optimization in release builds
@@ -394,20 +394,20 @@ Reference these guidelines when:
 - [`perf-iter-over-index`](rules/perf-iter-over-index.md) - Prefer direct iteration when you are traversing values; use indexing when the index is part of the algorithm
 - [`perf-iter-lazy`](rules/perf-iter-lazy.md) - Keep iterator pipelines lazy when streaming or short-circuiting is useful; collect only when ownership, reuse, sorting, indexing, or another concrete requirement needs a collection
 - [`perf-collect-once`](rules/perf-collect-once.md) - Keep iterator pipelines lazy until you actually need an owned collection; materialize intermediate results when their semantics justify it
-- [`perf-entry-api`](rules/perf-entry-api.md) - Use entry API for map insert-or-update
+- [`perf-entry-api`](rules/perf-entry-api.md) - Use a map's entry API when one key lookup should decide both the occupied and vacant cases.
 - [`perf-drain-reuse`](rules/perf-drain-reuse.md) - Use `drain` or `extract_if` when you need to remove owned elements while retaining the source collection's allocation; do not introduce an intermediate collection unless ownership requires one
 - [`perf-extend-batch`](rules/perf-extend-batch.md) - Use `extend`, `extend_from_slice`, or `append` when adding a batch expresses the ownership you want; reserve explicitly when the final size is cheaply known
 - [`perf-chain-avoid`](rules/perf-chain-avoid.md) - Use `Iterator::chain` when it expresses the traversal clearly; split or materialize only when measurement shows the chained iterator is a bottleneck
 - [`perf-collect-into`](rules/perf-collect-into.md) - Reuse an existing destination with `clear()` + `extend()` on stable Rust; nightly `Iterator::collect_into` appends like `Extend::extend` and does not clear for you
-- [`perf-black-box-bench`](rules/perf-black-box-bench.md) - Use black_box in benchmarks
+- [`perf-black-box-bench`](rules/perf-black-box-bench.md) - Use `std::hint::black_box` in benchmarks when compile-time knowledge could make the measured work unrealistically disappear or specialize.
 - [`perf-release-profile`](rules/perf-release-profile.md) - Optimize release profile settings
-- [`perf-profile-first`](rules/perf-profile-first.md) - Profile before optimizing
+- [`perf-profile-first`](rules/perf-profile-first.md) - Measure representative workloads before choosing an optimization, then measure again after the change.
 - [`perf-ahash`](rules/perf-ahash.md) - Use a faster hasher (`ahash` / `FxHashMap`) when DoS resistance is not needed
 - [`perf-io-buffering`](rules/perf-io-buffering.md) - Wrap `Read`/`Write` in `BufReader`/`BufWriter` for many small operations
 - [`perf-array-windows`](rules/perf-array-windows.md) - Use `<[T]>::array_windows` and `<[T]>::as_chunks` when a compile-time window or chunk size is useful
 - [`perf-atomic-update`](rules/perf-atomic-update.md) - Use `Atomic*::update` and `try_update` for cleaner compare-and-update loops
 - [`perf-copy-range`](rules/perf-copy-range.md) - Treat `Copy` ranges as an ownership and ergonomics choice, not an automatic performance optimization
-- [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` for conditional extraction when you need to keep both removed and retained elements
+- [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` when matching elements should be removed while their ownership is yielded to the caller.
 - [`perf-hint-apis`](rules/perf-hint-apis.md) - Use compiler hint APIs only when their semantics match a measured hot path; they are advisory optimizations, not code-generation guarantees
 
 ### 24. Project Structure (LOW)

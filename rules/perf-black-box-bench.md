@@ -1,191 +1,139 @@
 # perf-black-box-bench
 
-> Use black_box in benchmarks
+> Use `std::hint::black_box` in benchmarks when compile-time knowledge could make the measured work unrealistically disappear or specialize.
 
 ## Why It Matters
 
-The compiler aggressively optimizes code, potentially eliminating computations whose results aren't used. In benchmarks, this can lead to measuring nothing instead of the actual code. `std::hint::black_box()` prevents the compiler from optimizing away values, ensuring accurate measurements.
+Optimized benchmark code is still optimized code. If the compiler can prove an input is constant or a result is irrelevant, it may fold, simplify, or remove work that would exist in the real program.
 
-## Bad
+`std::hint::black_box` tells the compiler to be maximally pessimistic about what can be assumed across that point. It is useful for benchmarks, but it is deliberately **best effort**: code generation varies by backend and target, and `black_box` provides no correctness, security, constant-time, or exact “this optimization is impossible” guarantee.
 
-<!-- rust-check: fragment; reason=benchmark anti-pattern uses surrounding benchmark input -->
+## Bad: Give the Optimizer the Entire Answer
+
+<!-- rust-check: compile -->
 ```rust
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
-fn benchmark_bad(c: &mut Criterion) {
-    c.bench_function("compute", |b| {
-        b.iter(|| {
-            let result = expensive_computation(42);
-            // Result unused - compiler may eliminate the call!
-        });
-    });
+fn expensive_computation(value: u64) -> u64 {
+    (0..64).fold(value, |acc, n| acc.rotate_left(n % 63 + 1) ^ n as u64)
 }
 
-fn benchmark_also_bad(c: &mut Criterion) {
-    let input = 42;  // Constant - compiler may precompute
-    
-    c.bench_function("compute", |b| {
-        b.iter(|| {
-            expensive_computation(input)
-            // Return value may still be optimized away
-        });
-    });
+fn benchmark_shape_bad() {
+    for _ in 0..1_000 {
+        // Constant input and ignored result give an optimizer unusually strong
+        // knowledge compared with a real caller.
+        let _ = expensive_computation(42);
+    }
 }
 ```
 
-## Good
+This code may still execute in a particular build. The problem is that the benchmark does not constrain optimizations that make the measurement unrepresentative.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+## Good: Hide Relevant Inputs and Consume Outputs
 
-fn benchmark_good(c: &mut Criterion) {
-    c.bench_function("compute", |b| {
-        b.iter(|| {
-            // black_box on input prevents constant folding
-            let result = expensive_computation(black_box(42));
-            // black_box on output prevents dead code elimination
-            black_box(result)
-        });
-    });
-}
-
-// Or simpler with Criterion's built-in support
-fn benchmark_simpler(c: &mut Criterion) {
-    c.bench_function("compute", |b| {
-        b.iter(|| expensive_computation(black_box(42)))
-    });
-}
-```
-
-## What black_box Does
-
-| Without black_box | With black_box |
-|-------------------|----------------|
-| Input may be constant-folded | Input treated as unknown |
-| Result may be eliminated | Result must be computed |
-| Loops may be optimized away | Each iteration runs |
-| Functions may be inlined | Call semantics preserved |
-
-## Standard Library Usage
-
+<!-- rust-check: compile -->
 ```rust
 use std::hint::black_box;
 
-fn main() {
-    // In std since Rust 1.66
-    let result = black_box(compute_something(black_box(input)));
+fn expensive_computation(value: u64) -> u64 {
+    (0..64).fold(value, |acc, n| acc.rotate_left(n % 63 + 1) ^ n as u64)
 }
-```
 
-## Divan's black_box
-
-Divan (modern Rust benchmarking) re-exports `black_box` and integrates with CodSpeed CI:
-
-```rust
-use divan::black_box;
-
-fn benchmark() {
-    divan::black_box(compute(divan::black_box(input)));
-}
-```
-
-Divan benchmarks work with CodSpeed CI (hardware-counter-based) without changes.
-
-## Criterion's black_box
-
-Criterion also re-exports `std::hint::black_box`:
-
-```rust
-use criterion::black_box;
-
-// Equivalent to std::hint::black_box
-```
-
-## Pattern: cold_path + black_box for Unlikely Branches
-
-Since Rust 1.95, combine `std::hint::cold_path` with `black_box` to prevent the compiler from optimizing away unlikely branches in benchmarks:
-
-```rust
-use std::hint::{black_box, cold_path};
-
-fn bench_error_path(c: &mut Criterion) {
-    c.bench_function("error_on_empty", |b| {
-        b.iter(|| {
-            let data = black_box(empty_data());
-            if data.is_empty() {
-                cold_path();  // Hint: this branch is cold
-                return Err(black_box("empty"));
-            }
-            Ok(compute(black_box(&data)))
-        });
-    });
-}
-```
-
-## Pattern: Benchmark with Setup
-
-```rust
-fn benchmark_with_setup(c: &mut Criterion) {
-    c.bench_function("process_data", |b| {
-        // Setup outside iter - not measured
-        let data = generate_test_data(1000);
-        
-        b.iter(|| {
-            // black_box the input reference
-            let result = process(black_box(&data));
-            black_box(result)
-        });
-    });
-}
-```
-
-## Pattern: Benchmark Multiple Inputs
-
-```rust
-fn benchmark_sizes(c: &mut Criterion) {
-    let mut group = c.benchmark_group("scaling");
-    
-    for size in [100, 1000, 10000] {
-        let data = generate_data(size);
-        
-        group.bench_with_input(
-            BenchmarkId::from_parameter(size),
-            &data,
-            |b, data| {
-                b.iter(|| process(black_box(data)))
-            },
-        );
+fn benchmark_shape_good(input: u64) {
+    for _ in 0..1_000 {
+        let result = expensive_computation(black_box(input));
+        black_box(result);
     }
-    group.finish();
 }
 ```
 
-## Common Mistakes
+Use `black_box` at the boundary where compile-time knowledge would otherwise be unrealistic. Do not sprinkle it everywhere: every barrier can also inhibit optimizations that real production callers would legitimately get.
 
+## Criterion Example
+
+The repository's Criterion dependency can use the standard-library primitive directly:
+
+<!-- rust-check: compile -->
 ```rust
-// WRONG: black_box inside loop does nothing useful
-for _ in 0..1000 {
-    black_box(());  // Doesn't help
-    compute();
+use criterion::Criterion;
+use std::hint::black_box;
+
+fn parse_number(text: &str) -> u64 {
+    text.parse().unwrap()
 }
 
-// RIGHT: black_box the computation result
-for _ in 0..1000 {
-    black_box(compute());
+fn benchmark_parse(c: &mut Criterion) {
+    let input = String::from("123456789");
+
+    c.bench_function("parse_number", |b| {
+        b.iter(|| {
+            let value = parse_number(black_box(input.as_str()));
+            black_box(value)
+        })
+    });
 }
-
-// WRONG: Only blocking output, not input
-let x = 42;  // Constant, may be optimized
-black_box(expensive(x));
-
-// RIGHT: Block both
-black_box(expensive(black_box(42)));
 ```
+
+A benchmark framework may also expose/re-export a black-box helper, but using `std::hint::black_box` makes the language/toolchain primitive explicit.
+
+## What `black_box` Actually Promises
+
+`black_box(value)` is semantically an identity function: it returns `value` unchanged. Optimizer behavior around it is a hint.
+
+Do **not** claim that it guarantees any of these:
+
+- a function call cannot be inlined,
+- a loop must execute in exactly the source-written form,
+- a particular instruction sequence is preserved,
+- cryptographic code becomes constant-time,
+- all dead-code or constant-folding transformations are impossible.
+
+For benchmarks, the intended best-effort pessimism is normally enough to stop obviously unrealistic whole-expression elimination and constant specialization.
+
+## Inputs, Outputs, and Setup
+
+Ask what the benchmark is supposed to include.
+
+<!-- rust-check: compile -->
+```rust
+use std::hint::black_box;
+
+fn process(data: &[u64]) -> u64 {
+    data.iter().copied().sum()
+}
+
+fn benchmark_shape() {
+    // Setup outside the measured operation when allocation/setup is not part
+    // of the question being measured.
+    let data = (0..1_000).collect::<Vec<u64>>();
+
+    for _ in 0..100 {
+        let result = process(black_box(&data));
+        black_box(result);
+    }
+}
+```
+
+If setup cost is part of the real operation, keep it inside the measured region instead. Benchmark boundaries are part of the experiment design.
+
+## Do Not Use `black_box` to Manufacture Cold Paths
+
+`core::hint::cold_path()` expresses an optimizer belief that a path is unlikely. It does not make a benchmark of that path more realistic, and combining hints mechanically can measure an artificial code shape.
+
+If you want to benchmark an error/cold path, construct representative inputs that actually take it. Use `black_box` only where compile-time knowledge of those inputs/results would distort the experiment.
+
+## Validate Benchmark Quality
+
+A useful microbenchmark should also consider:
+
+- realistic input distributions and sizes,
+- warm-up/sample noise and confidence intervals,
+- whether allocations/I/O/setup belong inside the measured region,
+- whether the optimized release configuration matches production,
+- whether a microbenchmark improvement changes end-to-end behavior at all.
+
+`black_box` fixes one class of benchmark artifact; it does not validate the experiment by itself.
 
 ## See Also
 
-- [test-criterion-bench](./test-criterion-bench.md) - Using Criterion
-- [perf-profile-first](./perf-profile-first.md) - Profile before optimize
-- [perf-release-profile](./perf-release-profile.md) - Release settings
-- [perf-hint-apis](./perf-hint-apis.md) - cold_path and other hint APIs
+- [test-criterion-bench](./test-criterion-bench.md) - Criterion benchmarks
+- [perf-profile-first](./perf-profile-first.md) - Find real hot spots first
+- [perf-release-profile](./perf-release-profile.md) - Benchmark release-like builds

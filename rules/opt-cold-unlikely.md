@@ -1,216 +1,146 @@
 # opt-cold-unlikely
 
-> Mark unlikely code paths with `#[cold]` to help compiler optimization
+> Use `#[cold]` or `core::hint::cold_path()` only when an unlikely path is known or measured to matter.
 
 ## Why It Matters
 
-The `#[cold]` attribute tells the compiler that a function is rarely called. The compiler uses this to optimize code layout—keeping cold code away from hot code improves instruction cache utilization. Combined with branch layout optimization, this can measurably improve performance.
+Rust exposes two stable ways to tell the optimizer that code is unlikely:
 
-## Bad
+- `#[cold]` is a **function-level hint** that the function is unlikely to be called.
+- `core::hint::cold_path()` is a **path-level hint** that the current branch is unlikely to be taken.
 
-<!-- rust-check: fragment; reason=optimization anti-pattern uses surrounding request and error types -->
+Both are optimization hints, not semantic guarantees. The compiler is free to choose how to use them. Do not promise a particular section layout, branch instruction, inlining decision, or optimization budget merely because one of these hints appears in source.
+
+## Bad: Annotating a Rare-Looking Path by Intuition
+
+<!-- rust-check: compile -->
 ```rust
-// All branches treated equally
-fn validate(input: &str) -> Result<Data, ValidationError> {
-    if input.is_empty() {
-        return Err(ValidationError::Empty);  // Rare
-    }
-    
-    if input.len() > 1000 {
-        return Err(ValidationError::TooLong);  // Rare  
-    }
-    
-    if !input.is_ascii() {
-        return Err(ValidationError::NonAscii);  // Rare
-    }
-    
-    // This is the common case
-    Ok(parse_data(input))
+#[derive(Debug, PartialEq, Eq)]
+enum ValidationError {
+    Empty,
+    TooLong,
 }
-```
 
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-fn validate(input: &str) -> Result<Data, ValidationError> {
+fn validate(input: &str) -> Result<usize, ValidationError> {
+    // There is no evidence here that either branch matters to performance.
     if input.is_empty() {
-        return cold_empty_error();
+        return cold_empty();
     }
-    
-    if input.len() > 1000 {
-        return cold_too_long_error();
+    if input.len() > 1_000 {
+        return cold_too_long();
     }
-    
-    if !input.is_ascii() {
-        return cold_non_ascii_error();
-    }
-    
-    Ok(parse_data(input))
+    Ok(input.len())
 }
 
 #[cold]
-fn cold_empty_error() -> Result<Data, ValidationError> {
+fn cold_empty() -> Result<usize, ValidationError> {
     Err(ValidationError::Empty)
 }
 
 #[cold]
-fn cold_too_long_error() -> Result<Data, ValidationError> {
+fn cold_too_long() -> Result<usize, ValidationError> {
     Err(ValidationError::TooLong)
 }
-
-#[cold]
-fn cold_non_ascii_error() -> Result<Data, ValidationError> {
-    Err(ValidationError::NonAscii)
-}
 ```
 
-## What #[cold] Does
+This compiles, but the attributes are unsupported by evidence. A rare branch is not automatically a performance problem.
 
-1. **Code placement**: Cold functions are placed in separate code sections, away from hot code
-2. **Branch prediction**: Compiler generates branch hints favoring the non-cold path
-3. **Inlining decisions**: Cold functions are not inlined into hot paths
-4. **Optimization budget**: Compiler spends less effort optimizing cold code
+## Good: Apply a Hint Where the Cold Split Is Intentional
 
-## Common Cold Patterns
-
+<!-- rust-check: compile -->
 ```rust
-// Error handling
-#[cold]
-fn handle_error<E: std::fmt::Display>(e: E) -> ! {
-    eprintln!("Fatal error: {}", e);
-    std::process::exit(1);
+#[derive(Debug, PartialEq, Eq)]
+enum ParseError {
+    InvalidDigit(u8),
 }
 
-// Logging rare events
-#[cold]
-fn log_rare_event(event: &Event) {
-    log::warn!("Rare event occurred: {:?}", event);
-}
-
-// Fallback paths
-#[cold]
-fn slow_fallback(data: &Data) -> Output {
-    // This path should rarely be taken
-    compute_slowly(data)
-}
-
-// Panic handlers
-#[cold]
-fn panic_invalid_state(state: &State) -> ! {
-    panic!("Invalid state: {:?}", state);
-}
-```
-
-## Assertions and Invariants
-
-```rust
-fn get_unchecked(&self, index: usize) -> &T {
-    if index >= self.len {
-        cold_bounds_panic(index, self.len);
+fn parse_digit(byte: u8) -> Result<u8, ParseError> {
+    if byte.is_ascii_digit() {
+        return Ok(byte - b'0');
     }
-    unsafe { &*self.ptr.add(index) }
+
+    // Stable since Rust 1.95. This marks the current path as cold without
+    // requiring an extracted helper function.
+    core::hint::cold_path();
+    Err(ParseError::InvalidDigit(byte))
 }
 
-#[cold]
-#[inline(never)]
-fn cold_bounds_panic(index: usize, len: usize) -> ! {
-    panic!("index out of bounds: the len is {} but the index is {}", len, index);
-}
+assert_eq!(parse_digit(b'7'), Ok(7));
 ```
 
-## Combining with #[inline(never)]
+Use the hint when profiling, code-size inspection, or strong workload knowledge says the distinction is useful. Keep the ordinary branch when the optimizer already produces good code.
 
+## `#[cold]` for Extracted Work
+
+Extracting a substantial rare path can also keep the hot function simpler. `#[cold]` tells the compiler that the helper is unlikely to be called; it does **not** guarantee that the helper is placed in a special section or never inlined.
+
+<!-- rust-check: compile -->
 ```rust
-// Usually combine both for maximum effect
-#[cold]
-#[inline(never)]
-fn error_path() -> Error {
-    // Complex error construction stays out of hot code
-    Error {
-        backtrace: Backtrace::capture(),
-        context: gather_context(),
+#[derive(Debug)]
+struct ErrorReport {
+    message: String,
+}
+
+fn process(value: i32) -> Result<i32, ErrorReport> {
+    if value >= 0 {
+        Ok(value * 2)
+    } else {
+        negative_error(value)
     }
 }
+
+#[cold]
+fn negative_error(value: i32) -> Result<i32, ErrorReport> {
+    Err(ErrorReport {
+        message: format!("negative input: {value}"),
+    })
+}
 ```
 
-## cold_path() — Stable Branch Hint (Rust 1.95+)
+If code size specifically matters, `#[inline(never)]` can be evaluated separately. Do not mechanically combine it with `#[cold]`; each attribute communicates a different hint and should have a reason.
 
-Since Rust 1.95.0, `core::hint::cold_path()` provides a stable, inline-friendly way to mark code paths as unlikely, without extracting code into separate functions:
+## `cold_path()` Is the Stable Path Hint
 
+As of Rust 1.98, `core::hint::cold_path()` is stable (since 1.95). The direct `core::hint::likely` and `unlikely` functions are still nightly-only.
+
+That means stable code should not teach `likely()` / `unlikely()` as if they were ordinary stable APIs. In many cases a normal branch plus `cold_path()` in the rare arm is clearer anyway.
+
+<!-- rust-check: compile -->
 ```rust
-use core::hint::cold_path;
-
-fn validate(input: &str) -> Result<Data, ValidationError> {
-    if input.is_empty() {
-        cold_path();  // Hint: this path is unlikely
-        return Err(ValidationError::Empty);
+fn checked_index(slice: &[u8], index: usize) -> Option<u8> {
+    if index >= slice.len() {
+        core::hint::cold_path();
+        return None;
     }
-    
-    if input.len() > 1000 {
-        cold_path();
-        return Err(ValidationError::TooLong);
-    }
-    
-    Ok(parse_data(input))
+    Some(slice[index])
 }
 ```
 
-### Implementing likely/unlikely with cold_path()
+## What the Hints Do Not Guarantee
 
-```rust
-use core::hint::cold_path;
+Do not state these as language guarantees:
 
-/// Stable likely() — no nightly, no external crates.
-#[inline(always)]
-pub const fn likely(b: bool) -> bool {
-    if !b { cold_path(); }
-    b
-}
+- a dedicated `.cold` object-file section,
+- a specific hardware branch-prediction instruction,
+- that a `#[cold]` function can never inline,
+- that the optimizer spends a fixed smaller budget on cold code,
+- a performance improvement on every target.
 
-/// Stable unlikely() — no nightly, no external crates.
-#[inline(always)]
-pub const fn unlikely(b: bool) -> bool {
-    if b { cold_path(); }
-    b
-}
+The Rust Reference deliberately describes `#[cold]` as a suggestion that a function is unlikely to be called. `cold_path()` likewise says the compiler **may** optimize non-cold paths at the expense of the cold path.
 
-// Usage
-fn process(data: &Data) -> i32 {
-    if unlikely(data.is_corrupted()) {
-        return handle_corruption(data);
-    }
-    fast_process(data)
-}
-```
+## Measure the Result
 
-### cold_path() vs #[cold]
+When this is performance-motivated, compare representative release builds. Useful evidence may include:
 
-| Aspect | `#[cold]` | `cold_path()` |
-|--------|-----------|---------------|
-| Scope | Function-level | Inline -- within any block |
-| Inlining | Prevents inlining | Allows inlining |
-| Use case | Large cold functions | Small cold branches in hot code |
-| Since | Rust 1.0 | Rust 1.95.0 |
+- application profiles,
+- benchmark distributions rather than one noisy run,
+- emitted assembly or code-size inspection,
+- instruction-cache/front-end counters when available on the target.
 
-Use `#[cold]` for extracted functions, `cold_path()` for inline hints without extraction.
-
-## Measuring Impact
-
-```rust
-// Check code layout with objdump
-// objdump -d target/release/binary | less
-
-// Look for .cold sections
-// nm target/release/binary | grep cold
-
-// Profile to verify improvement
-// perf stat -e cache-misses,cache-references ./binary
-```
+Remove the hint if it does not help or makes the code harder to understand.
 
 ## See Also
 
-- [opt-inline-never-cold](./opt-inline-never-cold.md) - Combining with inline(never)
-- [opt-likely-hint](./opt-likely-hint.md) - Branch prediction hints
-- [opt-cold-path](./opt-cold-path.md) - Using cold_path() for inline path marking
-- [err-result-over-panic](./err-result-over-panic.md) - Error handling
+- [opt-inline-never-cold](./opt-inline-never-cold.md) - `inline(never)` and cold code
+- [opt-cold-path](./opt-cold-path.md) - Path-level cold hints
+- [perf-profile-first](./perf-profile-first.md) - Measure before tuning

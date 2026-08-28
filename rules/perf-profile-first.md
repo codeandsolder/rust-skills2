@@ -1,257 +1,164 @@
 # perf-profile-first
 
-> Profile before optimizing
+> Measure representative workloads before choosing an optimization, then measure again after the change.
 
 ## Why It Matters
 
-Intuition about performance is often wrong. The code you think is slow frequently isn't, while actual bottlenecks hide in unexpected places. Profiling shows you exactly where time is spent, preventing wasted effort on optimizations that don't matter.
+Performance work is an experiment. Source-code intuition can identify candidates, but it cannot tell you which cost dominates a real workload, how often a path runs, or whether an optimization improves end-to-end behavior.
 
-## Bad
+A useful workflow separates three questions:
 
-<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding workload functions -->
+1. **Where is time/memory/latency going?** — profile the representative application or service.
+2. **Can I reproduce the hot operation?** — benchmark the relevant operation with realistic inputs when a microbenchmark is useful.
+3. **Did the change help the metric that matters without unacceptable regressions?** — compare before/after under the same conditions.
+
+## Bad: Optimize the Visually Suspicious Line First
+
+<!-- rust-check: compile -->
 ```rust
-// Optimizing without measuring
-fn process(data: &[Item]) -> Vec<Output> {
-    // "I bet this clone is slow..."
-    let cloned: Vec<_> = data.iter().cloned().collect();
-    
-    // Actually, 99% of time is spent here:
-    cloned.iter().map(|x| expensive_computation(x)).collect()
+#[derive(Clone)]
+struct Item(u64);
+
+fn expensive_computation(item: &Item) -> u64 {
+    (0..1_000).fold(item.0, |value, n| value.wrapping_mul(31).wrapping_add(n))
 }
 
-// Over-engineering rarely-called code
-#[inline(always)]
-fn rarely_called() {
-    // This runs once at startup...
+fn process(data: &[Item]) -> Vec<u64> {
+    // It is easy to fixate on this allocation/clone because it is visible.
+    let cloned = data.to_vec();
+
+    // But without measurement we do not know which cost dominates.
+    cloned.iter().map(expensive_computation).collect()
 }
 ```
 
-## Good
+The clone may matter. The computation may matter. Cache behavior, allocation, I/O around this function, or something outside it may matter more. The source alone does not establish the bottleneck.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Good: Make the Optimization Follow Evidence
+
+<!-- rust-check: compile -->
 ```rust
-// 1. Profile first
-// cargo flamegraph --bin myapp
-// cargo instruments -t time --bin myapp (macOS)
-// samply record ./target/release/myapp  (cross-platform)
+#[derive(Clone)]
+struct Item(u64);
 
-// 2. Find the actual bottleneck
-// Flamegraph shows expensive_computation takes 95% of time
+fn expensive_computation(item: &Item) -> u64 {
+    (0..1_000).fold(item.0, |value, n| value.wrapping_mul(31).wrapping_add(n))
+}
 
-// 3. Optimize the hot spot
-fn process(data: &[Item]) -> Vec<Output> {
-    // Clone is fine - only 1% of time
-    let cloned: Vec<_> = data.iter().cloned().collect();
-    
-    // Focus optimization HERE
-    cloned.par_iter()  // Parallelize the expensive part
-        .map(|x| expensive_computation(x))
-        .collect()
+fn process(data: &[Item]) -> Vec<u64> {
+    // Suppose profiling/benchmarking showed the clone was measurable and
+    // unnecessary. Remove exactly that work, then remeasure.
+    data.iter().map(expensive_computation).collect()
 }
 ```
 
-## Profiling Tools
+The comment is intentionally conditional. Do not invent percentages such as “this was 95% of runtime” unless a real measurement produced them.
 
-### samply (Cross-Platform Sampling Profiler, Recommended)
+## Start With a Representative Build and Workload
 
-[samply](https://github.com/mstange/samply) is a sampling profiler that outputs to the Firefox Profiler format. It works on Linux, macOS, and Windows with no special kernel modules:
+Profile the configuration users actually care about. For throughput/latency code that usually means a release-like optimized build and realistic input sizes, concurrency, feature flags, and data distributions.
 
-```bash
-# Install
-cargo install samply
+Debug builds can be useful for correctness but can produce radically different performance shapes. Conversely, a tiny synthetic input may hide allocation or cache costs that dominate production.
 
-# Profile a binary
-samply record ./target/release/myapp -- <args>
+Useful profiler categories include:
 
-# Opens Firefox Profiler UI automatically
-# Shows flame graphs, call trees, timeline
-```
+- sampling CPU profilers (for example `perf`, Instruments, samply, or platform equivalents),
+- allocation/heap profilers,
+- tracing and application metrics for waiting/queueing/I/O,
+- hardware performance counters when low-level CPU behavior is the question.
 
-Advantages: low overhead, works on release builds, native stack walking, no instrumentation needed.
+The tool is secondary to collecting representative evidence.
 
-### Flamegraphs (Traditional)
+## Microbenchmarks Answer Narrow Questions
 
-```bash
-# Install
-cargo install flamegraph
+Use a benchmark when you need stable comparison of a small operation, not as a substitute for application profiling.
 
-# Profile
-cargo flamegraph --bin myapp -- <args>
-
-# Opens flamegraph.svg showing call stacks by time
-```
-
-### perf (Linux)
-
-```bash
-# Record
-perf record -g cargo run --release
-
-# Report
-perf report
-
-# Or generate flamegraph
-perf script | inferno-collapse-perf | inferno-flamegraph > flamegraph.svg
-```
-
-### Instruments (macOS)
-
-```bash
-# Install cargo-instruments
-cargo install cargo-instruments
-
-# Time profiler
-cargo instruments -t time --release
-
-# Allocations profiler
-cargo instruments -t alloc --release
-```
-
-### CodSpeed CI (Hardware-Counter Benchmarking)
-
-[CodSpeed](https://codspeed.io) provides CI benchmarking using hardware performance counters. It works with Criterion and Divan, measuring instruction counts rather than wall-clock time — eliminating noise from system load:
-
-```toml
-# .github/workflows/bench.yml
-name: Benchmarks
-on: [push]
-jobs:
-  benchmark:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - uses: CodSpeedHQ/action@v3
-        with:
-          token: ${{ secrets.CODSPEED_TOKEN }}
-          run: cargo bench
-```
-
+<!-- rust-check: compile -->
 ```rust
-// bench.rs — works with CodSpeed unchanged
-use divan::black_box;
+use criterion::Criterion;
+use std::hint::black_box;
 
-fn main() {
-    divan::main();
+fn checksum(data: &[u8]) -> u64 {
+    data.iter().map(|&byte| byte as u64).sum()
 }
 
-#[divan::bench]
-fn compute() -> i32 {
-    expensive_computation(black_box(42))
-}
-```
+fn bench_checksum(c: &mut Criterion) {
+    let data = vec![7_u8; 4096];
 
-### cargo-llvm-cov (Coverage-Guided Optimization)
-
-Coverage data helps identify cold/dead code paths. Combined with PGO, it guides inlining and layout decisions:
-
-```bash
-# Install
-cargo install cargo-llvm-cov
-
-# Generate coverage report
-cargo llvm-cov --open
-
-# Use with PGO for production builds
-cargo llvm-cov --profile=release
-```
-
-### DHAT (Heap Profiling)
-
-```bash
-# In your code
-#[global_allocator]
-static ALLOC: dhat::Alloc = dhat::Alloc;
-
-fn main() {
-    let _profiler = dhat::Profiler::new_heap();
-    // ... your code
-}
-
-# Run and get allocation report
-cargo run --release
-```
-
-### criterion (Micro-benchmarks)
-
-```rust
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
-fn bench_my_function(c: &mut Criterion) {
-    c.bench_function("my_function", |b| {
-        b.iter(|| my_function(black_box(input)))
+    c.bench_function("checksum_4k", |b| {
+        b.iter(|| black_box(checksum(black_box(&data))))
     });
 }
-
-criterion_group!(benches, bench_my_function);
-criterion_main!(benches);
 ```
 
-## Rust 1.90: LLD Default Linker
+Choose benchmark boundaries carefully. If allocation or parsing is part of the production operation, moving it outside the measured region can create a misleading win.
 
-Since Rust 1.90, `rust-lld` is the default linker on `x86_64-unknown-linux-gnu`. LLD is significantly faster than GNU ld and produces comparable code. If you see linker warnings or errors in older projects, this may be the cause:
+## Prefer Algorithmic and Architectural Wins When Evidence Points There
 
-```bash
-# LLD is now used by default — no configuration needed
-cargo build --release
+Low-level hints are often much smaller than avoiding unnecessary work.
 
-# To revert to GNU ld if needed:
-# RUSTFLAGS="-C link-args=-fuse-ld=bfd" cargo build --release
-```
+Examples of high-leverage questions:
 
-## What to Look For
+- Can the algorithm avoid an O(n²) scan?
+- Can repeated parsing/hashing/allocation be reused or eliminated?
+- Is work being performed that the caller never needs?
+- Is lock contention or queueing dominating compute time?
+- Is I/O batching or data layout the real limit?
 
-```
-Flamegraph Reading:
-├── Width = time spent
-├── Height = call stack depth
-└── Look for:
-    ├── Wide bars (time hogs)
-    ├── malloc/free (allocation heavy)
-    ├── memcpy (copying data)
-    └── Unexpected functions taking time
-```
+Do not automatically replace `HashMap` hashers, add `unsafe`, force inlining, or parallelize merely because those techniques can be faster in some workloads. Each changes tradeoffs and needs evidence.
 
-## Common Findings
+## Optimize One Explainable Thing at a Time
 
-```rust
-// Finding: HashMap operations are slow
-// Fix: Use FxHashMap or AHashMap for non-crypto hashing
+A disciplined loop is:
 
-// Finding: String allocation in hot loop
-// Fix: Pre-allocate with capacity, use &str
+1. record a baseline and environment,
+2. identify a bottleneck or hypothesis,
+3. make one focused change,
+4. rerun the same measurement,
+5. check relevant guardrails (memory, tail latency, binary size, correctness, CPU use, etc.),
+6. keep, revise, or revert based on the result.
 
-// Finding: Clone in hot path
-// Fix: Use references or Cow
+Small isolated changes make regressions and false wins easier to diagnose.
 
-// Finding: Bounds checks visible in profile
-// Fix: Use iterators instead of indexing
+## Be Careful With Profiler Percentages
 
-// Finding: Lock contention
-// Fix: Reduce critical section, use RwLock, or partition data
-```
+A profile percentage is relative to the sampled run. If you optimize one function, another function's percentage can rise even if its absolute time stays unchanged. Compare absolute end-to-end metrics as well as profile shape.
 
-## Optimization Workflow
+Sampling also has noise and resolution limits. Very short functions may be attributed to callers, inlined into other frames, or too small to sample reliably. Use assembly/counters/microbenchmarks only when the question requires that level of detail.
 
-```
-1. Write correct code first
-2. Write benchmarks for hot paths
-3. Profile under realistic load
-4. Identify actual bottlenecks
-5. Optimize ONE thing
-6. Measure improvement
-7. Repeat if needed
-```
+## Preserve Reproducibility
 
-## Evidence: Rust Performance Book
+For benchmark comparisons, record enough context to make the result meaningful:
 
-> "The biggest performance improvements often come from changes to algorithms or data structures, rather than low-level optimizations."
+- commit/build flags and target,
+- relevant CPU/platform information,
+- input/data set,
+- feature flags and concurrency,
+- benchmark/profiler command,
+- repeated samples where noise matters.
 
-> "It is worth understanding which Rust data structures and operations cause allocations, because avoiding them can greatly improve performance."
+Do not treat one wall-clock number from a busy development machine as a universal performance fact.
+
+## A Performance Improvement Is a Tradeoff Decision
+
+A faster hot path may increase memory, binary size, compile time, code complexity, or worst-case latency. Decide which metrics are guardrails before optimizing.
+
+For example, `#[inline(always)]` may improve a microbenchmark while increasing code size; a cache may reduce CPU while increasing memory; parallelism may improve throughput while worsening single-request latency or contention.
+
+## Decision Guide
+
+| Question | Evidence to gather |
+|---|---|
+| Where is CPU time spent? | application profile |
+| Does this small implementation change help? | focused benchmark |
+| Is allocation the problem? | allocation profile/counters |
+| Is waiting/queueing the problem? | tracing/latency/queue metrics |
+| Did the optimization help users? | end-to-end metric under representative load |
+| Did it create regressions? | predefined guardrails + tests |
 
 ## See Also
 
-- [opt-lto-release](opt-lto-release.md) - Enable LTO for release builds
-- [test-criterion-bench](test-criterion-bench.md) - Use criterion for benchmarking
-- [perf-release-profile](./perf-release-profile.md) - Release profile settings
-- [anti-premature-optimize](anti-premature-optimize.md) - Don't optimize without data
+- [perf-black-box-bench](./perf-black-box-bench.md) - Avoid optimizer artifacts in microbenchmarks
+- [perf-release-profile](./perf-release-profile.md) - Release optimization settings
+- [anti-premature-optimize](./anti-premature-optimize.md) - Avoid unsupported tuning
+- [opt-inline-always-rare](./opt-inline-always-rare.md) - Measure forced-inline hints
