@@ -340,7 +340,7 @@ Reference these guidelines when:
 
 - [`test-cfg-test-module`](rules/test-cfg-test-module.md) - Put unit tests in `#[cfg(test)] mod tests { }` within each module
 - [`test-use-super`](rules/test-use-super.md) - Use `use super::*;` in test modules to access parent module items
-- [`test-integration-dir`](rules/test-integration-dir.md) - Put integration tests in the `tests/` directory
+- [`test-integration-dir`](rules/test-integration-dir.md) - Put external-API integration tests in Cargo's `tests/` targets
 - [`test-descriptive-names`](rules/test-descriptive-names.md) - Use descriptive test names that explain what is being tested
 - [`test-arrange-act-assert`](rules/test-arrange-act-assert.md) - Structure tests with clear Arrange, Act, Assert sections
 - [`test-proptest-properties`](rules/test-proptest-properties.md) - Use proptest for property-based testing
@@ -352,7 +352,7 @@ Reference these guidelines when:
 - [`test-criterion-bench`](rules/test-criterion-bench.md) - Use `criterion` for benchmarking (or `divan` for simpler workflows)
 - [`test-doctest-examples`](rules/test-doctest-examples.md) - Keep documentation examples as executable doctests
 - [`test-loom-concurrency`](rules/test-loom-concurrency.md) - Use `loom` to exhaustively test lock-free and concurrent code
-- [`test-snapshot-testing`](rules/test-snapshot-testing.md) - Use snapshot testing (insta) for complex or serialized output
+- [`test-snapshot-testing`](rules/test-snapshot-testing.md) - Use snapshot tests for complex output that humans should review as a whole
 - [`test-assert-matches`](rules/test-assert-matches.md) - Use `assert_matches!` / `debug_assert_matches!` (Rust 1.96+) for pattern-based assertions
 - [`test-coverage-llvm-cov`](rules/test-coverage-llvm-cov.md) - Use `cargo-llvm-cov` for LLVM-based code coverage
 - [`test-fuzzing-minimal`](rules/test-fuzzing-minimal.md) - Use `cargo-fuzz` for fuzz testing critical functions
@@ -444,7 +444,7 @@ Reference these guidelines when:
 - [`lint-rustfmt-check`](rules/lint-rustfmt-check.md) - Run cargo fmt --check in CI
 - [`lint-workspace-lints`](rules/lint-workspace-lints.md) - Configure lints at workspace level for consistent enforcement
 - [`lint-cfg-check`](rules/lint-cfg-check.md) - Enable `unexpected_cfgs` and declare known cfgs to catch feature-gate typos
-- [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Enable high-value `clippy::nursery` lints selectively, not the whole group
+- [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Enable `clippy::nursery` lints selectively and re-check group membership when the toolchain changes
 - [`lint-cargo-unused-features`](rules/lint-cargo-unused-features.md) - Detect unused feature flags declared in Cargo.toml (`[lints.cargo]`, nightly-only)
 - [`lint-dylint-custom`](rules/lint-dylint-custom.md) - Use Dylint for project-specific custom lints without forking clippy
 - [`lint-edition-2024`](rules/lint-edition-2024.md) - Use the `rust_2024_compatibility` lint group and `cargo fix --edition` to audit edition-sensitive code before switching to Rust 2024
@@ -471,7 +471,7 @@ Reference these guidelines when:
 - [`anti-arc-mutex-everything`](rules/anti-arc-mutex-everything.md) - Do not default to `Arc<Mutex<T>>` when ownership, channels, atomics, or another synchronization primitive better matches the state
 - [`anti-blocking-async-drop`](rules/anti-blocking-async-drop.md) - Don't block or depend on asynchronous work completing from `Drop` of async types
 - [`anti-block-on-async`](rules/anti-block-on-async.md) - Don't call `block_on` from code that is already running asynchronously
-- [`anti-deref-overuse`](rules/anti-deref-overuse.md) - Don't use `Deref<Target = InnerType>` for newtype method delegation
+- [`anti-deref-overuse`](rules/anti-deref-overuse.md) - Implement `Deref` only when transparent target-like behavior is part of the type's intended API
 - [`anti-unsafe-send-sync`](rules/anti-unsafe-send-sync.md) - Never use `unsafe impl Send` or `unsafe impl Sync` merely to silence auto-trait errors; each impl is a safety contract that other unsafe code may rely on
 
 ---

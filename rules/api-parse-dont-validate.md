@@ -4,40 +4,37 @@
 
 ## Why It Matters
 
-Validation that leaves the program holding the same `String`, `u16`, or other primitive does not record that the check happened. Every downstream caller must either trust convention or repeat the check.
+A validation function that returns only `bool` or `Result<(), E>` often leaves the program holding the same weak type it started with. Downstream code must then trust convention, repeat the check, or accept an invalid state in its type signature.
 
-A parsing boundary returns a stronger type. If that type keeps its representation private and exposes only invariant-preserving operations, successful construction becomes evidence the invariant holds.
+A parsing boundary returns a stronger type. If that type keeps construction closed and exposes only invariant-preserving operations, successful construction becomes evidence that the invariant holds.
 
-This pattern is useful for configuration, HTTP/CLI input, identifiers, addresses, units, bounded numbers, and protocol states. It does **not** mean every boolean check deserves a wrapper type; use it when the invariant matters across an API boundary or through a meaningful part of the program.
+This pattern is useful for configuration, HTTP/CLI input, identifiers, addresses, units, bounded numbers, and protocol states. It does not mean every local boolean condition deserves a wrapper type.
 
 ## Bad: Validate, Then Keep Passing the Primitive
 
+<!-- rust-check: compile -->
 ```rust
 fn valid_port(port: u16) -> bool {
     port != 0
 }
 
 fn open_connection(port: u16) {
-    // Must trust callers or check again.
+    // The signature cannot express that callers were supposed to validate.
     assert!(valid_port(port));
     println!("connecting to {port}");
 }
 
-fn handle_input(port: u16) {
+fn main() {
+    let port = 443;
     if valid_port(port) {
         open_connection(port);
     }
 }
-
-fn main() {
-    handle_input(443);
-}
 ```
-
-After `valid_port` returns true, the value is still merely a `u16`; nothing in `open_connection`'s signature records the guarantee.
 
 ## Good: Parse Into a Stronger Type
 
+<!-- rust-check: compile -->
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Port(u16);
@@ -60,21 +57,22 @@ impl Port {
 }
 
 fn open_connection(port: Port) {
-    // The invariant is encoded by the parameter type.
     println!("connecting to {}", port.get());
 }
 
 fn main() {
-    let port = Port::parse(443).unwrap();
-    open_connection(port);
+    open_connection(Port::parse(443).unwrap());
     assert!(Port::parse(0).is_err());
 }
 ```
 
-The validation occurs at construction. Code that accepts `Port` no longer needs a second `port != 0` check.
+Code accepting `Port` no longer needs another `port != 0` check.
 
-## String Example: Normalize and Validate Once
+## Normalization Is Part of Parsing Semantics
 
+A parser may normalize input when the domain contract calls for it. Do not silently normalize properties that are semantically meaningful.
+
+<!-- rust-check: compile -->
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Username(String);
@@ -84,17 +82,13 @@ struct InvalidUsername;
 
 impl Username {
     fn parse(raw: &str) -> Result<Self, InvalidUsername> {
-        let value = raw.trim().to_lowercase();
-
-        if value.len() >= 3
+        let value = raw.trim().to_ascii_lowercase();
+        let valid = value.len() >= 3
             && value
                 .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_')
-        {
-            Ok(Self(value))
-        } else {
-            Err(InvalidUsername)
-        }
+                .all(|c| c.is_ascii_alphanumeric() || c == '_');
+
+        valid.then_some(Self(value)).ok_or(InvalidUsername)
     }
 
     fn as_str(&self) -> &str {
@@ -102,49 +96,105 @@ impl Username {
     }
 }
 
-fn greeting(username: &Username) -> String {
-    format!("hello {}", username.as_str())
-}
-
 fn main() {
     let username = Username::parse("  Alice_42 ").unwrap();
-    assert_eq!(greeting(&username), "hello alice_42");
+    assert_eq!(username.as_str(), "alice_42");
 }
 ```
-
-Here normalization is part of parsing semantics. In another domain, changing case might be wrong and invalid input should instead be rejected. Parsing should implement the domain's actual contract, not silently “clean” data by default.
 
 ## Parse at the Boundary
 
-Convert raw inputs when they enter the trusted/domain portion of the application:
+Convert raw transport/input representations before entering domain logic. The boundary can also translate domain parse failures into the application's error type.
 
-<!-- rust-check: fragment; reason=application boundary example uses project-specific request, response, and error types -->
+<!-- rust-check: compile -->
 ```rust
+#[derive(Debug)]
+struct RawRequest {
+    email: String,
+    age: String,
+    username: String,
+}
+
+#[derive(Debug)]
+struct Email(String);
+
+#[derive(Debug)]
+struct Age(u8);
+
+#[derive(Debug)]
+struct Username(String);
+
+#[derive(Debug, PartialEq, Eq)]
+struct Response {
+    accepted: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum Error {
+    InvalidEmail,
+    InvalidAge,
+    InvalidUsername,
+}
+
+impl Email {
+    fn parse(raw: &str) -> Result<Self, Error> {
+        raw.split_once('@')
+            .filter(|(local, domain)| !local.is_empty() && !domain.is_empty())
+            .map(|_| Self(raw.to_owned()))
+            .ok_or(Error::InvalidEmail)
+    }
+}
+
+impl Age {
+    fn parse(raw: &str) -> Result<Self, Error> {
+        let value: u8 = raw.parse().map_err(|_| Error::InvalidAge)?;
+        (value >= 18)
+            .then_some(Self(value))
+            .ok_or(Error::InvalidAge)
+    }
+}
+
+impl Username {
+    fn parse(raw: &str) -> Result<Self, Error> {
+        (!raw.trim().is_empty())
+            .then(|| Self(raw.trim().to_owned()))
+            .ok_or(Error::InvalidUsername)
+    }
+}
+
 fn handle_request(raw: RawRequest) -> Result<Response, Error> {
     let email = Email::parse(&raw.email)?;
-    let age = Age::parse(raw.age)?;
+    let age = Age::parse(&raw.age)?;
     let username = Username::parse(&raw.username)?;
-
     process_user(email, age, username)
 }
 
-fn process_user(
-    email: Email,
-    age: Age,
-    username: Username,
-) -> Result<Response, Error> {
-    // Domain logic receives already-parsed values.
-    todo!()
+fn process_user(email: Email, age: Age, username: Username) -> Result<Response, Error> {
+    // Domain code receives already-parsed values. Reading the fields here only
+    // prevents this compact example from leaving them entirely unused.
+    let _domain_state = (email.0.len(), age.0, username.0.len());
+    Ok(Response { accepted: true })
+}
+
+fn main() {
+    let response = handle_request(RawRequest {
+        email: "alice@example.com".to_owned(),
+        age: "30".to_owned(),
+        username: "alice".to_owned(),
+    })
+    .unwrap();
+
+    assert_eq!(response, Response { accepted: true });
 }
 ```
 
-Do not immediately convert the strong type back to the raw primitive and then pass that everywhere; doing so discards most of the benefit.
+Do not immediately unwrap the domain type back into a primitive and pass that primitive everywhere; doing so discards most of the benefit.
 
 ## Construction Must Actually Be Closed
 
-A “validated” type does not guarantee anything if safe callers can bypass validation:
+Private representation matters. Safe callers should not be able to bypass the checked constructor through public fields, unchecked mutable access, deserialization hooks, or alternate constructors.
 
-<!-- rust-check: compile_fail; reason=demonstrates that a private field prevents bypassing the checked constructor -->
+<!-- rust-check: compile_fail; reason=private field prevents bypassing the checked constructor -->
 ```rust
 mod domain {
     pub struct Percentage(u8);
@@ -157,17 +207,17 @@ mod domain {
 }
 
 fn main() {
-    // Private field prevents bypassing Percentage::parse from here.
     let _invalid = domain::Percentage(200);
 }
 ```
 
-Keep fields private and expose operations that preserve the invariant. Be equally careful with deserialization, mutable accessors, unchecked constructors, FFI, and other alternate construction paths.
+`unsafe` or explicitly unchecked construction is a different contract; document and contain it accordingly.
 
-## Parsing Can Return Rich Errors
+## Rich Parse Errors
 
-The parsing function is a good place to explain *why* input was rejected:
+Parsing is a natural place to explain why input failed:
 
+<!-- rust-check: compile -->
 ```rust
 #[derive(Debug, PartialEq, Eq)]
 struct NonEmpty(String);
@@ -193,12 +243,13 @@ fn main() {
 }
 ```
 
-At a user-facing boundary, map domain parsing errors into an HTTP response, CLI diagnostic, configuration error, etc. Internal APIs can keep accepting the strong type.
+At an HTTP/CLI/configuration boundary, map these errors to the protocol's user-facing diagnostic while keeping internal APIs typed in terms of the strong value.
 
-## `FromStr` and `TryFrom` Are Natural Boundary Traits
+## Standard Conversion Traits
 
-When textual or representation conversions are conventional, implement the standard fallible conversion traits so boundary code composes with the ecosystem:
+Use conventional fallible conversion traits when they fit the representation boundary:
 
+<!-- rust-check: compile -->
 ```rust
 use std::str::FromStr;
 
@@ -235,40 +286,11 @@ fn main() {
 }
 ```
 
-Use `From` only for infallible conversions. A conversion that can reject input belongs in `TryFrom`, `FromStr`, or an explicit parse constructor.
-
-## Using `nutype`
-
-`nutype` 0.7 can generate the same kind of invariant-bearing API when the macro removes enough boilerplate to be worthwhile:
-
-```rust
-use nutype::nutype;
-
-#[nutype(
-    sanitize(trim, lowercase),
-    validate(not_empty, len_char_max = 100),
-    derive(Debug, Clone, PartialEq, Eq, Display, AsRef, FromStr, TryFrom),
-)]
-struct EmailLabel(String);
-
-fn main() {
-    // Validation means the constructor is `try_new` in nutype 0.7.
-    let label = EmailLabel::try_new("  Alice  ").unwrap();
-    assert_eq!(label.as_ref(), "alice");
-
-    // FromStr performs the same sanitize/validate construction.
-    assert!("   ".parse::<EmailLabel>().is_err());
-}
-```
-
-Do not treat a particular macro as the principle itself. The invariant-bearing type is the important part; a hand-written newtype may be simpler, while `nutype` is attractive when sanitizers, validators, errors, conversions, or serde support would otherwise be repetitive.
-
-For regex, serde, `const_fn`, exact generated error variants, and feature setup, use the dedicated current-version guidance in [api-nutype-validated](./api-nutype-validated.md).
+Use `From` for infallible conversions; use `TryFrom`, `FromStr`, or an explicit parse constructor when rejection is possible.
 
 ## Do Not Over-Parse Ephemeral Checks
 
-A strong type is less useful when the property is local and immediately consumed:
-
+<!-- rust-check: compile -->
 ```rust
 fn display_if_nonempty(message: &str) {
     if !message.is_empty() {
@@ -281,29 +303,25 @@ fn main() {
 }
 ```
 
-Creating `NonEmptyDisplayMessage` solely for this branch would add ceremony without carrying a durable invariant across an API boundary.
+A dedicated `NonEmptyDisplayMessage` type for this one local branch would add ceremony without carrying a durable invariant through an API.
 
 ## Decision Guide
 
 | Situation | Typical approach |
 |---|---|
 | Raw input enters domain code | Parse into a domain type |
-| Several functions rely on the same invariant | Strong type usually pays off |
-| Invalid representation must not be constructible safely | Private representation + checked constructors |
-| Text/representation conversion is conventional | `FromStr` / `TryFrom` |
-| Tiny invariant with small API | Hand-written newtype |
-| Repetitive sanitizer/validator/trait boilerplate | Consider `nutype` |
-| One local conditional check | Plain validation may be clearer |
+| Several functions rely on one invariant | Strong type usually pays off |
+| Invalid representation must not be safely constructible | Private representation + checked construction |
+| Conventional text/representation conversion | `FromStr` / `TryFrom` |
+| One local conditional | Plain validation may be clearer |
 
 ## See Also
 
-- [api-nutype-validated](./api-nutype-validated.md) — current `nutype` API details
+- [api-nutype-validated](./api-nutype-validated.md) — generated validated newtypes
 - [api-newtype-safety](./api-newtype-safety.md) — semantic newtypes
 - [type-newtype-validated](./type-newtype-validated.md) — manual validated newtypes
-- [type-nutype-validated](./type-nutype-validated.md) — validated type design with `nutype`
-- [api-typestate](./api-typestate.md) — state-machine invariants in types
+- [api-typestate](./api-typestate.md) — state-machine invariants
 
-## References
+## Reference
 
 - [Parse, don't validate](https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/)
-- [nutype documentation](https://docs.rs/nutype/latest/nutype/)

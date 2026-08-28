@@ -1,188 +1,200 @@
 # test-integration-dir
 
-> Put integration tests in the `tests/` directory
+> Put external-API integration tests in Cargo's `tests/` targets
 
 ## Why It Matters
 
-Integration tests live in `tests/` at the crate root, separate from `src/`. Each file in `tests/` is compiled as a separate crate, testing your library's public API as external users would. This separation ensures you're testing the real public interface, not implementation details.
+Cargo treats top-level integration-test targets under `tests/` as separate crates that depend on the package as an external user would. They can access the library's public API, not its private implementation details.
 
-## Structure
+This complements unit tests inside `src/`: unit tests can exercise private helpers, while integration tests verify that the public package boundary is actually usable.
 
-```
+## Basic Layout
+
+```text
 my_project/
 ├── Cargo.toml
 ├── src/
 │   ├── lib.rs
 │   └── internal.rs
 └── tests/
-    ├── integration_test.rs    # Each file is a separate test binary
-    ├── api_tests.rs
-    └── common/                 # Shared test utilities
+    ├── api.rs
+    ├── cli.rs
+    └── common/
         └── mod.rs
 ```
 
-## Bad
+A top-level file such as `tests/api.rs` is an integration-test target. Helper modules such as `tests/common/mod.rs` are modules used by a target rather than independent tests merely because they are Rust files.
 
+## Bad: Calling a Unit Test an Integration Test
+
+<!-- rust-check: compile -->
 ```rust
-// src/lib.rs
-// Mixing integration test logic in library code
-#[test]
-fn integration_test_full_workflow() {
-    // This is a unit test location, not integration
-}
-```
-
-## Good
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-// tests/integration_test.rs
-use my_crate::{Client, Config};  // Uses public API only
-
-#[test]
-fn test_full_workflow() {
-    let config = Config::default();
-    let client = Client::new(config);
-    
-    let result = client.process("input");
-    assert!(result.is_ok());
+// This could live in src/lib.rs, but it is a unit test location.
+fn public_operation(value: u32) -> u32 {
+    value + 1
 }
 
-#[test]
-fn test_error_handling() {
-    let client = Client::new(Config::strict());
-    
-    let result = client.process("invalid");
-    assert!(matches!(result, Err(Error::InvalidInput { .. })));
-}
-```
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-## Shared Test Utilities
-
-```rust
-// tests/common/mod.rs
-use my_crate::Config;
-
-pub fn test_config() -> Config {
-    Config {
-        timeout: Duration::from_secs(5),
-        retries: 3,
-        debug: true,
+    #[test]
+    fn full_workflow() {
+        assert_eq!(public_operation(41), 42);
     }
 }
 
-pub fn setup_test_environment() {
-    // Set up test fixtures
+fn main() {}
+```
+
+There is nothing wrong with this test; it simply does not test the crate from an external-crate boundary.
+
+## Good: Exercise the Public API
+
+An actual `tests/integration_test.rs` would import the package crate. The following self-contained example defines the same minimal public API locally so this rule's snippet can be compile-checked in isolation:
+
+<!-- rust-check: compile -->
+```rust
+mod my_crate {
+    #[derive(Debug, Clone, Default)]
+    pub struct Config {
+        strict: bool,
+    }
+
+    impl Config {
+        pub fn strict() -> Self {
+            Self { strict: true }
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Error {
+        InvalidInput,
+    }
+
+    pub struct Client {
+        config: Config,
+    }
+
+    impl Client {
+        pub fn new(config: Config) -> Self {
+            Self { config }
+        }
+
+        pub fn process(&self, input: &str) -> Result<usize, Error> {
+            if self.config.strict && input == "invalid" {
+                Err(Error::InvalidInput)
+            } else {
+                Ok(input.len())
+            }
+        }
+    }
 }
 
-// tests/api_tests.rs
-mod common;
-
-use my_crate::Client;
+use my_crate::{Client, Config, Error};
 
 #[test]
-fn test_with_shared_config() {
-    common::setup_test_environment();
-    let client = Client::new(common::test_config());
-    // ...
+fn full_workflow() {
+    let client = Client::new(Config::default());
+    assert_eq!(client.process("input"), Ok(5));
+}
+
+#[test]
+fn error_handling() {
+    let client = Client::new(Config::strict());
+    assert_eq!(client.process("invalid"), Err(Error::InvalidInput));
+}
+
+fn main() {}
+```
+
+In the real integration target, the `mod my_crate { ... }` scaffolding is absent and the `use my_crate::...` line resolves to the package's library target.
+
+## Shared Test Utilities
+
+Use a module that is not itself a top-level test target:
+
+```text
+// tests/common/mod.rs
+pub fn fixture() -> String {
+    "fixture".to_owned()
+}
+
+// tests/api.rs
+mod common;
+
+#[test]
+fn uses_fixture() {
+    assert_eq!(common::fixture(), "fixture");
 }
 ```
 
-## Organizing Many Tests
+`tests/common/mod.rs` is the conventional layout because Cargo does not treat it as another top-level integration-test target.
 
-```rust
-// tests/api/mod.rs
+## Many Integration Tests: Target Count Matters
+
+Each top-level integration-test target is compiled as a separate crate/test executable. Cargo also runs separate test executables as separate targets. If a project accumulates many tiny top-level files, compile/link/startup overhead can become noticeable.
+
+When that matters, group related tests into one target with modules:
+
+```text
+// tests/api/main.rs
 mod auth;
 mod users;
 mod orders;
 
 // tests/api/auth.rs
-use my_crate::auth::{login, logout};
-
 #[test]
-fn test_login_success() { ... }
-
-#[test]
-fn test_login_invalid_credentials() { ... }
-
-// tests/api/users.rs
-use my_crate::users::{create_user, get_user};
-
-#[test]
-fn test_create_user() { ... }
+fn login_success() {
+    // ...
+}
 ```
 
-## Integration vs Unit Tests
+Here `tests/api/main.rs` is the integration-test target and the sibling files are modules within it.
 
-| Unit Tests | Integration Tests |
-|------------|-------------------|
-| In `src/` with `#[cfg(test)]` | In `tests/` directory |
-| Access private items | Public API only |
-| Test individual functions | Test module interactions |
-| Fast, isolated | May be slower |
-| `cargo test --lib` | `cargo test --test '*'` |
+Choose organization for readability first; consolidate when target proliferation becomes a measured or operational problem.
 
-## Running Specific Tests
+## Binary Integration Tests
+
+Integration tests can also exercise package binaries. Cargo exposes built binary paths through `CARGO_BIN_EXE_<name>` for integration tests that need to launch them.
+
+For example, an actual integration test for a binary named `my-cli` can use:
+
+```text
+let exe = env!("CARGO_BIN_EXE_my-cli");
+let output = std::process::Command::new(exe).arg("--help").output()?;
+```
+
+That environment variable is supplied by Cargo for the real package test target, so it is shown as text rather than pretending the generic rule harness has a binary named `my-cli`.
+
+## Unit vs Integration Tests
+
+| Unit tests | Integration tests |
+|---|---|
+| Usually under `src/` with `#[cfg(test)]` | Cargo test targets under `tests/` |
+| Can access private implementation | Exercise public crate API |
+| Good for focused internal behavior | Good for package-boundary behavior |
+| `cargo test --lib` for library unit tests | `cargo test --test <target>` for one integration target |
+
+A project normally wants both rather than forcing all tests into one category.
+
+## Running Tests
 
 ```bash
-# Run all tests
 cargo test
-
-# Run only integration tests
-cargo test --test '*'
-
-# Run specific integration test file
-cargo test --test integration_test
-
-# Run tests matching pattern
-cargo test --test api_tests test_login
+cargo test --test api
+cargo test --test api login
 ```
 
-## cargo-nextest (Faster Alternative)
+## Alternative Test Runners
 
-```bash
-# Install
-cargo install cargo-nextest
+`cargo-nextest` is an optional test runner with different scheduling, retry, partitioning, and reporting features. It can improve test throughput in some suites, but do not encode a universal “3× faster” claim: the result depends on test shape, build time, machine, and configuration.
 
-# Run all tests (3× faster than cargo test)
-cargo nextest run
-
-# Run only integration tests
-cargo nextest run -E 'test(type = integration)'
-
-# Run specific integration test file
-cargo nextest run -E 'test(/integration_test/)'
-
-# CI partitioning — split across 4 CI jobs
-cargo nextest run --partition hash:1/4
-cargo nextest run --partition hash:2/4
-cargo nextest run --partition hash:3/4
-cargo nextest run --partition hash:4/4
-
-# JUnit output for CI dashboards
-cargo nextest run --profile ci
-```
-
-## Nextest Configuration
-
-```toml
-# .config/nextest.toml
-[profile.default]
-fail-fast = true
-status-level = "pass,fail"
-
-[profile.ci]
-fail-fast = false
-retries = 0
-
-[profile.ci.junit]
-path = "junit.xml"
-report-name = "integration-tests"
-```
+Adopting nextest is separate from the Cargo layout rule. Keep ordinary `cargo test` semantics working unless the project intentionally makes another runner part of its test contract.
 
 ## See Also
 
-- [test-cfg-test-module](./test-cfg-test-module.md) - Unit test modules
-- [test-descriptive-names](./test-descriptive-names.md) - Test naming
-- [test-tokio-async](./test-tokio-async.md) - Async integration tests
-- [test-nextest-workflow](./test-nextest-workflow.md) - Nextest workflow details
+- [test-cfg-test-module](./test-cfg-test-module.md) - unit test modules
+- [test-descriptive-names](./test-descriptive-names.md) - test naming
+- [test-tokio-async](./test-tokio-async.md) - async tests
+- [test-nextest-workflow](./test-nextest-workflow.md) - nextest-specific workflow

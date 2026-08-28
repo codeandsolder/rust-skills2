@@ -1,92 +1,162 @@
 # test-snapshot-testing
 
-> Use snapshot testing (insta) for complex or serialized output
+> Use snapshot tests for complex output that humans should review as a whole
 
 ## Why It Matters
 
-Asserting large structured output — pretty-printed structs, rendered error messages, JSON responses, generated code, CLI output — with hand-written `assert_eq!` is verbose, brittle, and hard to update when output intentionally changes. The `insta` crate records an approved snapshot on first run and diffs against it on subsequent runs; when output changes legitimately, `cargo insta review` presents a diff and lets you accept it in one keystroke. Snapshots are committed to the repo and reviewed in PRs, making output changes visible and deliberate rather than silent.
+Large structured output—rendered diagnostics, pretty-printed state, generated code, CLI output, or serialized documents—can be awkward to maintain as long hand-written literals. Snapshot testing stores the approved output separately and presents diffs when it changes.
 
-## Bad
+The value is reviewability, not avoiding assertions. A snapshot is still a test oracle and should represent output that the project intentionally wants to keep stable enough to review.
 
+## Bad: Large Inline Golden String
+
+<!-- rust-check: compile -->
 ```rust
-#[test]
-fn test_render_error() {
-    let err = AppError::NotFound { id: 42 };
-    // Fragile: must manually maintain this string forever
-    assert_eq!(
-        format!("{err}"),
-        "resource with id 42 was not found in the database and could not be retrieved"
-    );
+#[derive(Debug)]
+struct AppError {
+    id: u64,
 }
 
-#[test]
-fn test_config_serialization() {
-    let config = Config::default();
-    let json = serde_json::to_string_pretty(&config).unwrap();
-    // Hard to read, hard to update, easy to get wrong
-    assert_eq!(json, "{\n  \"timeout\": 30,\n  \"retries\": 3\n}");
+fn render(error: &AppError) -> String {
+    format!("resource {} was not found", error.id)
+}
+
+fn main() {
+    let error = AppError { id: 42 };
+    assert_eq!(render(&error), "resource 42 was not found");
 }
 ```
 
-## Good
+For a tiny value this is perfectly fine. The pattern becomes painful when the expected value is large, multi-line, or structurally rich.
+
+## Good: Snapshot Structured Output
+
+`insta` is already sufficient for debug/string snapshots without extra serialization features:
+
+```toml
+[dev-dependencies]
+insta = "1"
+```
+
+<!-- rust-check: compile -->
+```rust
+use insta::assert_debug_snapshot;
+
+#[derive(Debug)]
+enum AppError {
+    NotFound { id: u64 },
+}
+
+#[derive(Debug, Default)]
+struct Config {
+    timeout_secs: u64,
+    retries: u8,
+}
+
+#[test]
+fn render_error() {
+    let error = AppError::NotFound { id: 42 };
+    assert_debug_snapshot!(error);
+}
+
+#[test]
+fn default_config() {
+    let config = Config {
+        timeout_secs: 30,
+        retries: 3,
+    };
+    assert_debug_snapshot!("default_config", config);
+}
+
+fn main() {}
+```
+
+Feature-specific macros such as JSON/YAML snapshots require the corresponding insta feature in the project that uses them:
 
 ```toml
 [dev-dependencies]
 insta = { version = "1", features = ["json", "yaml"] }
 ```
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-use insta::assert_debug_snapshot;
-use insta::assert_json_snapshot;
+Do not add serialization features merely to snapshot a type that already has a useful `Debug` or textual representation.
 
-#[test]
-fn test_render_error() {
-    let err = AppError::NotFound { id: 42 };
-    // On first run: creates snapshots/test_render_error.snap
-    // On subsequent runs: diffs against the saved snapshot
-    assert_debug_snapshot!(err);
-}
+## Local Review Workflow
 
-#[test]
-fn test_config_serialization() {
-    let config = Config::default();
-    // Snapshot stored as pretty-printed JSON for easy review
-    assert_json_snapshot!(config);
-}
+With insta's normal local update behavior, a new or changed snapshot is written as a pending `.snap.new` file rather than silently replacing the approved `.snap` file.
 
-#[test]
-fn test_cli_output() {
-    let output = run_cli(&["--help"]);
-    // Named snapshot for clarity
-    assert_debug_snapshot!("cli_help_output", output);
-}
-```
+A typical workflow is:
 
-## Workflow
+1. Run the tests.
+2. Inspect pending snapshot diffs.
+3. Accept or reject them with `cargo insta review` (or another deliberate review workflow).
+4. Commit the approved `.snap` files with the code change.
 
-1. Run tests for the first time: `cargo test` — insta creates `.snap.new` files.
-2. Review and accept: `cargo insta review` — interactive diff; press `a` to accept.
-3. Commit the `.snap` files alongside your code changes.
-4. In CI, run `cargo test` and `cargo insta test --check` (or set `INSTA_UPDATE=unseen`) to fail if any snapshot is new or changed without being committed.
+`cargo-insta` is the optional CLI that provides the interactive review command.
+
+## CI Must Not Auto-Accept Changes
+
+Insta's default `auto` update mode behaves conservatively in detected CI: unapproved snapshots fail instead of being accepted. You can make the policy explicit with:
 
 ```bash
-# CI: fail on any unapproved snapshots
 INSTA_UPDATE=no cargo test
 ```
 
-## When to Use Snapshots vs assert_eq!
+When using `cargo-insta`, `cargo insta test --check` is another explicit checking workflow.
+
+Do **not** recommend `INSTA_UPDATE=unseen` as strict CI mode. `unseen` is an update mode that permits creating snapshots that do not yet exist; it is therefore the opposite of “fail on any new snapshot.”
+
+## Normalize Nondeterminism
+
+Snapshots become noisy when they contain timestamps, random IDs, temporary paths, unordered output, machine-specific addresses, or other values that are irrelevant to the contract.
+
+Prefer deterministic producers when practical. Otherwise use insta redactions or normalize the value before snapshotting so reviewers see meaningful changes rather than churn.
+
+<!-- rust-check: compile -->
+```rust
+use insta::assert_debug_snapshot;
+
+#[derive(Debug)]
+struct JobSummary {
+    id: &'static str,
+    state: &'static str,
+}
+
+fn stable_summary(_runtime_id: u128) -> JobSummary {
+    JobSummary {
+        id: "<job-id>",
+        state: "complete",
+    }
+}
+
+#[test]
+fn job_summary() {
+    assert_debug_snapshot!(stable_summary(123456));
+}
+
+fn main() {}
+```
+
+## Snapshots vs Direct Assertions
 
 | Situation | Prefer |
-|-----------|--------|
-| Short, simple values (`true`, `42`, `"ok"`) | `assert_eq!` |
-| Multi-line or structured output | `assert_debug_snapshot!` |
-| JSON/YAML serialization | `assert_json_snapshot!` / `assert_yaml_snapshot!` |
-| Rendered error messages | `assert_snapshot!` |
-| Compiler-error-style output | `assert_snapshot!` |
+|---|---|
+| Short scalar / exact semantic value | `assert_eq!` / focused assertion |
+| Large multi-line output humans review holistically | snapshot |
+| Structured debug representation | `assert_debug_snapshot!` |
+| JSON/YAML contract and feature enabled | format-specific snapshot macro |
+| Critical individual invariants inside a large object | focused assertions, possibly alongside a snapshot |
+| Highly nondeterministic output with no useful normalization | usually not a snapshot |
+
+A snapshot does not replace property tests or focused assertions when those express the real invariant more precisely.
+
+## Snapshot Stability Is an API Choice
+
+Snapshots make changes visible, but they can also accidentally freeze irrelevant formatting. Before snapshotting, ask whether reviewers should care when that output changes.
+
+Good snapshot targets are outputs whose whole representation is intentionally reviewable: user-facing diagnostics, code generation, protocol fixtures, formatted reports, or stable serialized forms.
 
 ## See Also
 
-- [test-arrange-act-assert](test-arrange-act-assert.md) - structure tests as arrange/act/assert
-- [test-proptest-properties](test-proptest-properties.md) - use proptest for property-based testing
-- [test-doctest-examples](test-doctest-examples.md) - keep doc examples as executable tests
+- [test-arrange-act-assert](test-arrange-act-assert.md) - test structure
+- [test-proptest-properties](test-proptest-properties.md) - property-based testing
+- [test-doctest-examples](test-doctest-examples.md) - executable documentation
