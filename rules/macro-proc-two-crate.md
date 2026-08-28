@@ -1,46 +1,43 @@
 # macro-proc-two-crate
 
-> Put procedural macros in a dedicated `proc-macro = true` crate and re-export from the facade
+> Put procedural macros in a dedicated `proc-macro = true` crate and re-export them from the ordinary library facade
 
 ## Why It Matters
 
-A crate marked `proc-macro = true` in `Cargo.toml` compiles for the host (the build machine) and can **only** export procedural macros — no regular types, traits, or functions. If your library needs both a derive/attribute macro and ordinary APIs, you must split into two crates: a `mycrate-derive` (or `mycrate-macros`) proc-macro crate and a `mycrate` facade crate that re-exports everything.
+A procedural macro must live in a crate whose library target has `proc-macro = true`. Such a crate exports procedural macros, not an ordinary public library API. If one product needs both a normal Rust API and derives/attributes/function-like procedural macros, the usual structure is therefore two crates:
 
-The facade approach ensures:
-- Users add only `mycrate` as a dependency.
-- Generated code refers to types through `::mycrate::__private::...`, so the impl crate version is invisible.
-- Workspace dependency inheritance keeps both crates locked to the same version without repetition.
+- `mycrate` — the ordinary library and public facade;
+- `mycrate-derive` or `mycrate-macros` — the `proc-macro = true` implementation crate.
 
-## Bad
+The facade can re-export the macros so users normally depend on only `mycrate`.
+
+Do not confuse that packaging pattern with generated-code hygiene. Procedural macros are **unhygienic**: emitted paths behave like source written at the invocation site. There is no procedural-macro equivalent of declarative `$crate`, so generated references back to the facade need an explicit path strategy.
+
+## Bad: Trying to Export Ordinary API from a Proc-Macro Crate
+
+This intentionally requires a proc-macro crate target, which the single-crate example harness cannot model:
 
 <!-- rust-check: ignore; reason=requires a proc-macro crate target to demonstrate proc-macro export restrictions -->
 ```rust
-// A single crate with `proc-macro = true` in Cargo.toml that also tries
-// to export regular items:
+use proc_macro::TokenStream;
+
 #[proc_macro_derive(Greet)]
-pub fn derive_greet(input: TokenStream) -> TokenStream { /* ... */ }
+pub fn derive_greet(_input: TokenStream) -> TokenStream {
+    TokenStream::new()
+}
 
-pub trait Greet { fn greet(&self) -> String; } // error: a proc-macro crate
-pub struct Config;                              // can only export proc-macros
+pub trait Greet {
+    fn greet(&self) -> String;
+}
 ```
 
-## Good
+Put the trait in the ordinary library crate and the derive implementation in the proc-macro crate instead.
 
-Split into a `proc-macro = true` crate plus a facade that re-exports it (full manifests and code below):
+## Good: Facade + Proc-Macro Crate
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-// users depend only on `mycrate`:
-use mycrate::Greet;        // the trait
-#[derive(mycrate::Greet)]  // the derive, re-exported from mycrate-derive
-struct Robot;
-```
-
-## Crate Layout
-
-```
+```text
 my-workspace/
-├── Cargo.toml          # workspace manifest
+├── Cargo.toml
 ├── mycrate/
 │   ├── Cargo.toml
 │   └── src/lib.rs
@@ -49,20 +46,21 @@ my-workspace/
     └── src/lib.rs
 ```
 
-## Cargo.toml Files
+### Workspace manifest
 
 ```toml
-# my-workspace/Cargo.toml
 [workspace]
 members = ["mycrate", "mycrate-derive"]
-resolver = "3"   # default for the 2024 edition; use "2" for 2021
+resolver = "3"
 
 [workspace.dependencies]
 mycrate-derive = { path = "mycrate-derive", version = "0.1" }
-syn  = { version = "2", features = ["derive"] }
+syn = { version = "2", features = ["derive"] }
 quote = "1"
 proc-macro2 = "1"
 ```
+
+### Proc-macro crate
 
 ```toml
 # mycrate-derive/Cargo.toml
@@ -72,13 +70,15 @@ version = "0.1.0"
 edition = "2024"
 
 [lib]
-proc-macro = true   # required — makes this a proc-macro crate
+proc-macro = true
 
 [dependencies]
-syn.workspace   = true
+syn.workspace = true
 quote.workspace = true
 proc-macro2.workspace = true
 ```
+
+### Facade crate
 
 ```toml
 # mycrate/Cargo.toml
@@ -91,55 +91,106 @@ edition = "2024"
 mycrate-derive.workspace = true
 ```
 
-## Re-export from the Facade
+The facade may expose a trait and a derive macro with the same spelling because they occupy different namespaces:
 
+<!-- rust-check: ignore; reason=requires the paired mycrate-derive proc-macro crate to compile the re-export -->
 ```rust
 // mycrate/src/lib.rs
-
-// Re-export the derive macro so users write `use mycrate::Greet;`
-// or `#[derive(mycrate::Greet)]`.
 pub use mycrate_derive::Greet;
 
-/// The trait that `#[derive(Greet)]` implements.
 pub trait Greet {
     fn greet(&self) -> String;
 }
 
 #[doc(hidden)]
 pub mod __private {
-    // Helpers referenced by generated `impl` blocks.
     pub fn format_greeting(name: &str) -> String {
         format!("hello, {name}")
     }
 }
 ```
 
+A consumer can then depend on the facade and use both APIs:
+
+<!-- rust-check: ignore; reason=requires the paired facade and proc-macro crates to exercise a re-exported derive -->
 ```rust
-// mycrate-derive/src/lib.rs
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, DeriveInput};
+use mycrate::Greet;
 
-#[proc_macro_derive(Greet)]
-pub fn derive_greet(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    let name = &input.ident;
-    let name_str = name.to_string();
+#[derive(mycrate::Greet)]
+struct Robot;
 
-    quote! {
-        impl ::mycrate::Greet for #name {
-            fn greet(&self) -> String {
-                ::mycrate::__private::format_greeting(#name_str)
-            }
-        }
-    }
-    .into()
+fn main() {
+    let robot = Robot;
+    println!("{}", robot.greet());
 }
 ```
 
+## Generated Paths: Do Not Blindly Hardcode `::mycrate`
+
+A derive implementation often needs to emit a path back to the facade trait or helper API. This is tempting:
+
+```text
+impl ::mycrate::Greet for Robot { ... }
+```
+
+but it fails if the downstream manifest renames the dependency:
+
+```toml
+[dependencies]
+api = { package = "mycrate", version = "0.1" }
+```
+
+The Rust path is then `api`, not `mycrate`.
+
+Procedural macros have no `$crate` token that resolves to the defining facade. Choose one of these strategies deliberately:
+
+1. **Emit only language/std paths** when the expansion does not actually need the facade.
+2. **Accept a crate path from the user** when configuration is already part of the macro API, for example `#[greet(crate = api)]`.
+3. **Resolve the Cargo dependency name** in the proc-macro crate. The `proc-macro-crate` crate exists specifically for this problem and distinguishes the current crate from a renamed dependency.
+
+A typical resolver shape is:
+
+<!-- rust-check: ignore; reason=requires proc-macro-crate in a procedural-macro expansion context -->
+```rust
+use proc_macro2::Span;
+use proc_macro_crate::{crate_name, FoundCrate};
+use quote::quote;
+use syn::Ident;
+
+fn facade_path() -> proc_macro2::TokenStream {
+    match crate_name("mycrate").expect("mycrate must be present") {
+        FoundCrate::Itself => quote!(crate),
+        FoundCrate::Name(name) => {
+            let ident = Ident::new(&name, Span::call_site());
+            quote!(::#ident)
+        }
+    }
+}
+```
+
+Then splice that resolved path into the generated implementation rather than assuming the package name is also the downstream Rust identifier.
+
+`proc-macro-crate` has edge cases of its own, so a user-specified override can still be useful for unusual manifests.
+
+## Helper Visibility
+
+If generated code calls `mycrate::__private::helper`, that helper is part of what downstream compilation must be able to reach. `#[doc(hidden)] pub` can keep it out of normal docs, but it is still public and is part of the compatibility surface used by macro expansions.
+
+Keep the macro implementation crate as an implementation detail when practical: users should normally depend on the facade, and the facade should re-export the supported procedural macros.
+
+## Key Points
+
+- Procedural macros require a `proc-macro = true` crate.
+- Put normal traits/types/functions in an ordinary library crate and commonly re-export macros from that facade.
+- Procedural macro output is unhygienic; use explicit, collision-resistant, appropriately qualified paths.
+- There is no procedural `$crate` equivalent for finding the facade crate.
+- Hardcoding `::mycrate` breaks when downstream users rename the dependency.
+- Use a path override or a crate-name resolver such as `proc-macro-crate` when generated code must refer back to the facade.
+- Helpers reached by generated downstream code need real visibility even if hidden from rustdoc.
+
 ## See Also
 
-- [macro-proc-syn-quote](macro-proc-syn-quote.md) - building proc-macros with syn and quote
-- [macro-private-helpers](macro-private-helpers.md) - hiding helpers behind `__private`
+- [macro-proc-syn-quote](macro-proc-syn-quote.md) - building proc macros with syn and quote
+- [macro-private-helpers](macro-private-helpers.md) - helper APIs used by expansions
 - [proj-workspace-deps](proj-workspace-deps.md) - workspace dependency inheritance
-- [err-thiserror-lib](err-thiserror-lib.md) - thiserror as a real-world two-crate example
+- [err-thiserror-lib](err-thiserror-lib.md) - a facade/proc-macro ecosystem example
