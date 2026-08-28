@@ -1,57 +1,60 @@
 # own-rwlock-readers
 
-> Use the right `RwLock<T>` when reads significantly outnumber writes
+> Choose `RwLock<T>` when concurrent readers materially help the measured workload, not from a fixed read/write ratio
 
 ## Why It Matters
 
-`Mutex<T>` allows only one thread or task to access data at a time, even for reads. `RwLock<T>` allows multiple concurrent readers OR one exclusive writer. For read-heavy workloads, this can improve throughput by eliminating unnecessary serialization of read operations.
+A `Mutex<T>` permits one lock holder at a time. An `RwLock<T>` permits multiple readers or one exclusive writer. That can improve throughput when read-side concurrency is valuable, but the extra state and scheduling policy are not free.
 
-Pick the lock based on context:
+There is no portable rule such as “use `RwLock` below 20% writes.” The result depends on contention, critical-section duration, core count, implementation, scheduler policy, cache behavior, and latency requirements. Start from semantics, then measure under representative contention.
 
-- `std::sync::RwLock` or `parking_lot::RwLock` for synchronous code
-- `tokio::sync::RwLock` for async code
+## Mutex: Simpler Exclusive Access
 
-## Bad
-
-<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding shared state and data types -->
+<!-- rust-check: compile -->
 ```rust
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
-// Configuration rarely changes but is read constantly
-let config = Arc::new(Mutex::new(Config::load()));
-
-// Every read blocks other reads unnecessarily
-fn get_setting(config: &Mutex<Config>, key: &str) -> String {
-    let guard = config.lock().unwrap();
-    guard.get(key).to_string()
+#[derive(Default)]
+struct Config {
+    enabled: bool,
 }
 
-// 100 threads reading = serialized, one at a time
+fn is_enabled(config: &Mutex<Config>) -> bool {
+    config.lock().unwrap().enabled
+}
+
+fn set_enabled(config: &Mutex<Config>, enabled: bool) {
+    config.lock().unwrap().enabled = enabled;
+}
 ```
 
-## Good
+This is often a good baseline for short critical sections. A mutex is not “wrong” merely because most operations happen to read.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## RwLock: Concurrent Read Guards
+
+<!-- rust-check: compile -->
 ```rust
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
-// Multiple readers can proceed concurrently
-let config = Arc::new(RwLock::new(Config::load()));
-
-fn get_setting(config: &RwLock<Config>, key: &str) -> String {
-    let guard = config.read().unwrap(); // Multiple threads can hold read lock
-    guard.get(key).to_string()
+#[derive(Default)]
+struct Config {
+    enabled: bool,
 }
 
-fn update_setting(config: &RwLock<Config>, key: &str, value: &str) {
-    let mut guard = config.write().unwrap(); // Exclusive access for writes
-    guard.set(key, value);
+fn is_enabled(config: &RwLock<Config>) -> bool {
+    config.read().unwrap().enabled
 }
 
-// 100 threads reading = parallel execution
+fn set_enabled(config: &RwLock<Config>, enabled: bool) {
+    config.write().unwrap().enabled = enabled;
+}
 ```
 
-## Async code needs tokio::sync::RwLock
+Several threads may hold `read()` guards at once. That means the lock permits concurrent readers; it does **not** guarantee that one hundred readers literally execute in parallel or that this beats a mutex in a particular workload.
+
+## Pick the Lock for the Execution Context
+
+For synchronous code, `std::sync::{Mutex, RwLock}` and alternatives such as `parking_lot` are appropriate choices. For async code, use an async-aware lock when acquiring or holding the lock must participate in async scheduling.
 
 ```rust
 use std::sync::Arc;
@@ -70,111 +73,86 @@ async fn set_enabled(config: Arc<RwLock<Config>>, enabled: bool) {
 }
 ```
 
-Do not default to `std::sync::RwLock` or `parking_lot::RwLock` in async code unless the lock usage is strictly synchronous and never crosses `.await`.
+Do not turn every lock touched by async code into a Tokio lock mechanically. A synchronous mutex/RwLock can still be appropriate for a very short data-only critical section that never crosses `.await`. Conversely, never block an executor worker waiting on a heavily contended synchronous lock merely because the guard is eventually dropped before `.await`.
 
-## parking_lot::RwLock for synchronous code
+## Fairness Is Implementation-Specific
 
-For synchronous code, `parking_lot::RwLock` is often a good performance-oriented choice:
+Do not promise a portable reader- or writer-preference policy for `std::sync::RwLock`; the standard library delegates priority policy to the underlying platform and does not guarantee one policy across targets.
+
+`parking_lot::RwLock` documents a task-fair/eventual-fair policy. That is a property of that implementation, not of the `RwLock` abstraction in general.
 
 ```rust
 use parking_lot::RwLock;
-use std::sync::Arc;
 
-let data = Arc::new(RwLock::new(HashMap::new()));
+let lock = RwLock::new(vec![1, 2, 3]);
+let len = lock.read().len();
+assert_eq!(len, 3);
+lock.write().push(4);
+```
 
-// Read - no unwrap needed
-let value = data.read().get("key").cloned();
+If starvation or tail latency matters, evaluate the chosen implementation under the real scheduling pattern instead of inferring it from the type name.
 
-// Write
-data.write().insert("key".to_string(), "value".to_string());
+## Upgrade/Downgrade and Check-Then-Write Patterns
 
-// Upgradeable read lock (unique to parking_lot)
-let upgradeable = data.upgradable_read();
-if upgradeable.get("key").is_none() {
-    let mut write = parking_lot::RwLockUpgradableReadGuard::upgrade(upgradeable);
-    write.insert("key".to_string(), "default".to_string());
+A common trap is assuming that dropping a read guard and later taking a write guard preserves what was observed. It does not: another writer may change the value in between.
+
+`parking_lot` offers an upgradeable read guard for cases that need an atomic read-to-write transition:
+
+```rust
+use parking_lot::{RwLock, RwLockUpgradableReadGuard};
+use std::collections::HashMap;
+
+let lock = RwLock::new(HashMap::<String, String>::new());
+let guard = lock.upgradable_read();
+if !guard.contains_key("key") {
+    let mut write = RwLockUpgradableReadGuard::upgrade(guard);
+    write.insert("key".to_owned(), "default".to_owned());
 }
 ```
 
-## When RwLock Hurts
+Use implementation-specific transition APIs when their atomicity is part of the algorithm; otherwise keep the locking protocol simple.
 
-RwLock has overhead for tracking readers. It can be slower than Mutex when:
+## Cached Computation: Avoid Assuming One Computation
 
-| Scenario | Better Choice |
-|----------|---------------|
-| Writes are frequent (>20% of operations) | `Mutex` |
-| Lock held very briefly | `Mutex` |
-| Single-threaded | `RefCell` |
-| Reads dominate, lock held longer | `RwLock` |
-
-## Write Starvation
-
-Standard `RwLock` may starve writers if readers are continuous. `parking_lot::RwLock` is fair by default.
-
-```rust
-// parking_lot is writer-fair, preventing starvation
-use parking_lot::RwLock;
-```
-
-## RwLockWriteGuard::downgrade (1.92) — Write Then Read Atomically
-
-A long-standing API gap: atomically downgrade a write lock to a read lock without releasing the lock. This eliminates the race window between unlocking write and acquiring read:
+This common double-checked shape can compute the same value concurrently if several readers miss before any writer stores the result:
 
 ```rust
 use std::sync::RwLock;
 
-let lock = RwLock::new(vec![1, 2, 3]);
-
-// Before 1.92: must release write lock, then acquire read lock
-// Between release and acquire, another thread can write!
-{
-    let mut wg = lock.write().unwrap();
-    wg.push(4);
-    // wg dropped here — write lock released
-}
-// ⚠️ Race window: another thread could write before we read
-let rg = lock.read().unwrap();
-println!("len = {}", rg.len());
-
-// 1.92+: atomically downgrade write → read
-{
-    let mut wg = lock.write().unwrap();
-    wg.push(4);
-    // Downgrade to read without releasing the lock
-    let rg = RwLockWriteGuard::downgrade(wg);
-    // Lock is still held as read — no other thread can write
-    println!("len = {}", rg.len());
-} // Read guard dropped here
-```
-
-This is especially valuable in concurrent data structures where you need to modify then immediately observe the result atomically.
-
-## Real-World Pattern: Cached Computation
-
-```rust
-use parking_lot::RwLock;
-use std::sync::Arc;
-
-struct CachedData {
-    cache: RwLock<Option<ExpensiveResult>>,
+struct Cache {
+    value: RwLock<Option<String>>,
 }
 
-impl CachedData {
-    fn get(&self) -> ExpensiveResult {
-        // Fast path: read lock
-        if let Some(cached) = self.cache.read().as_ref() {
-            return cached.clone();
+impl Cache {
+    fn get_or_compute(&self) -> String {
+        if let Some(value) = self.value.read().unwrap().clone() {
+            return value;
         }
-        
-        // Slow path: compute and cache
-        let result = compute_expensive();
-        *self.cache.write() = Some(result.clone());
-        result
+
+        let computed = "computed".to_owned();
+        let mut write = self.value.write().unwrap();
+        write.get_or_insert_with(|| computed).clone()
     }
 }
 ```
 
+Duplicate computation may be acceptable. If exactly-once initialization is required, use a primitive designed for that invariant such as `OnceLock`/`LazyLock` or an explicit state machine rather than assuming `RwLock` makes the check-and-compute sequence atomic.
+
+## Decision Guide
+
+Prefer the simplest primitive that expresses the invariant, then benchmark if contention matters:
+
+| Situation | Start by considering |
+|---|---|
+| Short exclusive critical sections | `Mutex` |
+| Multiple simultaneous readers are measurably valuable | `RwLock` |
+| One-time initialization | `OnceLock` / `LazyLock` |
+| Async acquisition/guard semantics are required | Tokio async lock |
+| Read-mostly snapshots with rare replacement | immutable snapshot / copy-on-write designs may avoid shared lock contention |
+
+Read/write percentage alone is not enough information.
+
 ## See Also
 
-- [own-mutex-interior](./own-mutex-interior.md) - When writes are frequent
-- [async-no-lock-await](./async-no-lock-await.md) - RwLock in async contexts
+- [own-mutex-interior](./own-mutex-interior.md) - exclusive interior mutability
+- [async-no-lock-await](./async-no-lock-await.md) - lock choices in async code
