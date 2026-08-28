@@ -97,6 +97,40 @@ After `Lagged(n)`, the receiver remains subscribed and its cursor advances to th
 
 If event loss is unacceptable, `broadcast` may be the wrong primitive; use durable storage, per-subscriber queues, acknowledgements, or another protocol that matches the reliability requirement.
 
+## Subscription Is Not Application Readiness
+
+A receiver existing, a channel being open, or a lower-level transport connecting does not prove that the application-level protocol is ready. If the protocol defines an explicit `Ready`, `Connected`, `Hello`, snapshot, or acknowledgement event, gate dependent work on that semantic event.
+
+<!-- rust-check: compile -->
+```rust
+use tokio::sync::broadcast::{self, error::RecvError};
+
+#[derive(Clone, Debug)]
+enum ServiceEvent {
+    Connected,
+    Data(u64),
+}
+
+async fn wait_until_connected(
+    mut events: broadcast::Receiver<ServiceEvent>,
+) -> Result<(), RecvError> {
+    loop {
+        match events.recv().await? {
+            ServiceEvent::Connected => return Ok(()),
+            ServiceEvent::Data(value) => {
+                // Data policy is application-specific; it is not a substitute
+                // for the explicit readiness contract.
+                let _ = value;
+            }
+        }
+    }
+}
+```
+
+The same distinction applies when the broadcast channel is fed by an external protocol. A WebSocket or SSE connection reaching its transport-level open state only establishes that the transport exists. If the peer sends an application-level handshake, wait for that handshake before claiming the application is connected.
+
+This matters especially in tests: asserting transport readiness can make a protocol test false-green while the application handshake is misspelled, never subscribed to, or never emitted.
+
 ## Sending and Closing
 
 `Sender::send` succeeds when at least one receiver is active and returns the number of active receivers observed for that send. It fails only when there are no active receivers; the unsent value is returned in `SendError<T>`.
