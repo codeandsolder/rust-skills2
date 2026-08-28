@@ -86,9 +86,9 @@ The remaining `expect` is an internal invariant supplied by `syn::Fields::Named`
 
 ## Proc-Macro Entry Point
 
-The actual `#[proc_macro_derive]` item must live in a crate whose Cargo target is `proc-macro = true`, so it is intentionally not compiled by this repository's ordinary example harness:
+The actual `#[proc_macro_derive]` item must live in a crate whose Cargo target is `proc-macro = true`, so it is verified in the dedicated proc-macro workspace rather than the ordinary example harness:
 
-<!-- rust-check: ignore; reason=proc_macro attributes and proc_macro::TokenStream require a proc-macro crate target -->
+<!-- rust-check: fixture(proc-macro-contracts) -->
 ```rust
 use proc_macro::TokenStream;
 
