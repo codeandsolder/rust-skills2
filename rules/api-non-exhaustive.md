@@ -1,23 +1,22 @@
 # api-non-exhaustive
 
-> Use `#[non_exhaustive]` on public enums and structs for forward compatibility
+> Use `#[non_exhaustive]` when a public struct, enum, or enum variant is intentionally open to compatible growth
 
 ## Why It Matters
 
-Adding a variant to a public enum or a field to a public struct is normally a breaking change—downstream code may match exhaustively or use struct literal syntax. `#[non_exhaustive]` forces external code to use wildcards in matches and constructors, allowing you to add variants/fields in minor versions without breaking callers.
+Adding a variant to a public enum or a field to a public struct can break downstream code that matches exhaustively or constructs the type directly. `#[non_exhaustive]` changes what **other crates** may assume so the defining crate can add variants or fields later without that particular source break.
 
-## Bad
+This is an API-design tradeoff, not a blanket requirement for every public type. Closed sets such as a deliberately complete three-way ordering usually should remain exhaustive.
+
+## Bad: Promise a Closed Shape You Expect to Extend
 
 ```rust
-// Public enum - adding variant breaks downstream matches
 pub enum ErrorKind {
     NotFound,
     PermissionDenied,
     TimedOut,
 }
 
-// Downstream code can currently match exhaustively. Adding a variant later
-// would make this match non-exhaustive and break the downstream build.
 fn describe(kind: ErrorKind) -> &'static str {
     match kind {
         ErrorKind::NotFound => "not found",
@@ -26,33 +25,48 @@ fn describe(kind: ErrorKind) -> &'static str {
     }
 }
 
-// Public struct - adding field breaks downstream construction
 pub struct Config {
     pub name: String,
     pub value: i32,
 }
 
-// Downstream code
-let config = Config { name: "test".into(), value: 42 };
-// Will break when you add `pub enabled: bool`
+fn main() {
+    let _config = Config {
+        name: "demo".into(),
+        value: 42,
+    };
+}
 ```
 
-## Good
+If these public definitions are in a library, downstream exhaustive matches and struct literals become commitments you must preserve or break deliberately.
 
-<!-- rust-check: compile -->
+## Good: Mark an Intentionally Open Type
+
 ```rust
-// Can add variants in minor versions
 #[non_exhaustive]
 pub enum ErrorKind {
     NotFound,
     PermissionDenied,
     TimedOut,
-    // Future: can add Interrupted here without breaking changes
 }
 
-// Downstream code must leave room for future variants. A wildcard is
-// accepted here too, even though this standalone example defines the enum locally.
-fn describe_external(kind: ErrorKind) -> &'static str {
+#[non_exhaustive]
+pub struct Config {
+    pub name: String,
+    pub value: i32,
+}
+
+impl Config {
+    pub fn new(name: impl Into<String>, value: i32) -> Self {
+        Self {
+            name: name.into(),
+            value,
+        }
+    }
+}
+
+fn downstream_style(kind: ErrorKind) -> &'static str {
+    // The wildcard is required in another crate. It is accepted here as well.
     match kind {
         ErrorKind::NotFound => "not found",
         ErrorKind::PermissionDenied => "permission denied",
@@ -61,25 +75,21 @@ fn describe_external(kind: ErrorKind) -> &'static str {
     }
 }
 
-// Can add fields in minor versions
-#[non_exhaustive]
-pub struct Config {
-    pub name: String,
-    pub value: i32,
-}
-
-// Downstream CANNOT use struct literal syntax
-// let config = Config { name: "test".into(), value: 42 };  // Error!
-
-// Must use constructor
-impl Config {
-    pub fn new(name: impl Into<String>, value: i32) -> Self {
-        Config { name: name.into(), value }
-    }
+fn main() {
+    let _config = Config::new("demo", 42);
+    let _ = downstream_style(ErrorKind::TimedOut);
 }
 ```
 
-## How It Works
+Outside the defining crate:
+
+- a `#[non_exhaustive]` enum must be matched with a wildcard arm;
+- a `#[non_exhaustive]` struct cannot be constructed with a struct literal;
+- a non-exhaustive struct-style enum variant must be matched with `..` and cannot be constructed directly.
+
+Inside the defining crate, `#[non_exhaustive]` has no such effect: exhaustive matching and direct construction are still allowed. That distinction matters when writing examples; a single-crate snippet cannot prove the downstream restriction merely by naming a module "external".
+
+## Defining-Crate Behavior
 
 ```rust
 #[non_exhaustive]
@@ -88,96 +98,70 @@ pub enum Status {
     Inactive,
 }
 
-// Inside your crate: exhaustive match is allowed
-fn internal(s: Status) {
-    match s {
-        Status::Active => {},
-        Status::Inactive => {},
-        // No wildcard needed inside defining crate
-    }
-}
-
-// Outside your crate: wildcard required
-fn external(s: my_crate::Status) {
-    match s {
-        my_crate::Status::Active => {},
-        my_crate::Status::Inactive => {},
-        _ => {},  // REQUIRED
-    }
-}
-```
-
-## Struct Usage
-
-```rust
 #[non_exhaustive]
-pub struct Point {
-    pub x: f64,
-    pub y: f64,
+pub struct Options {
+    pub retries: u8,
 }
 
-impl Point {
-    // Provide constructor
-    pub fn new(x: f64, y: f64) -> Self {
-        Point { x, y }
+fn internal(status: Status) {
+    // Exhaustive matching is legal inside the defining crate.
+    match status {
+        Status::Active => {}
+        Status::Inactive => {}
     }
+
+    // Direct construction is legal here too.
+    let _ = Options { retries: 3 };
 }
 
-// External code can read fields but not construct with literals
-fn external(p: Point) {
-    println!("x: {}, y: {}", p.x, p.y);  // Reading is fine
-    
-    // let p2 = Point { x: 1.0, y: 2.0 };  // Error!
-    let p2 = Point::new(1.0, 2.0);  // Must use constructor
+fn main() {
+    internal(Status::Active);
 }
 ```
+
+For a real compatibility test, put the API in one crate and compile a second dependent crate. The rule corpus's single-example harness checks the defining-side syntax while the language rule itself is specified by the Rust Reference.
 
 ## Non-Exhaustive Variants
 
+Use the attribute on one variant when the enum is otherwise closed but that variant's fields may grow:
+
 ```rust
 pub enum Message {
-    // Specific variant is non-exhaustive
     #[non_exhaustive]
     Error { code: u32, message: String },
-    
-    Ok(Data),
+    Ok(String),
 }
 
-// Can destructure Ok normally
-// But Error requires `..` to handle future fields
-match msg {
-    Message::Ok(data) => {},
-    Message::Error { code, message, .. } => {},  // `..` required
+fn defining_crate_match(message: Message) {
+    match message {
+        Message::Ok(data) => drop(data),
+        // `..` is optional here because this is the defining crate, but writing
+        // it mirrors the pattern downstream callers are required to use.
+        Message::Error { code, message, .. } => {
+            let _ = (code, message);
+        }
+    }
 }
+
+fn main() {}
 ```
 
-## When to Use
+## When to Use It
 
-```rust
-// ✅ Use for public API types that may evolve
-#[non_exhaustive]
-pub enum ApiError { ... }
+Prefer `#[non_exhaustive]` when all of these are true:
 
-#[non_exhaustive]
-pub struct Options { ... }
+- the type is part of a public library API;
+- future variants or fields are plausible;
+- downstream exhaustive construction or matching would otherwise constrain compatible evolution.
 
-// ✅ Use for error types
-#[non_exhaustive]
-pub enum MyError { ... }
-
-// ❌ Don't use for internal types
-enum InternalState { ... }  // Not public, no concern
-
-// ❌ Don't use for stable, complete types
-pub enum Ordering {  // Less, Equal, Greater is complete
-    Less,
-    Equal,
-    Greater,
-}
-```
+Do not add it mechanically to internal types or intentionally closed public sets. It imposes real ergonomics costs on callers: wildcard matches lose exhaustiveness checking for future variants, and non-exhaustive structs need constructors or builders.
 
 ## See Also
 
-- [api-sealed-trait](./api-sealed-trait.md) - Controlling trait implementations
+- [api-sealed-trait](./api-sealed-trait.md) - Controlling external trait implementations
 - [err-custom-type](./err-custom-type.md) - Error type design
-- [api-builder-pattern](./api-builder-pattern.md) - Alternative to struct literals
+- [api-builder-pattern](./api-builder-pattern.md) - Constructors/builders for evolving structs
+
+## References
+
+- [Rust Reference: `non_exhaustive`](https://doc.rust-lang.org/reference/attributes/type_system.html#the-non_exhaustive-attribute)
