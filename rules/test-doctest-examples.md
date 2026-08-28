@@ -1,193 +1,240 @@
 # test-doctest-examples
 
-> Keep documentation examples as executable doctests
+> Keep public documentation examples executable as doctests when practical
 
 ## Why It Matters
 
-Doctests are examples in documentation that are automatically tested. They serve dual purposes: demonstrating usage to readers and verifying the examples compile and work. When your API changes, failing doctests catch outdated documentation.
+Rustdoc can compile and run Rust code fences embedded in documentation. That turns examples into compatibility tests: when an API changes, stale examples fail instead of silently teaching code that no longer works.
 
-## Bad
+Not every documentation block should run. Rustdoc provides `no_run`, `compile_fail`, platform-specific ignore attributes, and `ignore` for cases where execution or compilation is intentionally unsuitable. Prefer the narrowest truthful fence behavior.
 
-```rust
-/// Parses a number from a string.
-/// 
-/// Example:
-/// let n = parse("42");  // Not tested!
-/// assert_eq!(n, 42);
-pub fn parse(s: &str) -> i32 {
-    s.parse().unwrap()
-}
-
-// Documentation can become outdated:
-/// Adds two numbers.
-/// 
-/// ```
-/// let sum = add(1, 2, 3);  // Wrong number of args - not caught!
-/// ```
-pub fn add(a: i32, b: i32) -> i32 {
-    a + b
-}
-```
-
-## Good
+## Bad: Example-Shaped Prose Is Not Tested
 
 ```rust
 /// Parses a number from a string.
-/// 
-/// # Examples
-/// 
-/// ```
-/// use my_crate::parse;
-/// 
-/// let n = parse("42");
-/// assert_eq!(n, 42);
-/// ```
-pub fn parse(s: &str) -> i32 {
+///
+/// Example (plain prose, not a rustdoc code fence):
+/// `let n = parse_number("42");`
+pub fn parse_number(s: &str) -> i32 {
     s.parse().unwrap()
 }
 
-/// Adds two numbers.
-/// 
-/// # Examples
-/// 
-/// ```
-/// use my_crate::add;
-/// 
-/// let sum = add(1, 2);
-/// assert_eq!(sum, 3);
-/// ```
-pub fn add(a: i32, b: i32) -> i32 {
-    a + b
+fn main() {
+    assert_eq!(parse_number("42"), 42);
 }
 ```
+
+Readers see code, but rustdoc does not treat that inline prose as an executable example.
+
+## Good: Use a Rust Code Fence
+
+```rust
+/// Parses a number from a string.
+///
+/// # Examples
+///
+/// ```
+/// let n: i32 = "42".parse().unwrap();
+/// assert_eq!(n, 42);
+/// ```
+pub fn parse_number(s: &str) -> i32 {
+    s.parse().unwrap()
+}
+
+fn main() {}
+```
+
+For a real library API, doctests normally import the documented crate by its actual crate name and call its public items as downstream users would.
 
 ## Hiding Setup Code
 
+Lines beginning with `#` inside a doctest are compiled but hidden from rendered documentation. This is useful for imports, fixtures, and return-type scaffolding.
+
+<!-- rust-check: compile -->
 ```rust
-/// Processes data from a file.
-/// 
+use std::path::Path;
+
+/// Reads a file into a string.
+///
 /// # Examples
-/// 
+///
 /// ```
 /// # use std::io::Write;
 /// # let mut file = tempfile::NamedTempFile::new().unwrap();
 /// # writeln!(file, "test data").unwrap();
 /// # let path = file.path();
-/// use my_crate::process_file;
-/// 
+/// use sample_api::process_file;
+///
 /// let result = process_file(path)?;
-/// assert!(!result.is_empty());
+/// assert!(result.contains("test data"));
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-pub fn process_file(path: &Path) -> Result<String, Error> {
-    std::fs::read_to_string(path).map_err(Error::from)
+pub fn process_file(path: &Path) -> std::io::Result<String> {
+    std::fs::read_to_string(path)
 }
+
+fn main() {}
 ```
+
+`sample_api` represents the actual crate name in this teaching example. In production documentation, use the package's real library crate path.
 
 ## Showing Error Handling
 
+A doctest can return a `Result` so examples can use `?` without cluttering the visible code.
+
+<!-- rust-check: compile -->
 ```rust
-/// Parses and validates an email address.
-/// 
+#[derive(Debug, PartialEq, Eq)]
+pub struct Email(String);
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct EmailError;
+
+impl Email {
+    pub fn parse(raw: &str) -> Result<Self, EmailError> {
+        raw.contains('@')
+            .then(|| Self(raw.to_owned()))
+            .ok_or(EmailError)
+    }
+
+    pub fn domain(&self) -> &str {
+        self.0.split_once('@').map_or("", |(_, domain)| domain)
+    }
+}
+
+/// Parse an email address.
+///
 /// # Examples
-/// 
+///
 /// ```
-/// use my_crate::Email;
-/// 
+/// use sample_api::Email;
+///
 /// let email = Email::parse("user@example.com")?;
 /// assert_eq!(email.domain(), "example.com");
-/// # Ok::<(), my_crate::EmailError>(())
+/// # Ok::<(), sample_api::EmailError>(())
 /// ```
-/// 
+///
 /// # Errors
-/// 
-/// Returns error for invalid format:
-/// 
+///
 /// ```
-/// use my_crate::Email;
-/// 
+/// use sample_api::Email;
 /// assert!(Email::parse("not-an-email").is_err());
 /// ```
-pub fn parse(s: &str) -> Result<Email, EmailError> {
-    // ...
-}
+pub fn documented_email_example() {}
+
+fn main() {}
 ```
 
-## no_run and ignore
+## `no_run` and `ignore`
 
+Use `no_run` when the example should compile but executing it is undesirable, such as a server loop or destructive operation. Use `ignore` only when even compiling the example in the normal doctest environment is intentionally inappropriate.
+
+<!-- rust-check: compile -->
 ```rust
-/// Starts the server.
-/// 
+pub struct Server;
+
+impl Server {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn run(&self) -> ! {
+        loop {
+            std::thread::park();
+        }
+    }
+}
+
 /// ```no_run
-/// use my_crate::Server;
-/// 
-/// // This compiles but doesn't run (would block forever)
+/// use sample_api::Server;
+///
+/// // Compiles, but rustdoc will not execute the blocking server loop.
 /// Server::new().run();
 /// ```
-pub fn run(&self) { ... }
+pub fn server_example() {}
 
-/// Platform-specific example.
-/// 
+/// Platform/toolchain-specific example that this crate chooses not to compile
+/// in ordinary doctest runs.
+///
 /// ```ignore
-/// // This might not compile on all platforms
-/// use windows_specific::Feature;
+/// use platform_sdk::Feature;
+/// let _ = Feature::new();
 /// ```
+pub fn platform_example() {}
+
+fn main() {}
 ```
 
-## compile_fail
+Where possible, prefer target-specific rustdoc ignore attributes such as `ignore-windows` or `ignore-x86_64` over an unconditional `ignore` when the limitation is truly target-specific.
 
+## `compile_fail`
+
+Negative API examples can be tested too:
+
+<!-- rust-check: compile -->
 ```rust
-/// This type is not Clone.
-/// 
+pub struct UniqueHandle(u64);
+
+impl UniqueHandle {
+    pub fn new() -> Self {
+        Self(1)
+    }
+}
+
+/// `UniqueHandle` intentionally does not implement `Clone`.
+///
 /// ```compile_fail
-/// use my_crate::UniqueHandle;
-/// 
-/// let a = UniqueHandle::new();
-/// let b = a.clone();  // Error: Clone not implemented
+/// use sample_api::UniqueHandle;
+///
+/// let handle = UniqueHandle::new();
+/// let duplicate = handle.clone();
 /// ```
-pub struct UniqueHandle { ... }
+pub fn unique_handle_example() {}
+
+fn main() {}
 ```
+
+A `compile_fail` doctest verifies that the snippet fails somewhere; it is not a precise diagnostic assertion framework. For compiler-error APIs where the exact error matters, use a dedicated UI/trybuild-style test.
 
 ## Running Doctests
 
 ```bash
-# Run all tests including doctests
 cargo test
-
-# Run only doctests
 cargo test --doc
-
-# Run doctests for specific item
-cargo test --doc my_function
-
-# Deterministic ordering for snapshot-sensitive doctests
+cargo test --doc some_name_filter
 cargo test --doc -- --test-threads=1
 ```
 
-## Limitations
+Edition 2024 rustdoc may compile compatible doctests together for performance, while still running individual doctests in separate processes. Do not rely on generated source layout or incidental ordering.
+
+## Snapshot Assertions in Doctests
+
+Insta snapshot assertions **can** be used in doctests; current Insta itself contains doctest snapshot coverage. They are not forbidden by rustdoc isolation.
+
+The practical question is whether snapshots improve that particular documentation example. File snapshots are tied to source/test identity and can be more awkward to review for generated doctest contexts. Inline snapshots or ordinary assertions are often simpler for small documentation examples.
 
 ```rust
-/// ❌ insta snapshots do NOT work in doctests
-/// (filesystem access conflicts with test isolation)
+/// A simple doctest usually needs no snapshot framework.
 ///
-/// ```no_run
-/// // This will fail if uncommented:
-/// // insta::assert_snapshot!("value");
 /// ```
-pub fn bad_doc_example() {}
+/// let rendered = format!("value={}", 42);
+/// assert_eq!(rendered, "value=42");
+/// ```
+pub fn simple_documentation_assertion() {}
 
-/// ✅ Use regular assertions in doctests
-///
-/// ```
-/// let result = my_function();
-/// assert_eq!(result, 42);
-/// ```
-pub fn good_doc_example() {}
+fn main() {}
 ```
+
+Use Insta in doctests when snapshot review genuinely adds value, not because doctests require a different assertion mechanism.
 
 ## See Also
 
 - [doc-examples-section](./doc-examples-section.md) - Documentation structure
-- [doc-hidden-setup](./doc-hidden-setup.md) - Hiding setup code
-- [doc-question-mark](./doc-question-mark.md) - Error handling in examples
-- [test-insta-snapshot](./test-insta-snapshot.md) - Snapshot testing (not for doctests)
+- [doc-hidden-setup](./doc-hidden-setup.md) - Hidden `#` setup lines
+- [doc-question-mark](./doc-question-mark.md) - `?` in examples
+- [test-snapshot-testing](./test-snapshot-testing.md) - Snapshot testing workflows
+
+## References
+
+- [rustdoc book: documentation tests](https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html)
+- [Insta documentation](https://insta.rs/docs/)
