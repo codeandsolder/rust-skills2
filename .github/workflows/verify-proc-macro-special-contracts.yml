@@ -4,12 +4,8 @@ on:
   push:
     branches: [fix/proc-macro-special-contracts]
 
-permissions:
-  contents: write
-
 jobs:
   verify:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -22,8 +18,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: checks -> target
-      - name: Lock proc-macro fixture
-        run: cargo generate-lockfile --manifest-path checks/fixtures/proc-macro-contracts/Cargo.toml
       - name: Regenerate index
         run: python3 checks/gen_index.py
       - name: Run complete verifier
@@ -48,13 +42,3 @@ jobs:
           for row in fixture_rows:
               print('\t'.join(map(str, row)))
           PY
-      - name: Commit generated state
-        run: |
-          if [[ -z "$(git status --porcelain -- SKILL.md checks/fixtures/proc-macro-contracts/Cargo.lock)" ]]; then
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- SKILL.md checks/fixtures/proc-macro-contracts/Cargo.lock
-          git commit -m 'Lock proc-macro special-contract fixture'
-          git push
