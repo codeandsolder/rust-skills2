@@ -1,191 +1,184 @@
 # async-clone-before-await
 
-> Clone Arc/Rc data before await points to avoid holding references across suspension
+> Do not clone merely because an `.await` exists; clone or move ownership when a task/lifetime boundary actually requires ownership.
 
 ## Why It Matters
 
-References held across `.await` points extend the future's lifetime and can cause borrow checker issues or prevent `Send` bounds. Cloning `Arc`/`Rc` before the await ensures the future only holds owned data, making it `Send` and avoiding lifetime complications.
+A reference may legally live across an `.await`. Whether the resulting future is `Send` depends on the referenced type: `&T` is `Send` when `T: Sync`. Borrowing data stored inside an owned `Arc<T>` therefore does **not** inherently make an async function non-`Send`.
 
-## Bad
+Cloning is useful for a different reason: ownership. A spawned task usually must own everything it keeps because `tokio::spawn` requires a `Send + 'static` future. Cloning an `Arc` is a cheap way to give the task another owning handle; cloning the entire inner value is often unnecessary.
 
-<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding request and async operation context -->
+## Bad: Deep-Cloning Just Because an Await Follows
+
+<!-- rust-check: compile -->
 ```rust
 use std::sync::Arc;
 
-async fn process(data: Arc<Data>) {
-    // Borrow extends across await - future is not Send
-    let slice = &data.items[..];  // Borrow of Arc contents
-    
-    expensive_async_operation().await;  // Await with active borrow
-    
-    use_slice(slice);  // Still using the borrow
+#[derive(Debug)]
+struct Data {
+    items: Vec<u64>,
 }
 
-// Error: future cannot be sent between threads safely
-// because `&[Item]` cannot be sent between threads safely
-tokio::spawn(process(data));
+async fn pause() {
+    tokio::task::yield_now().await;
+}
+
+async fn unnecessary_clone(data: Arc<Data>) -> u64 {
+    // This duplicates the entire Vec even though `data` itself lives for the
+    // whole future and its contents can be borrowed safely.
+    let items = data.items.clone();
+    pause().await;
+    items.iter().sum()
+}
 ```
 
-## Good
+The clone is not made correct merely by appearing before `.await`; it needs an ownership or snapshot-semantics reason.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Good: Borrow Across Await When the Owner Lives Long Enough
+
+<!-- rust-check: compile -->
 ```rust
 use std::sync::Arc;
 
-async fn process(data: Arc<Data>) {
-    // Clone what you need before await
-    let items = data.items.clone();  // Owned Vec
-    
-    expensive_async_operation().await;
-    
-    use_items(&items);  // Using owned data
+#[derive(Debug)]
+struct Data {
+    items: Vec<u64>,
 }
 
-// Or clone the Arc itself
-async fn share_data(data: Arc<Data>) {
-    let data = data.clone();  // Another Arc handle
-    
-    some_async_work().await;
-    
-    process(&data);  // Safe - we own the Arc
-}
-```
-
-## The Send Problem
-
-```rust
-// Futures must be Send to spawn on multi-threaded runtime
-async fn not_send() {
-    let rc = Rc::new(42);  // Rc is !Send
-    
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    
-    println!("{}", rc);  // rc held across await
+async fn pause() {
+    tokio::task::yield_now().await;
 }
 
-tokio::spawn(not_send());  // ERROR: future is not Send
-
-// Fix: use Arc or don't hold across await
-async fn is_send() {
-    let arc = Arc::new(42);  // Arc is Send
-    
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    
-    println!("{}", arc);
+async fn borrow_across_await(data: Arc<Data>) -> u64 {
+    let items: &[u64] = &data.items;
+    pause().await;
+    items.iter().sum()
 }
 
-tokio::spawn(is_send());  // OK
-```
+fn assert_send<T: Send>(_: T) {}
 
-## Minimizing Clones
-
-```rust
-// Bad: clone everything eagerly
-async fn wasteful(data: Arc<LargeData>) {
-    let data = (*data).clone();  // Clones entire LargeData
-    async_work().await;
-    use_one_field(&data.small_field);
-}
-
-// Good: clone only what you need
-async fn efficient(data: Arc<LargeData>) {
-    let small = data.small_field.clone();  // Clone only needed field
-    async_work().await;
-    use_one_field(&small);
-}
-
-// Good: if you need the whole thing, keep the Arc
-async fn arc_efficient(data: Arc<LargeData>) {
-    let data = data.clone();  // Cheap Arc clone
-    async_work().await;
-    use_data(&data);  // Access through Arc
+fn proves_this_future_is_send() {
+    let data = Arc::new(Data { items: vec![1, 2, 3] });
+    assert_send(borrow_across_await(data));
 }
 ```
 
-## Spawn Pattern
+`u64` is `Sync`, so `&[u64]` is `Send`. The future also owns the `Arc<Data>` that keeps the borrowed allocation alive.
 
+The same pattern can fail for a genuinely non-`Sync` target. `Arc<T>` does not magically make a non-thread-safe `T` thread-safe.
+
+## Spawned Tasks Need Owned `'static` State
+
+`tokio::spawn` requires the spawned future and its output to be `Send + 'static`. If the caller wants to retain its `Arc`, clone the **Arc handle** before moving that handle into the task.
+
+<!-- rust-check: compile -->
 ```rust
-// Common pattern: clone for spawned task
-let shared = Arc::new(SharedState::new());
+use std::sync::Arc;
+use tokio::task::JoinHandle;
 
-for i in 0..10 {
-    let shared = shared.clone();  // Clone before moving into spawn
+#[derive(Debug)]
+struct Shared {
+    values: Vec<u64>,
+}
+
+fn spawn_reader(shared: &Arc<Shared>) -> JoinHandle<usize> {
+    let task_shared = Arc::clone(shared);
+
     tokio::spawn(async move {
-        // Task owns its Arc clone
-        shared.do_something(i).await;
-    });
+        tokio::task::yield_now().await;
+        task_shared.values.len()
+    })
 }
 ```
 
-## Scope-Based Approach
+`Arc::clone` increments a reference count; it does not clone `Shared` or its `Vec`.
 
+If ownership is being transferred permanently and the caller does not need the value afterward, move the existing `Arc` instead of cloning even the handle.
+
+## Non-Send State Is the Real Send Problem
+
+Holding `Rc<T>` across an await makes that future non-`Send`. A multi-thread-capable `tokio::spawn` therefore rejects it.
+
+<!-- rust-check: compile_fail; reason=Rc is held across await, so the future passed to tokio::spawn is not Send -->
 ```rust
-// Limit borrow scope to before await
-async fn scoped(data: Arc<Data>) {
-    // Scope 1: borrow, compute, drop borrow
-    let computed = {
-        let slice = &data.items[..];  // Borrow
-        compute_something(slice)       // Use
-    };  // Borrow ends here
-    
-    // Now safe to await
-    expensive_async_operation().await;
-    
-    use_computed(computed);
+use std::rc::Rc;
+
+async fn uses_rc() {
+    let value = Rc::new(42_u64);
+    tokio::task::yield_now().await;
+    println!("{value}");
+}
+
+fn spawn_non_send() {
+    tokio::spawn(uses_rc());
 }
 ```
 
-## Edition 2024 Async Closures
+Options include:
 
-In Edition 2024, Rust stabilizes `async || {}` closures that can hold captured references across `.await` points without the borrow checker issues that plague `|| async {}`:
+- use thread-safe state such as `Arc<T>` when the data genuinely crosses threads,
+- make the non-`Send` value stop living before the await if it is only needed synchronously,
+- run deliberately non-`Send` futures on a suitable local executor such as Tokio `LocalSet` / `spawn_local`.
 
+Do not convert `Rc` to `Arc` mechanically if the task is intentionally single-thread-local.
+
+## Clone a Snapshot When Snapshot Semantics Are Desired
+
+Sometimes cloning before an await is exactly right because the operation should use a stable snapshot independent of later shared-state changes.
+
+<!-- rust-check: compile -->
 ```rust
-async fn process(data: Arc<Data>) {
-    // Edition 2024 async closure: borrows can span await within the closure
-    let f = async || {
-        let slice = &data.items[..];
-        expensive_async_operation().await;
-        use_slice(slice);
-    };
-    f().await;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+#[derive(Default)]
+struct State {
+    label: String,
+}
+
+async fn snapshot_label(state: Arc<RwLock<State>>) -> String {
+    let label = state.read().await.label.clone();
+
+    // The lock is released, and `label` is an owned snapshot.
+    tokio::task::yield_now().await;
+    label
 }
 ```
 
-This reduces the need to clone when the closure is used locally (not spawned). However, when spawning to a multi-threaded runtime, you still need owned data (`Arc::clone()`, `.clone()`) for the future to be `Send`. Use `async || {}` when the closure is immediately awaited, and `Arc::clone()` / `.clone()` when data must cross thread boundaries.
+Here the clone both shortens the lock lifetime and defines which version of the data the rest of the operation sees.
 
-## MutexGuard Across Await
+## Prefer Scope Reduction to Unnecessary Copies
 
+If only a derived value is needed after the await, compute that value before suspension rather than cloning a large structure.
+
+<!-- rust-check: compile -->
 ```rust
-use tokio::sync::Mutex;
+use std::sync::Arc;
 
-// BAD: holding guard across await
-async fn bad(mutex: Arc<Mutex<Data>>) {
-    let mut guard = mutex.lock().await;
-    guard.value += 1;
-    
-    slow_operation().await;  // Guard held during await!
-    
-    guard.value += 1;
+struct Data {
+    items: Vec<u64>,
 }
 
-// GOOD: release before await
-async fn good(mutex: Arc<Mutex<Data>>) {
-    {
-        let mut guard = mutex.lock().await;
-        guard.value += 1;
-    }  // Guard released
-    
-    slow_operation().await;
-    
-    {
-        let mut guard = mutex.lock().await;
-        guard.value += 1;
-    }
+async fn sum_then_wait(data: Arc<Data>) -> u64 {
+    let sum = data.items.iter().copied().sum::<u64>();
+    tokio::task::yield_now().await;
+    sum
 }
 ```
+
+## Decision Guide
+
+| Situation | Typical choice |
+|---|---|
+| Owned `Arc<T>` lives for the whole future and borrowed `T` is `Sync` | Borrow across `.await` if convenient |
+| Spawned task needs its own ownership while caller keeps state | `Arc::clone` before `async move` |
+| Caller transfers ownership completely | Move the existing owner |
+| Need a stable snapshot / release a lock | Clone only the required data |
+| Value is needed only before `.await` | End its scope before `.await` |
+| Intentionally non-`Send` task | Use a local executor rather than cloning blindly |
 
 ## See Also
 
-- [async-no-lock-await](./async-no-lock-await.md) - Lock guards across await
-- [own-arc-shared](./own-arc-shared.md) - Arc usage patterns
-- [async-spawn-blocking](./async-spawn-blocking.md) - Blocking in async
+- [async-no-lock-await](./async-no-lock-await.md) - Lock lifetime across await points
+- [own-arc-shared](./own-arc-shared.md) - Arc ownership patterns
+- [async-spawn-blocking](./async-spawn-blocking.md) - Keeping blocking work off async workers
