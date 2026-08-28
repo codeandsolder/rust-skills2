@@ -100,18 +100,25 @@ With `biased;`, fairness becomes the caller's responsibility. A branch that is f
 
 For a runtime-sized set of futures, a tuple macro is the wrong shape. `FuturesUnordered`, buffered streams, `JoinSet`, or `join_all` may fit depending on whether you need bounded concurrency, task spawning, completion-order processing, or ordered collection.
 
-<!-- rust-check: fragment; reason=requires futures crate and application fetch_user function -->
+<!-- rust-check: compile -->
 ```rust
 use futures::stream::{self, StreamExt};
 
-let users = stream::iter(ids)
-    .map(fetch_user)
-    .buffer_unordered(16)
-    .collect::<Vec<_>>()
-    .await;
+async fn fetch_user(id: u64) -> u64 {
+    tokio::task::yield_now().await;
+    id
+}
+
+async fn fetch_users(ids: Vec<u64>) -> Vec<u64> {
+    stream::iter(ids)
+        .map(fetch_user)
+        .buffer_unordered(16)
+        .collect::<Vec<_>>()
+        .await
+}
 ```
 
-Prefer a bounded form when the input can be large or each future consumes scarce resources.
+`buffer_unordered(16)` bounds the number of in-flight futures from this stream at sixteen. Choose the bound from resource limits and measurements rather than treating sixteen as universal.
 
 ## Concurrency Is Not CPU Parallelism
 
