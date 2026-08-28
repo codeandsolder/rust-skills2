@@ -291,11 +291,11 @@ Reference these guidelines when:
 ### 16. Macros (MEDIUM)
 
 - [`macro-prefer-functions`](rules/macro-prefer-functions.md) - Reach for a macro only when a function or generic cannot express it
-- [`macro-rules-hygiene`](rules/macro-rules-hygiene.md) - Rely on `macro_rules!` hygiene and use `$crate` for paths to your crate's items
+- [`macro-rules-hygiene`](rules/macro-rules-hygiene.md) - Understand `macro_rules!` mixed-site hygiene and use `$crate` for defining-crate paths
 - [`macro-fragment-specifiers`](rules/macro-fragment-specifiers.md) - Capture with precise fragment specifiers, not raw `:tt`, where you can
-- [`macro-export-crate-path`](rules/macro-export-crate-path.md) - Export declarative macros with `#[macro_export]` and a clean import path
+- [`macro-export-crate-path`](rules/macro-export-crate-path.md) - Use `#[macro_export]` when a `macro_rules!` macro is part of the public crate API
 - [`macro-private-helpers`](rules/macro-private-helpers.md) - Hide macro-generated helper items behind a `#[doc(hidden)] pub mod __private`
-- [`macro-proc-two-crate`](rules/macro-proc-two-crate.md) - Put procedural macros in a dedicated `proc-macro = true` crate and re-export from the facade
+- [`macro-proc-two-crate`](rules/macro-proc-two-crate.md) - Put procedural macros in a dedicated `proc-macro = true` crate and re-export them from the ordinary library facade
 - [`macro-proc-syn-quote`](rules/macro-proc-syn-quote.md) - Put proc-macro parsing and generation in testable `syn`/`quote` helpers
 - [`macro-proc-error-spans`](rules/macro-proc-error-spans.md) - Turn expected proc-macro input errors into spanned compile errors instead of panics
 
