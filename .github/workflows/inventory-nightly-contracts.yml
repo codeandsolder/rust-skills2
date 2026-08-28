@@ -1,0 +1,30 @@
+name: Inventory nightly contracts
+
+on:
+  push:
+    branches: [fix/nightly-contracts]
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - name: Generate and show nightly contracts
+        run: |
+          cd checks
+          python3 gen.py
+          python3 - <<'PY'
+          import json
+          manifest = json.load(open('manifest.json'))
+          rows = sorted(
+              (info['file'], info['line'], info['section'], info['reason'])
+              for info in manifest.values()
+              if info['expect'] == 'nightly'
+          )
+          print(f'NIGHTLY {len(rows)}')
+          for row in rows:
+              print('\t'.join(map(str, row)))
+          PY
