@@ -1,89 +1,125 @@
 # macro-export-crate-path
 
-> Export declarative macros with `#[macro_export]` and a clean import path
+> Use `#[macro_export]` when a `macro_rules!` macro is part of the public crate API
 
 ## Why It Matters
 
-`#[macro_export]` lifts a macro to the crate root, making it importable like any other item. Combined with `$crate::` paths (see `macro-rules-hygiene`), the macro works regardless of how callers import it. Since Rust 2018, callers can use ordinary path imports (`use mycrate::my_macro;`) rather than the legacy `#[macro_use] extern crate mycrate;`, which polluted the global namespace and depended on item ordering.
+A plain `macro_rules!` definition has textual scope and crate-local visibility. `#[macro_export]` gives the macro public path-based scope at the **crate root**, regardless of which module contains the definition. Downstream Rust 2018+ code can then call `mycrate::my_macro!(...)` directly or import it with `use mycrate::my_macro;`.
 
-## Bad
+That is different from the older `#[macro_use] extern crate ...` mechanism, which bulk-imports macros into a macro-use prelude. Prefer explicit path-based use in modern code.
 
+## Bad: Implicit Macro Import
+
+This compiles, but the caller gets the macro through implicit textual/macro-use scope rather than an explicit path:
+
+<!-- rust-check: compile -->
 ```rust
-// lib.rs — legacy style
-// Requires callers to write `#[macro_use] extern crate mylib;`
-// and dumps all macros into the caller's global scope.
+#[macro_use]
+mod legacy_macros {
+    macro_rules! greet {
+        ($name:expr) => {
+            println!("hello, {}", $name);
+        };
+    }
+}
+
+fn main() {
+    greet!("world");
+}
+```
+
+The cross-crate legacy form is the same idea:
+
+```text
+#[macro_use]
+extern crate mylib;
+
+greet!("world");
+```
+
+Use it only when compatibility or an intentionally broad macro import requires it.
+
+## Good: Export at the Crate Root
+
+`#[macro_export]` already creates the public root path. Do **not** redundantly write `pub use greet;` in that same root scope.
+
+<!-- rust-check: compile -->
+```rust
+#[doc(hidden)]
+pub mod __private {
+    pub fn print_greeting(name: &str) {
+        println!("hello, {name}");
+    }
+}
+
+#[macro_export]
 macro_rules! greet {
+    ($name:expr) => {
+        $crate::__private::print_greeting($name)
+    };
+}
+
+mod consumer {
+    // A downstream crate would use `use mylib::greet;` here.
+    use crate::greet;
+
+    pub fn run() {
+        greet!("world");
+    }
+}
+
+fn main() {
+    consumer::run();
+}
+```
+
+A downstream crate may equivalently invoke the macro without importing it:
+
+```text
+mylib::greet!("world");
+```
+
+## Re-export Under Another Module Path
+
+`#[macro_export]` always creates the root export. If a secondary module path is useful, re-export the root macro **from that module**. An alias avoids implying that the original definition lived there.
+
+<!-- rust-check: compile -->
+```rust
+#[macro_export]
+macro_rules! greet_impl {
     ($name:expr) => {
         println!("hello, {}", $name);
     };
 }
-```
 
-<!-- rust-check: fragment; reason=macro anti-pattern references an external crate name by design -->
-```rust
-// consumer/src/main.rs — legacy
-#[macro_use]
-extern crate mylib; // order-sensitive; pollutes namespace
-
-fn main() {
-    greet!("world");
-}
-```
-
-## Good
-
-```rust
-// lib.rs — modern style
-#[macro_export]
-macro_rules! greet {
-    ($name:expr) => {
-        $crate::__private::print_greeting($name);
-    };
-}
-
-// Re-export so `use mylib::greet;` resolves through the crate's public path.
-// (The re-export is implicit when using #[macro_export]; this is just for clarity
-// or when you want to place it under a module path.)
-pub use greet;
-```
-
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
-```rust
-// consumer/src/main.rs — modern
-use mylib::greet;
-
-fn main() {
-    greet!("world");
-}
-```
-
-## Placing Macros in Modules
-
-`#[macro_export]` always places the macro at the crate root regardless of where the `macro_rules!` definition appears. To expose it under a module path, use a `pub use` re-export:
-
-```rust
-// lib.rs
 pub mod macros {
-    // The macro is defined at crate root by #[macro_export], but we
-    // also re-export it here so `use mycrate::macros::greet;` works.
-    pub use crate::greet;
+    pub use crate::greet_impl as greet;
 }
 
-#[macro_export]
-macro_rules! greet {
-    ($name:expr) => { println!("hello, {}", $name); };
+fn main() {
+    crate::macros::greet!("world");
 }
 ```
+
+The root path `crate::greet_impl!` still exists because `#[macro_export]` put it there. If exposing only a module-scoped macro path is important, a plain `macro_rules!` definition plus an appropriate declaration re-export may fit better than `#[macro_export]`.
+
+## Helpers Used by Exported Macros
+
+Use `$crate::...` when an exported macro refers back to items or helper macros in its defining crate. `$crate` does not bypass normal visibility: a non-macro helper that must be reached from a downstream expansion still needs sufficient public visibility. `#[doc(hidden)] pub` is a common way to expose implementation support without advertising it as normal API.
+
+Avoid `#[macro_export(local_inner_macros)]` in new code. It exists mainly for migrating older macros that predate `$crate`-qualified helper calls.
 
 ## Key Points
 
-- Prefer `use mycrate::my_macro;` — it is explicit and plays well with `rustfmt` and IDEs.
-- Avoid `#[macro_use]` in new code; it is required only when supporting pre-2018 edition consumers.
-- If the macro calls internal helpers, pair `#[macro_export]` with `$crate::__private::...` paths.
-- Document macros with `///` just like any other public item.
+- `#[macro_export]` exports a `macro_rules!` macro from the crate root.
+- Rust 2018+ callers can use normal path imports or qualified macro paths.
+- Do not re-import the same exported macro name back into the crate root; the root path already exists.
+- Re-export from another module only when you intentionally want an additional path.
+- Use `$crate::...` for defining-crate helper paths inside exported declarative macros.
+- `$crate` does not change item visibility.
 
 ## See Also
 
-- [macro-rules-hygiene](macro-rules-hygiene.md) - using `$crate` for correct item resolution
-- [macro-private-helpers](macro-private-helpers.md) - hiding helpers used by exported macros
+- [macro-rules-hygiene](macro-rules-hygiene.md) - mixed-site hygiene and `$crate`
+- [macro-private-helpers](macro-private-helpers.md) - helpers used by exported macros
 - [proj-workspace-deps](proj-workspace-deps.md) - workspace dependency inheritance
