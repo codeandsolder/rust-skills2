@@ -86,7 +86,8 @@ A stalled heartbeat is a symptom, not a diagnosis: host scheduler pressure, proc
 
 A minimal application setup looks like this:
 
-```text
+<!-- rust-check: fixture(tokio-special) -->
+```rust
 #[tokio::main]
 async fn main() {
     console_subscriber::init();
