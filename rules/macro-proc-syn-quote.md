@@ -102,6 +102,7 @@ The useful unit-test surface is `expand`/`generate_hello_impl`, not the compiler
 
 Use `quote_spanned!` when generated code should deliberately inherit a particular source span. Do not attach every generated token to one arbitrary span: default `quote!` interpolation often provides better, more natural provenance.
 
+<!-- rust-check: compile -->
 ```rust
 use proc_macro2::TokenStream;
 use quote::quote_spanned;
@@ -118,6 +119,8 @@ fn access_named_field(field: &Field) -> syn::Result<TokenStream> {
 
 fn main() {}
 ```
+
+This helper uses only `proc_macro2`, `syn`, and `quote`; it does not require a `proc-macro = true` crate target and is compile-checked as ordinary Rust.
 
 For errors detected by the macro itself, prefer `syn::Error` with an appropriate input span; see the dedicated error-span rule.
 

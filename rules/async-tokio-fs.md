@@ -58,20 +58,44 @@ async fn copy_prefix() -> std::io::Result<()> {
 
 ## Special Files Are Different
 
-Named pipes, devices, and other special files can have blocking/readiness behavior that ordinary-file wrappers do not model well. Prefer a dedicated async abstraction when one exists—for example Tokio's Unix pipe support or `tokio::io::unix::AsyncFd` around a descriptor that has already been configured for nonblocking operation.
+Named pipes, devices, and other special files can have blocking/readiness behavior that ordinary-file wrappers do not model well. Prefer a dedicated async abstraction when one exists—for example Tokio's Unix pipe support or `tokio::io::unix::AsyncFd` around a descriptor configured for nonblocking operation.
 
-A meaningful `AsyncFd` example requires a real Unix file descriptor with the correct nonblocking semantics and OS-level read/write code. The generic corpus harness cannot honestly synthesize that resource, so the setup sketch is an explicit platform/environment exception rather than a vague fragment.
+`AsyncFd` requires a Unix file descriptor that the OS readiness mechanism can poll, such as a socket or pipe, and the descriptor must already be nonblocking. Its readiness guards should be paired with an actual nonblocking I/O attempt; `try_io` clears stale readiness when that operation reports `WouldBlock`.
 
-<!-- rust-check: ignore; reason=Unix-only AsyncFd example requires a real nonblocking OS file descriptor and platform-specific syscall setup -->
+On this repository's pinned Linux verifier target, an anonymous Unix socket pair provides a self-contained real descriptor without external files or devices:
+
+<!-- rust-check: compile -->
 ```rust
+use std::io::{self, Read, Write};
+use std::os::unix::net::UnixStream;
 use tokio::io::unix::AsyncFd;
 
-let async_fd = AsyncFd::new(nonblocking_fd)?;
-let mut guard = async_fd.readable().await?;
-// Perform the nonblocking syscall here; clear readiness when the syscall
-// reports that the resource is no longer ready.
-guard.clear_ready();
+async fn read_one_byte() -> io::Result<u8> {
+    let (stream, mut peer) = UnixStream::pair()?;
+    stream.set_nonblocking(true)?;
+
+    // Make the wrapped descriptor readable before awaiting it.
+    peer.write_all(&[42])?;
+    let async_fd = AsyncFd::new(stream)?;
+
+    loop {
+        let mut guard = async_fd.readable().await?;
+        let mut byte = [0u8; 1];
+
+        match guard.try_io(|inner| inner.get_ref().read(&mut byte)) {
+            Ok(result) => {
+                result?;
+                return Ok(byte[0]);
+            }
+            Err(_would_block) => continue,
+        }
+    }
+}
+
+fn main() {}
 ```
+
+The socket is only a convenient verifier fixture; the same readiness discipline applies when wrapping a real nonblocking pipe/device descriptor that supports the platform's polling mechanism.
 
 Do not blindly move a potentially indefinite special-file read into `spawn_blocking`: work that has begun in the blocking pool generally cannot be aborted by dropping its async handle.
 

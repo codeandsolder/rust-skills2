@@ -374,7 +374,7 @@ Reference these guidelines when:
 - [`doc-link-types`](rules/doc-link-types.md) - Cross-link related public types and operations when the links help readers navigate the API
 - [`doc-cargo-metadata`](rules/doc-cargo-metadata.md) - Fill `Cargo.toml` metadata for published crates
 - [`doc-crate-readme`](rules/doc-crate-readme.md) - Unify the README and crate root docs with `#![doc = include_str!("../README.md")]`
-- [`doc-cfg-patterns`](rules/doc-cfg-patterns.md) - Use real `#[cfg(...)]` attributes for availability; on docs.rs, optionally add `doc(cfg)` badges behind `cfg(docsrs)` because `doc_cfg` is still unstable on stable Rust
+- [`doc-cfg-patterns`](rules/doc-cfg-patterns.md) - Use real `#[cfg(...)]` attributes for availability; when nightly rustdoc's `doc_cfg` is enabled, let `doc(auto_cfg)` surface those conditions and use `doc(cfg)` only when you need to override the displayed condition
 - [`doc-hidden-public`](rules/doc-hidden-public.md) - Use `#[doc(hidden)]` only when a public item must remain callable but should be omitted from normal generated documentation
 - [`doc-include-str`](rules/doc-include-str.md) - Use `#[doc = include_str!("...")]` when an external text file is intentionally part of an item's generated documentation
 - [`doc-test-edition-2024`](rules/doc-test-edition-2024.md) - Account for Edition 2024 rustdoc doctest merging, `standalone_crate`, and source-relative nested includes

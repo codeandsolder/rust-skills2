@@ -33,23 +33,33 @@ serde = ["dep:serde"]
 serde = { version = "1", optional = true }
 ```
 
-For a library that uses allocation in its no-std configuration, the crate root may look like this:
+For a library that uses allocation in its no-std configuration, the crate root can look like this:
 
-<!-- rust-check: ignore; reason=crate-root no_std feature example must be verified as a library under multiple Cargo feature combinations, not as the harness binary example -->
-```rust
+```text
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
 #[cfg(feature = "std")]
-type Buffer<T> = std::vec::Vec<T>;
+pub type Buffer<T> = std::vec::Vec<T>;
 
 #[cfg(not(feature = "std"))]
-type Buffer<T> = alloc::vec::Vec<T>;
+pub type Buffer<T> = alloc::vec::Vec<T>;
+
+pub fn empty_buffer<T>() -> Buffer<T> {
+    Buffer::new()
+}
 ```
 
-Test both intended configurations in CI, for example the default feature set and `--no-default-features`. The source snippet alone cannot prove that the Cargo feature matrix is coherent.
+That is a crate-root/library example, not an ordinary generated binary snippet. This repository therefore verifies the same source in `checks/fixtures/feature-additive` as a real library under both intended configurations:
+
+```bash
+cargo check --manifest-path checks/fixtures/feature-additive/Cargo.toml --lib
+cargo check --manifest-path checks/fixtures/feature-additive/Cargo.toml --lib --no-default-features
+```
+
+Testing both configurations matters: compiling only the default `std` branch does not prove the no-std branch is coherent.
 
 ## Optional Dependencies
 

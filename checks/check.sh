@@ -30,4 +30,21 @@ python3 analyze.py check.json \
     --check-baseline baseline.txt \
     --good-exceptions good-exceptions.txt
 
+echo "==> additive feature-matrix fixture"
+FEATURE_FIXTURE="$ROOT/checks/fixtures/feature-additive/Cargo.toml"
+FEATURE_TARGET="$ROOT/checks/target/feature-additive"
+CARGO_TARGET_DIR="$FEATURE_TARGET" cargo check \
+    --manifest-path "$FEATURE_FIXTURE" \
+    --lib \
+    --target "$TARGET" \
+    --locked \
+    --quiet
+CARGO_TARGET_DIR="$FEATURE_TARGET" cargo check \
+    --manifest-path "$FEATURE_FIXTURE" \
+    --lib \
+    --target "$TARGET" \
+    --no-default-features \
+    --locked \
+    --quiet
+
 echo "All checks passed."
