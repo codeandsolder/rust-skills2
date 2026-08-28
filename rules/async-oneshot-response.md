@@ -1,50 +1,73 @@
 # async-oneshot-response
 
-> Use `oneshot` channel for request-response patterns
+> Use `tokio::sync::oneshot` when exactly one value should travel from one sender to one receiver, especially for actor-style request-response.
 
 ## Why It Matters
 
-When one task needs to send a request and wait for exactly one response, `oneshot` is the perfect fit. It's a single-use channel optimized for this pattern—no buffering, no clone overhead. Combined with `mpsc`, it enables clean actor-style message passing.
+A Tokio oneshot channel communicates at most one value. The `Sender` is consumed by `send`, and the `Receiver` is itself a `Future` that resolves to that value or to `RecvError` if the sender disappears without sending.
 
-## Bad
+This matches request-response naturally: put a `oneshot::Sender<Response>` inside the queued request, send the request to the service, then await the paired receiver.
 
-<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding request and response types -->
+`Sender::send` is synchronous and never waits for receiver progress. If the receiver has already been dropped, `send` returns the unsent value to the caller.
+
+## Bad: Polling Shared State for One Result
+
+<!-- rust-check: compile -->
 ```rust
-// Using mpsc for single response - wasteful
-let (tx, mut rx) = mpsc::channel::<Response>(1);
-send_request().await;
-let response = rx.recv().await.unwrap();
-// Channel persists, could accidentally receive more
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 
-// Using shared state - complex
-let result = Arc::new(Mutex::new(None));
-send_request(result.clone()).await;
-while result.lock().await.is_none() {
-    tokio::time::sleep(Duration::from_millis(10)).await;  // Polling!
+async fn polling_response() -> u64 {
+    let result = Arc::new(Mutex::new(None));
+    let producer_result = Arc::clone(&result);
+
+    tokio::spawn(async move {
+        *producer_result.lock().await = Some(42_u64);
+    });
+
+    loop {
+        if let Some(value) = *result.lock().await {
+            return value;
+        }
+
+        // Polling adds latency/work and requires shared mutable state even
+        // though exactly one value will ever be produced.
+        sleep(Duration::from_millis(1)).await;
+    }
 }
 ```
 
-## Good
+A capacity-one `mpsc` can also carry one response, but its API represents a reusable queue. Use it when queue semantics are actually useful; do not use it merely because every async handoff looks like a queue.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Good: One Sender, One Receiver, One Value
+
+<!-- rust-check: compile -->
 ```rust
 use tokio::sync::oneshot;
 
-let (tx, rx) = oneshot::channel::<Response>();
+async fn one_response() -> Result<u64, oneshot::error::RecvError> {
+    let (tx, rx) = oneshot::channel::<u64>();
 
-// Send request with reply channel
-send_request(Request { data, reply: tx }).await;
+    tokio::spawn(async move {
+        let _ = tx.send(42);
+    });
 
-// Wait for response
-let response = rx.await?;
-
-// Channel is consumed - can't accidentally reuse
+    rx.await
+}
 ```
 
-## Request-Response Pattern
+There is no async `send().await`: `send` consumes the sender immediately. Awaiting happens on the receiver side.
 
+## Actor-Style Request-Response
+
+<!-- rust-check: compile -->
 ```rust
+use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Value(String);
 
 enum Request {
     Get {
@@ -54,161 +77,190 @@ enum Request {
     Set {
         key: String,
         value: Value,
-        reply: oneshot::Sender<bool>,
+        reply: oneshot::Sender<()>,
     },
 }
 
-// Service handler
 async fn service(mut rx: mpsc::Receiver<Request>) {
-    let mut store = HashMap::new();
-    
-    while let Some(req) = rx.recv().await {
-        match req {
+    let mut store = HashMap::<String, Value>::new();
+
+    while let Some(request) = rx.recv().await {
+        match request {
             Request::Get { key, reply } => {
-                let value = store.get(&key).cloned();
-                let _ = reply.send(value);  // Ignore if receiver dropped
+                // If the caller cancelled, returning the value from `send`
+                // is usually harmless here; the service can simply discard it.
+                let _ = reply.send(store.get(&key).cloned());
             }
             Request::Set { key, value, reply } => {
                 store.insert(key, value);
-                let _ = reply.send(true);
+                let _ = reply.send(());
             }
         }
     }
 }
 
-// Client
-async fn get_value(tx: &mpsc::Sender<Request>, key: &str) -> Option<Value> {
-    let (reply_tx, reply_rx) = oneshot::channel();
-    
+async fn get_value(
+    tx: &mpsc::Sender<Request>,
+    key: impl Into<String>,
+) -> Result<Option<Value>, &'static str> {
+    let (reply, response) = oneshot::channel();
+
     tx.send(Request::Get {
-        key: key.to_string(),
-        reply: reply_tx,
-    }).await.ok()?;
-    
-    reply_rx.await.ok()?
+        key: key.into(),
+        reply,
+    })
+    .await
+    .map_err(|_| "service stopped")?;
+
+    response.await.map_err(|_| "service dropped the reply")
 }
 ```
 
-## With Timeout
+This keeps ownership simple: the service owns its state, each request owns its reply sender, and the caller owns the matching receiver.
 
+## Distinguish Request Failure From Reply Failure
+
+There are usually two independent failure points:
+
+1. sending the request to the service can fail because the request queue is closed;
+2. awaiting the oneshot can fail because the reply sender was dropped without sending.
+
+Keep those cases distinct when callers can respond differently.
+
+<!-- rust-check: compile -->
 ```rust
+use tokio::sync::{mpsc, oneshot};
+
+#[derive(Debug)]
+enum CallError {
+    ServiceStopped,
+    ReplyDropped,
+}
+
+enum Request {
+    Ping { reply: oneshot::Sender<u64> },
+}
+
+async fn call(tx: &mpsc::Sender<Request>) -> Result<u64, CallError> {
+    let (reply, response) = oneshot::channel();
+
+    tx.send(Request::Ping { reply })
+        .await
+        .map_err(|_| CallError::ServiceStopped)?;
+
+    response.await.map_err(|_| CallError::ReplyDropped)
+}
+```
+
+## Add a Deadline at the Caller Boundary
+
+<!-- rust-check: compile -->
+```rust
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::{timeout, Duration};
 
-async fn request_with_timeout(
+#[derive(Debug)]
+enum CallError {
+    ServiceStopped,
+    ReplyDropped,
+    Timeout,
+}
+
+enum Request {
+    Ping { reply: oneshot::Sender<u64> },
+}
+
+async fn call_with_timeout(
     tx: &mpsc::Sender<Request>,
-    key: &str,
-) -> Result<Value, Error> {
-    let (reply_tx, reply_rx) = oneshot::channel();
-    
-    tx.send(Request::Get {
-        key: key.to_string(),
-        reply: reply_tx,
-    }).await.map_err(|_| Error::ServiceDown)?;
-    
-    timeout(Duration::from_secs(5), reply_rx)
+) -> Result<u64, CallError> {
+    let (reply, response) = oneshot::channel();
+
+    tx.send(Request::Ping { reply })
         .await
-        .map_err(|_| Error::Timeout)?
-        .map_err(|_| Error::ServiceDown)?
-        .ok_or(Error::NotFound)
+        .map_err(|_| CallError::ServiceStopped)?;
+
+    timeout(Duration::from_millis(100), response)
+        .await
+        .map_err(|_| CallError::Timeout)?
+        .map_err(|_| CallError::ReplyDropped)
 }
 ```
 
-## Error Handling
+Dropping the receiver on timeout is cancellation information for the producer: a later `send` returns its value because nobody is waiting anymore.
 
+## Sender and Receiver Drop Semantics
+
+<!-- rust-check: compile -->
 ```rust
 use tokio::sync::oneshot;
 
-let (tx, rx) = oneshot::channel::<String>();
+async fn drop_cases() {
+    // Sender disappears without sending: receiver gets RecvError.
+    let (tx, rx) = oneshot::channel::<String>();
+    drop(tx);
+    assert!(rx.await.is_err());
 
-// Sender dropped without sending
-drop(tx);
-match rx.await {
-    Ok(value) => println!("Got: {}", value),
-    Err(oneshot::error::RecvError { .. }) => {
-        println!("Sender dropped");
-    }
-}
-
-// Receiver dropped before send
-let (tx, rx) = oneshot::channel::<String>();
-drop(rx);
-match tx.send("hello".to_string()) {
-    Ok(()) => println!("Sent"),
-    Err(value) => println!("Receiver dropped, value: {}", value),
+    // Receiver disappears first: send returns the unsent value.
+    let (tx, rx) = oneshot::channel::<String>();
+    drop(rx);
+    let unsent = tx.send(String::from("hello")).unwrap_err();
+    assert_eq!(unsent, "hello");
 }
 ```
 
-## Closed Detection
+## Detect Caller Cancellation Before Expensive Work
 
+`Sender::is_closed()` is a cheap snapshot. `Sender::closed().await` waits asynchronously until the receiver is dropped.
+
+<!-- rust-check: compile -->
 ```rust
-// Check if receiver is still waiting
-let (tx, rx) = oneshot::channel::<i32>();
+use tokio::sync::oneshot;
 
-// In producer
-if tx.is_closed() {
-    println!("Receiver already gone, skip expensive computation");
-} else {
-    let result = expensive_computation();
-    tx.send(result).ok();
-}
-
-// Async wait for close — no clone needed, select! handles the
-// ownership split between branches internally.
-// `tx.closed()` borrows `&mut self`, `tx.send()` consumes `self`.
-let (mut tx, rx) = oneshot::channel::<String>();
-
-tokio::spawn(async move {
+async fn producer(mut tx: oneshot::Sender<Vec<u8>>) {
     tokio::select! {
         _ = tx.closed() => {
-            println!("Receiver dropped, aborting computation");
+            // Caller no longer needs the result.
         }
-        value = compute() => {
+        value = async { vec![0_u8; 1024] } => {
             let _ = tx.send(value);
         }
     }
-});
+}
 ```
 
-## Racing Multiple Responses
+The `closed()` branch borrows the sender mutably; the send branch consumes it. `tokio::select!` supports this ownership pattern directly.
 
-Use `select!` to race a oneshot receiver against a timeout or another response source:
+## Racing a Receiver Is Cancellation-Safe
 
+A oneshot `Receiver` can be selected by mutable reference and awaited again if another branch wins.
+
+<!-- rust-check: compile -->
 ```rust
-use tokio::select;
 use tokio::sync::oneshot;
 use tokio::time::{sleep, Duration};
 
-async fn race_responses() -> Result<Data, Error> {
-    let (tx1, rx1) = oneshot::channel();
-    let (tx2, rx2) = oneshot::channel();
-    
-    // Send requests concurrently
-    tokio::spawn(async move { tx1.send(fetch_from_server_a().await); });
-    tokio::spawn(async move { tx2.send(fetch_from_server_b().await); });
-    
-    // Return whichever responds first
-    select! {
-        result = rx1 => result.unwrap_or_else(|_| Err(Error::Cancelled)),
-        result = rx2 => result.unwrap_or_else(|_| Err(Error::Cancelled)),
-    }
-}
-
-// Or race against a timeout
-async fn race_with_timeout() -> Result<Response, Error> {
-    let (tx, rx) = oneshot::channel();
-    tokio::spawn(async move { tx.send(fetch_data().await); });
-    
-    select! {
-        result = rx => result.unwrap_or_else(|_| Err(Error::Cancelled)),
-        _ = sleep(Duration::from_secs(5)) => Err(Error::Timeout),
+async fn wait_with_periodic_work(
+    mut rx: oneshot::Receiver<u64>,
+) -> Result<u64, oneshot::error::RecvError> {
+    loop {
+        tokio::select! {
+            result = &mut rx => return result,
+            _ = sleep(Duration::from_millis(10)) => {
+                // Do unrelated periodic work, then continue waiting.
+            }
+        }
     }
 }
 ```
 
-## Response Type Wrapper
+Awaiting `&mut Receiver` is cancellation-safe: if the sleep branch wins, the response remains receivable on the next loop iteration.
 
+## Small Wrapper Pattern
+
+<!-- rust-check: compile -->
 ```rust
-// Standardize request-response pattern
+use tokio::sync::oneshot;
+
 struct RpcRequest<Req, Res> {
     request: Req,
     reply: oneshot::Sender<Res>,
@@ -216,23 +268,20 @@ struct RpcRequest<Req, Res> {
 
 impl<Req, Res> RpcRequest<Req, Res> {
     fn new(request: Req) -> (Self, oneshot::Receiver<Res>) {
-        let (tx, rx) = oneshot::channel();
-        (RpcRequest { request, reply: tx }, rx)
+        let (reply, response) = oneshot::channel();
+        (Self { request, reply }, response)
     }
-    
-    fn respond(self, response: Res) {
-        let _ = self.reply.send(response);
+
+    fn respond(self, response: Res) -> Result<(), Res> {
+        self.reply.send(response)
     }
 }
-
-// Usage
-let (req, rx) = RpcRequest::new(GetUser { id: 42 });
-tx.send(req).await?;
-let user = rx.await?;
 ```
+
+Return the `send` result when a caller may care that the response was cancelled; deliberately discard it when cancellation is expected and no recovery is useful.
 
 ## See Also
 
-- [async-mpsc-queue](./async-mpsc-queue.md) - Pair with oneshot for request-response
-- [async-bounded-channel](./async-bounded-channel.md) - Channel sizing
-- [async-select-racing](./async-select-racing.md) - Timeout patterns
+- [async-mpsc-queue](./async-mpsc-queue.md) - Queue requests to an owner task
+- [async-bounded-channel](./async-bounded-channel.md) - Queue capacity and overload policy
+- [async-select-racing](./async-select-racing.md) - Cancellation-safe selection

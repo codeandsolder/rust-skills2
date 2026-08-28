@@ -1,200 +1,161 @@
 # async-bounded-channel
 
-> Use bounded channels to apply backpressure and prevent unbounded memory growth
+> Prefer bounded channels when backlog growth must be constrained; use unbounded channels only when an external invariant bounds the backlog.
 
 ## Why It Matters
 
-Unbounded channels grow without limit when producers outpace consumers. In production, this leads to memory exhaustion. Bounded channels apply backpressure—producers wait when the channel is full, naturally throttling the system. This prevents OOM and makes resource usage predictable.
+`tokio::sync::mpsc::channel` has a fixed queue capacity. When that queue is full, `Sender::send(...).await` **asynchronously waits** for capacity instead of growing the queue. That is backpressure.
 
-## Bad
+`mpsc::unbounded_channel` has no channel-level backpressure. `UnboundedSender::send` is synchronous and messages may be buffered arbitrarily while the receiver falls behind. System memory is therefore the practical bound, and an overloaded producer can drive the process to OOM.
 
-<!-- rust-check: fragment; reason=anti-pattern fragment uses surrounding message handling context -->
+Neither API promises that sends always succeed: bounded and unbounded sends fail when the receive half has been closed or dropped.
+
+## Bad: Unbounded Backlog Without an External Bound
+
+<!-- rust-check: compile -->
 ```rust
 use tokio::sync::mpsc;
 
-// Unbounded channel - can grow forever
-let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+#[derive(Debug)]
+struct Message(Vec<u8>);
 
-// Fast producer, slow consumer = unbounded memory growth
-tokio::spawn(async move {
-    loop {
-        let msg = generate_message();
-        tx.send(msg).unwrap();  // Never blocks, never fails (until OOM)
-    }
-});
+fn enqueue_burst() {
+    let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
 
-tokio::spawn(async move {
-    while let Some(msg) = rx.recv().await {
-        slow_process(msg).await;  // Can't keep up
+    // There is no queue capacity here. In a long-running producer loop,
+    // `send` can keep allocating while the receiver falls behind.
+    for _ in 0..1_000 {
+        tx.send(Message(vec![0; 1024]))
+            .expect("receiver is still alive");
     }
-});
-// Memory grows unboundedly until crash
+
+    while let Ok(message) = rx.try_recv() {
+        let _ = message.0.len();
+    }
+}
 ```
 
-## Good
+The problem is not that an unbounded channel is always wrong. The problem is using one where producer rate or burst size is not otherwise bounded.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Good: Bounded Queue With Backpressure
+
+<!-- rust-check: compile -->
 ```rust
 use tokio::sync::mpsc;
 
-// Bounded channel - backpressure when full
-let (tx, mut rx) = mpsc::channel::<Message>(100);  // Max 100 items
+async fn bounded_pipeline() -> Result<(), mpsc::error::SendError<u64>> {
+    let (tx, mut rx) = mpsc::channel::<u64>(8);
 
-// Producer waits when channel full
-tokio::spawn(async move {
-    loop {
-        let msg = generate_message();
-        // Blocks if channel is full - natural backpressure
-        tx.send(msg).await.unwrap();
-    }
-});
+    tx.send(42).await?;
+    assert_eq!(rx.recv().await, Some(42));
 
-tokio::spawn(async move {
-    while let Some(msg) = rx.recv().await {
-        slow_process(msg).await;
-    }
-});
-// Memory usage capped at ~100 messages
+    Ok(())
+}
 ```
 
-## Choosing Buffer Size
+If all eight slots are occupied, a later `send(...).await` waits until the receiver removes an item or the channel closes. Waiting here suspends the task; it does not block the executor thread.
 
-```rust
-// Too small: frequent blocking, reduced throughput
-let (tx, rx) = mpsc::channel::<Item>(1);
+A bounded queue limits the number of values stored **inside that queue**. It does not place a byte-accurate cap on the whole application: individual messages may own large allocations, and producers may retain other data outside the channel.
 
-// Too large: delayed backpressure, memory waste
-let (tx, rx) = mpsc::channel::<Item>(1_000_000);
+## Choose Capacity From the Workload
 
-// Guidelines:
-// - Start with expected burst size
-// - Measure actual usage in production
-// - Err on the smaller side initially
+There is no universal correct capacity. Treat it as a resource and latency decision:
 
-// Small items, high throughput
-let (tx, rx) = mpsc::channel::<u64>(1000);
+- enough room for the burst you intentionally want to absorb,
+- small enough that overload becomes visible before memory and latency explode,
+- measured under representative producer/consumer rates,
+- revisited when message size or service time changes.
 
-// Large items, moderate throughput  
-let (tx, rx) = mpsc::channel::<LargeStruct>(100);
+A capacity of `1` is useful when you want almost-immediate backpressure. A large capacity can improve burst tolerance but also allows a larger stale backlog.
 
-// Low latency requirement
-let (tx, rx) = mpsc::channel::<Command>(10);
-```
+## Decide What Full Means
 
-## Handling Full Channel
+Waiting is only one overload policy. Tokio also supports immediate refusal and application-level deadlines.
 
+<!-- rust-check: compile -->
 ```rust
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Duration};
 
-let (tx, mut rx) = mpsc::channel::<Message>(100);
-
-// Option 1: Wait indefinitely (default)
-tx.send(msg).await?;
-
-// Option 2: Try send, fail if full
-match tx.try_send(msg) {
-    Ok(()) => println!("Sent"),
-    Err(TrySendError::Full(msg)) => {
-        println!("Channel full, dropping message");
-    }
-    Err(TrySendError::Closed(msg)) => {
-        println!("Receiver dropped");
+fn try_without_waiting(tx: &mpsc::Sender<String>, message: String) {
+    match tx.try_send(message) {
+        Ok(()) => {}
+        Err(mpsc::error::TrySendError::Full(message)) => {
+            // Drop, retry elsewhere, or return overload to the caller.
+            drop(message);
+        }
+        Err(mpsc::error::TrySendError::Closed(message)) => {
+            // The consumer is gone; the value is returned to us.
+            drop(message);
+        }
     }
 }
 
-// Option 3: Timeout
-match timeout(Duration::from_secs(1), tx.send(msg)).await {
-    Ok(Ok(())) => println!("Sent"),
-    Ok(Err(_)) => println!("Channel closed"),
-    Err(_) => println!("Timeout - channel full for too long"),
-}
-
-// Option 4: send with permit reservation
-let permit = tx.reserve().await?;
-permit.send(msg);  // Guaranteed to succeed
-```
-
-## Channel Types
-
-```rust
-// mpsc: many producers, single consumer
-let (tx, rx) = mpsc::channel::<Message>(100);
-let tx2 = tx.clone();  // Can clone sender
-
-// oneshot: single value, one producer, one consumer
-let (tx, rx) = oneshot::channel::<Response>();
-tx.send(response);  // Can only send once
-
-// broadcast: multiple consumers, each gets all messages
-let (tx, _) = broadcast::channel::<Event>(100);
-let mut rx1 = tx.subscribe();
-let mut rx2 = tx.subscribe();
-
-// watch: single latest value, multiple consumers
-let (tx, rx) = watch::channel::<State>(initial);
-// Receivers see latest value, not all values
-```
-
-## Worker Pool Pattern
-
-`tokio::sync::mpsc` is single-consumer — only one `Receiver` can exist. For a multi-worker work queue, give each worker its own channel and distribute work across them:
-
-```rust
-use tokio::task::JoinSet;
-
-async fn process_with_workers(items: Vec<Item>) {
-    let mut set = JoinSet::new();
-    let num_workers = 4;
-
-    // Spawn workers, each with a dedicated channel
-    let mut senders = Vec::new();
-    for _ in 0..num_workers {
-        let (tx, mut rx) = mpsc::channel::<Item>(10);
-        senders.push(tx);
-        set.spawn(async move {
-            while let Some(item) = rx.recv().await {
-                process(item).await;
-            }
-        });
+async fn send_with_deadline(
+    tx: &mpsc::Sender<String>,
+    message: String,
+) -> Result<(), &'static str> {
+    match timeout(Duration::from_millis(50), tx.send(message)).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(_closed)) => Err("receiver closed"),
+        Err(_elapsed) => Err("queue stayed full too long"),
     }
-
-    // Distribute items round-robin across workers
-    for (i, item) in items.into_iter().enumerate() {
-        let sender = &senders[i % num_workers];
-        sender.send(item).await.unwrap();
-    }
-
-    // Drop all senders to signal completion
-    drop(senders);
-
-    // Wait for all workers
-    while set.join_next().await.is_some() {}
 }
 ```
 
-> **Anti-pattern**: Never wrap an `mpsc::Receiver` in `Arc<Mutex<>>` to share among workers. `mpsc` channels are single-consumer — the `Receiver` is **not** `Clone`. For multiple consumers, use `broadcast` (each worker gets every message), or the per-worker channel pattern above.
+`try_send` is appropriate when overload is itself part of the API contract. A timeout is appropriate when waiting is acceptable only up to a deadline. Do not silently convert every full queue into message loss.
 
-## High-Contention Alternatives
+## Reserve Capacity Before Expensive Construction
 
-For workloads with extreme contention (hundreds of producers), `tokio::sync::mpsc` may become a bottleneck:
+When building a message is expensive, reserve queue capacity first.
 
+<!-- rust-check: compile -->
 ```rust
-// thingbuf::mpsc - high-contention MPSC with better scalability
-// than tokio::sync::mpsc under heavy load (hawkw/thingbuf)
-// use thingbuf::mpsc::channel;
+use tokio::sync::mpsc;
 
-// async-channel - multi-producer, multi-consumer with SPSC/MPMC trade-offs
-// use async_channel::bounded;
-
-// When to use what:
-// - tokio::sync::mpsc: Default choice, good up to ~50 producers
-// - thingbuf::mpsc: Hundreds of producers, high contention
-// - async_channel: Multiple consumers needed
+async fn build_after_capacity(tx: &mpsc::Sender<Vec<u8>>) {
+    if let Ok(permit) = tx.reserve().await {
+        let payload = vec![0_u8; 64 * 1024];
+        permit.send(payload);
+    }
+}
 ```
+
+A permit reserves one slot. Once acquired, `Permit::send` consumes that reservation; the capacity is no longer racing another sender.
+
+## One Receiver Means One Work-Queue Consumer
+
+Tokio `mpsc` supports many senders but one `Receiver`. The receiver is not cloneable. If several workers should each process a different job, common designs include:
+
+- one dispatcher that receives jobs and sends them to per-worker channels,
+- a dedicated owner task that performs the work itself,
+- a channel implementation whose semantics are explicitly multi-consumer.
+
+Do **not** replace a work queue with `broadcast`: broadcast makes every active subscriber eligible to receive every message, which is fan-out rather than load distribution.
+
+## Pick the Channel for the Delivery Semantics
+
+| Need | Tokio primitive |
+|---|---|
+| Many producers, one queued consumer | bounded `mpsc` |
+| One queued value / one response | `oneshot` |
+| Every subscriber sees each retained event | `broadcast` |
+| Receivers only need the newest state | `watch` |
+
+The queue type should follow the delivery contract first; performance tuning comes after that.
+
+## When Unbounded Can Be Reasonable
+
+An unbounded channel can be appropriate when the backlog is bounded somewhere else, for example:
+
+- the producer can emit only a small finite number of messages,
+- a synchronous callback must hand work into async code and another resource already caps outstanding work,
+- shutdown/control messages are inherently sparse.
+
+State that invariant. "It has been fine so far" is not a bound.
 
 ## See Also
 
-- [async-mpsc-queue](./async-mpsc-queue.md) - Multi-producer patterns
-- [async-oneshot-response](./async-oneshot-response.md) - Request-response pattern
-- [async-watch-latest](./async-watch-latest.md) - Latest-value broadcasting
+- [async-mpsc-queue](./async-mpsc-queue.md) - MPSC queue semantics and shutdown
+- [async-oneshot-response](./async-oneshot-response.md) - Single-response channels
+- [async-watch-latest](./async-watch-latest.md) - Latest-value state distribution

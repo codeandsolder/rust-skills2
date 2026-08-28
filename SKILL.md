@@ -173,20 +173,20 @@ Reference these guidelines when:
 ### 6. Async/Await (HIGH)
 
 - [`async-tokio-runtime`](rules/async-tokio-runtime.md) - Start with Tokio's default runtime configuration; choose runtime flavor and tuning from execution requirements and measurements
-- [`async-no-lock-await`](rules/async-no-lock-await.md) - Avoid holding blocking mutex guards across `.await`; keep async-lock critical sections small, but hold an async mutex across `.await` when the protected resource invariant genuinely requires it.
+- [`async-no-lock-await`](rules/async-no-lock-await.md) - Keep blocking lock guards out of awaited sections; use an async mutex when exclusive access itself must span `.await`.
 - [`async-spawn-blocking`](rules/async-spawn-blocking.md) - Use `spawn_blocking` for blocking synchronous work; bound CPU-heavy work or use a dedicated CPU pool such as Rayon
 - [`async-tokio-fs`](rules/async-tokio-fs.md) - Use `tokio::fs` for ordinary filesystem operations from async code; use dedicated async types for pipes/devices and other special files
 - [`async-cancellation-token`](rules/async-cancellation-token.md) - Use `CancellationToken` when tasks need explicit cooperative cancellation
 - [`async-join-parallel`](rules/async-join-parallel.md) - Use `join!` / `try_join!` for a fixed set of independent futures; they run concurrently on one task, not in parallel by themselves
 - [`async-try-join`](rules/async-try-join.md) - Use `try_join!` for a fixed set of fallible futures that should run concurrently and stop when one returns an error
 - [`async-select-racing`](rules/async-select-racing.md) - Use `tokio::select!` to wait on several async events, while reasoning explicitly about cancellation of the losing futures
-- [`async-bounded-channel`](rules/async-bounded-channel.md) - Use bounded channels to apply backpressure and prevent unbounded memory growth
+- [`async-bounded-channel`](rules/async-bounded-channel.md) - Prefer bounded channels when backlog growth must be constrained; use unbounded channels only when an external invariant bounds the backlog.
 - [`async-mpsc-queue`](rules/async-mpsc-queue.md) - Use `tokio::sync::mpsc` when an async task needs a single-consumer message queue with Tokio-aware waiting or backpressure
-- [`async-broadcast-pubsub`](rules/async-broadcast-pubsub.md) - Use `broadcast` channel for pub/sub where all subscribers receive all messages
+- [`async-broadcast-pubsub`](rules/async-broadcast-pubsub.md) - Use `tokio::sync::broadcast` for bounded fan-out where every active subscriber should observe each retained event.
 - [`async-watch-latest`](rules/async-watch-latest.md) - Use `watch` when receivers need the latest state, not a lossless history of every update
-- [`async-oneshot-response`](rules/async-oneshot-response.md) - Use `oneshot` channel for request-response patterns
+- [`async-oneshot-response`](rules/async-oneshot-response.md) - Use `tokio::sync::oneshot` when exactly one value should travel from one sender to one receiver, especially for actor-style request-response.
 - [`async-joinset-structured`](rules/async-joinset-structured.md) - Use `JoinSet` to track a dynamic collection of Tokio tasks when completion order and lifecycle control matter
-- [`async-clone-before-await`](rules/async-clone-before-await.md) - Clone Arc/Rc data before await points to avoid holding references across suspension
+- [`async-clone-before-await`](rules/async-clone-before-await.md) - Do not clone merely because an `.await` exists; clone or move ownership when a task/lifetime boundary actually requires ownership.
 - [`async-fn-in-trait`](rules/async-fn-in-trait.md) - Use native `async fn` in traits for static dispatch when its return-future bounds fit the API
 - [`async-async-fn-bounds`](rules/async-async-fn-bounds.md) - Use `AsyncFn`/`AsyncFnMut`/`AsyncFnOnce` bounds instead of `F: Fn() -> Fut, Fut: Future`
 - [`async-cancel-safety`](rules/async-cancel-safety.md) - Ensure futures used in `tokio::select!` branches are cancellation-safe
@@ -456,7 +456,7 @@ Reference these guidelines when:
 - [`anti-unwrap-abuse`](rules/anti-unwrap-abuse.md) - Avoid `unwrap()` for recoverable production errors; reserve panics for proven invariants and bugs
 - [`anti-expect-lazy`](rules/anti-expect-lazy.md) - Do not use `expect()` for ordinary runtime failures; use it to document deliberate panic invariants
 - [`anti-clone-excessive`](rules/anti-clone-excessive.md) - Do not clone merely to satisfy ownership when borrowing, moving, or deliberate sharing better matches the API
-- [`anti-lock-across-await`](rules/anti-lock-across-await.md) - Avoid holding blocking lock guards across `.await`; async mutex guards may cross `.await` when resource serialization requires it
+- [`anti-lock-across-await`](rules/anti-lock-across-await.md) - Do not hold blocking lock guards across `.await`; an async mutex may intentionally span `.await` when the protected resource must remain exclusively owned.
 - [`anti-string-for-str`](rules/anti-string-for-str.md) - Prefer `&str` over `&String` when the API only needs string contents
 - [`anti-vec-for-slice`](rules/anti-vec-for-slice.md) - Accept slices when an API only needs element access; accept `Vec` references when vector-specific capacity or length-changing operations are genuinely part of the contract
 - [`anti-index-over-iter`](rules/anti-index-over-iter.md) - Don't use indexing when iterators work

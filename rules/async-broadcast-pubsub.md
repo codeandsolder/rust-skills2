@@ -1,255 +1,160 @@
 # async-broadcast-pubsub
 
-> Use `broadcast` channel for pub/sub where all subscribers receive all messages
+> Use `tokio::sync::broadcast` for bounded fan-out where every active subscriber should observe each retained event.
 
 ## Why It Matters
 
-Unlike `mpsc` where one consumer receives each message, `broadcast` delivers each message to all subscribers. This is ideal for event broadcasting, real-time notifications, or when multiple components need to react to the same events independently.
+Tokio `broadcast` is a multi-producer, multi-consumer channel. Each sent value is made available to every active receiver. That is different from `mpsc`, where there is one receiving endpoint and each queued value is consumed once.
 
-## Bad
+Broadcast is also **bounded**. Slow receivers do not apply backpressure to senders. If a receiver falls farther behind than the retained history, old values are evicted and that receiver gets `RecvError::Lagged` telling it how many messages were skipped.
+
+## Bad: Treating MPSC as Pub/Sub
 
 <!-- rust-check: compile_fail; reason=tokio mpsc receivers are single-consumer and cannot be cloned -->
 ```rust
 use tokio::sync::mpsc;
 
-// mpsc has one receiving endpoint; it cannot be cloned into subscribers
-let (_tx, rx) = mpsc::channel::<i32>(100);
-
-// Error: Receiver<T> does not implement Clone
-let _rx2 = rx.clone();
+let (_tx, rx) = mpsc::channel::<i32>(16);
+let _second_subscriber = rx.clone();
 ```
 
-## Good
+If several consumers must each receive the same event, one `mpsc::Receiver` is the wrong delivery primitive.
 
-<!-- rust-check: fragment; reason=standalone fragment: unresolved context -->
+## Good: Independent Broadcast Subscribers
+
+<!-- rust-check: compile -->
 ```rust
 use tokio::sync::broadcast;
 
-// broadcast delivers to ALL subscribers
-let (tx, _) = broadcast::channel::<Event>(100);
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Event {
+    UserLogin(u64),
+}
 
-// Each subscriber gets ALL messages
-let mut rx1 = tx.subscribe();
-let mut rx2 = tx.subscribe();
+async fn fan_out_once() {
+    let (tx, mut audit_rx) = broadcast::channel::<Event>(16);
+    let mut metrics_rx = tx.subscribe();
 
-tokio::spawn(async move {
-    while let Ok(event) = rx1.recv().await {
-        handle_in_logger(event);
-    }
-});
+    tx.send(Event::UserLogin(42))
+        .expect("two receivers are active");
 
-tokio::spawn(async move {
-    while let Ok(event) = rx2.recv().await {
-        handle_in_metrics(event);
-    }
-});
-
-// Both subscribers receive this
-tx.send(Event::UserLogin { user_id: 42 })?;
+    assert_eq!(audit_rx.recv().await.unwrap(), Event::UserLogin(42));
+    assert_eq!(metrics_rx.recv().await.unwrap(), Event::UserLogin(42));
+}
 ```
 
-## Broadcast Semantics
+New subscribers only receive values sent **after** they subscribe. Broadcast is an event stream, not durable history.
 
+## Storage and Cloning Semantics
+
+Tokio stores each sent value **once** in the channel. A receiver gets a clone on demand when it receives that value. After every relevant receiver has consumed the value—or the value has been evicted from the bounded history—the channel can release it.
+
+That is why `broadcast::channel` requires `T: Clone`, but it is incorrect to describe `Sender::send` as eagerly cloning the message once per subscriber.
+
+For expensive-to-clone payloads, broadcast an `Arc<T>` so each receiver clones the pointer rather than the full payload.
+
+<!-- rust-check: compile -->
 ```rust
+use std::sync::Arc;
 use tokio::sync::broadcast;
 
-let (tx, mut rx1) = broadcast::channel::<i32>(16);
-let mut rx2 = tx.subscribe();
+#[derive(Debug)]
+struct Snapshot {
+    bytes: Vec<u8>,
+}
 
-tx.send(1)?;
-tx.send(2)?;
-
-// Both receive all messages
-assert_eq!(rx1.recv().await?, 1);
-assert_eq!(rx1.recv().await?, 2);
-assert_eq!(rx2.recv().await?, 1);
-assert_eq!(rx2.recv().await?, 2);
+fn snapshot_bus() -> broadcast::Sender<Arc<Snapshot>> {
+    let (tx, _rx) = broadcast::channel(32);
+    tx
+}
 ```
 
-## Handling Lagging Receivers
+## Handle Lag Explicitly
 
+A slow receiver can miss events. Treat that as part of the protocol rather than assuming infinite buffering.
+
+<!-- rust-check: compile -->
 ```rust
 use tokio::sync::broadcast::{self, error::RecvError};
 
-let (tx, mut rx) = broadcast::channel::<Event>(16);
-
-loop {
-    match rx.recv().await {
-        Ok(event) => {
-            process(event);
-        }
-        Err(RecvError::Lagged(count)) => {
-            // Receiver couldn't keep up, missed `count` messages
-            log::warn!("Missed {} events", count);
-            // Continue receiving new messages
-        }
-        Err(RecvError::Closed) => {
-            break;  // All senders dropped
+async fn consume(mut rx: broadcast::Receiver<u64>) {
+    loop {
+        match rx.recv().await {
+            Ok(value) => {
+                let _ = value;
+            }
+            Err(RecvError::Lagged(skipped)) => {
+                // Decide whether to resync state, record loss, or continue.
+                let _ = skipped;
+            }
+            Err(RecvError::Closed) => break,
         }
     }
 }
 ```
 
-## Event Bus Pattern
+After `Lagged(n)`, the receiver remains subscribed and its cursor advances to the oldest value still retained.
 
+If event loss is unacceptable, `broadcast` may be the wrong primitive; use durable storage, per-subscriber queues, acknowledgements, or another protocol that matches the reliability requirement.
+
+## Sending and Closing
+
+`Sender::send` succeeds when at least one receiver is active and returns the number of active receivers observed for that send. It fails only when there are no active receivers; the unsent value is returned in `SendError<T>`.
+
+Dropping all senders eventually causes receivers to return `RecvError::Closed` after retained messages have been drained.
+
+<!-- rust-check: compile -->
 ```rust
 use tokio::sync::broadcast;
 
-#[derive(Clone, Debug)]
-enum AppEvent {
-    UserLoggedIn { user_id: u64 },
-    OrderCreated { order_id: u64 },
-    SystemShutdown,
-}
-
-struct EventBus {
-    tx: broadcast::Sender<AppEvent>,
-}
-
-impl EventBus {
-    fn new() -> Self {
-        let (tx, _) = broadcast::channel(1000);
-        EventBus { tx }
-    }
-    
-    fn publish(&self, event: AppEvent) {
-        // Ignore error if no subscribers
-        let _ = self.tx.send(event);
-    }
-    
-    fn subscribe(&self) -> broadcast::Receiver<AppEvent> {
-        self.tx.subscribe()
-    }
-}
-
-// Usage
-let bus = EventBus::new();
-
-// Logger subscribes
-let mut log_rx = bus.subscribe();
-tokio::spawn(async move {
-    while let Ok(event) = log_rx.recv().await {
-        log::info!("Event: {:?}", event);
-    }
-});
-
-// Metrics subscribes
-let mut metrics_rx = bus.subscribe();
-tokio::spawn(async move {
-    while let Ok(event) = metrics_rx.recv().await {
-        record_metric(&event);
-    }
-});
-
-// Publish events
-bus.publish(AppEvent::UserLoggedIn { user_id: 42 });
-```
-
-## Broadcast vs Watch
-
-```rust
-// broadcast: subscribers get ALL messages
-// Good for: events, logs, notifications
-let (tx, _) = broadcast::channel::<Event>(100);
-
-// watch: subscribers get LATEST value only
-// Good for: config changes, state updates
-let (tx, _) = watch::channel(initial_state);
-
-// If subscriber is slow:
-// - broadcast: they receive old messages (or lag)
-// - watch: they skip to latest (no history)
-```
-
-## Clone Requirement
-
-```rust
-// broadcast requires Clone because message is cloned to each receiver
-use tokio::sync::broadcast;
-
-#[derive(Clone)]  // Required for broadcast
-struct Event {
-    data: String,
-}
-
-let (tx, _) = broadcast::channel::<Event>(100);
-
-// For non-Clone types, wrap in Arc
-use std::sync::Arc;
-
-let (tx, _) = broadcast::channel::<Arc<LargeNonClone>>(100);
-```
-
-## Scale Limits
-
-Tokio's `broadcast` channel has **quadratic degradation** beyond ~100 receivers ([tokio #5923](https://github.com/tokio-rs/tokio/issues/5923)). Each `send` clones the message to every active receiver, so subscriber count directly impacts throughput:
-
-```rust
-// BAD: One channel with 500 subscribers - quadratic write path
-let (tx, _) = broadcast::channel::<Event>(1024);
-
-// GOOD: Partition by topic into multiple channels
-// Each partition has fewer subscribers -> no quadratic hit
-let (user_tx, _) = broadcast::channel::<UserEvent>(64);
-let (order_tx, _) = broadcast::channel::<OrderEvent>(64);
-let (sys_tx, _) = broadcast::channel::<SystemEvent>(64);
-```
-
-## Topic Partitioning
-
-For high-subscriber scenarios, partition events by topic:
-
-```rust
-use std::collections::HashMap;
-
-struct PartitionedBus {
-    topics: HashMap<&'static str, broadcast::Sender<Event>>,
-}
-
-impl PartitionedBus {
-    fn new() -> Self {
-        Self { topics: HashMap::new() }
-    }
-    
-    fn add_topic(&mut self, name: &'static str, capacity: usize) {
-        let (tx, _) = broadcast::channel(capacity);
-        self.topics.insert(name, tx);
-    }
-    
-    fn publish(&self, topic: &str, event: Event) -> Result<(), Error> {
-        match self.topics.get(topic) {
-            Some(tx) => tx.send(event).map(|_| ()),
-            None => Ok(()),  // Unknown topic, drop
+fn publish_if_anyone_is_listening(tx: &broadcast::Sender<String>, text: String) {
+    match tx.send(text) {
+        Ok(receiver_count) => {
+            let _ = receiver_count;
+        }
+        Err(error) => {
+            let unsent = error.0;
+            drop(unsent);
         }
     }
-    
-    fn subscribe(&self, topic: &str) -> Option<broadcast::Receiver<Event>> {
-        self.topics.get(topic).map(|tx| tx.subscribe())
-    }
 }
-
-// Each topic channel has few subscribers -> O(n) per send with small n
 ```
 
-## Inspecting Channel State
+## Broadcast vs Watch vs MPSC
 
+| Primitive | Delivery semantics | Slow consumer behavior |
+|---|---|---|
+| `mpsc` | each queued value consumed once | bounded sender waits for capacity |
+| `broadcast` | each active subscriber gets each retained event | old events are evicted; receiver reports lag |
+| `watch` | receivers care about latest state | intermediate values may be skipped |
+
+Use `broadcast` for events where fan-out is required and bounded history / lag is an acceptable part of the contract.
+
+## Observing Channel State
+
+`Sender::receiver_count()` reports active receiver handles. `Sender::len()` reports values still queued because at least one relevant receiver has not consumed them (unless they were already evicted).
+
+<!-- rust-check: compile -->
 ```rust
-let (tx, _) = broadcast::channel::<Event>(100);
+use tokio::sync::broadcast;
 
-// Number of queued messages (stable since Tokio 1.x)
-let len = tx.len();
-
-// Number of active receivers
-let receivers = tx.receiver_count();
-
-// Monitor for backpressure
-if tx.len() > 80 {
-    warn!("Broadcast channel nearing capacity");
+fn inspect() {
+    let (tx, _rx) = broadcast::channel::<u64>(16);
+    let _active_receivers = tx.receiver_count();
+    let _queued_values = tx.len();
 }
 ```
+
+These are observations, not a backpressure mechanism. Broadcast senders do not wait for slow receivers. If `len()` is persistently high, investigate lag and the subscriber workload rather than inventing a universal percentage threshold.
+
+## Scaling
+
+Subscriber count, wakeups, and per-receiver cloning all have costs, but there is no useful universal cutoff such as “100 receivers.” Measure the actual event rate, payload cost, and receiver behavior.
+
+Partition by topic when that matches application semantics—not because of a magic subscriber count. If most subscribers only care about one class of event, separate channels can reduce irrelevant wakeups and clones.
 
 ## See Also
 
-- [async-mpsc-queue](./async-mpsc-queue.md) - Single-consumer channels
-- [async-watch-latest](./async-watch-latest.md) - Latest-value only
-- [async-bounded-channel](./async-bounded-channel.md) - Buffer sizing
+- [async-mpsc-queue](./async-mpsc-queue.md) - Single-consumer queued work
+- [async-watch-latest](./async-watch-latest.md) - Latest-value state distribution
+- [async-bounded-channel](./async-bounded-channel.md) - Backpressure and bounded MPSC queues
