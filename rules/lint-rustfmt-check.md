@@ -38,7 +38,32 @@ fmt:
     - cargo fmt --all --check
 ```
 
-### Pre-commit Hook
+## Mutating Formatters and Generators
+
+Prefer a tool's non-mutating check mode when it has one. If a formatter or source generator only has a mutating mode, a zero exit status proves only that the command ran successfully. CI must also prove that running the tool did not change the checked-in source contract.
+
+For tools that should only rewrite already tracked files, run the tool and then inspect the diff:
+
+```yaml
+- name: Check generated formatting
+  run: |
+    custom-formatter .
+    git diff --exit-code
+```
+
+This catches the false-green case where the formatter repairs bad input in the CI checkout and exits successfully, leaving CI green even though the committed source was stale.
+
+`git diff --exit-code` does not report newly-created untracked files. If the tool is also allowed to create files whose presence is part of the repository contract, check the complete worktree state instead:
+
+```bash
+custom-generator
+
+test -z "$(git status --porcelain --untracked-files=all)"
+```
+
+Scope the check to the files the tool owns when unrelated generated or runtime files are expected. The invariant is not "the command exited zero"; it is "running the canonical formatter/generator leaves the repository in the expected state."
+
+## Pre-commit Hook
 
 ```bash
 #!/bin/sh
