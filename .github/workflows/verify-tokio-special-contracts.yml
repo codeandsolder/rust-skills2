@@ -50,7 +50,7 @@ jobs:
           PY
       - name: Commit generated state
         run: |
-          if git diff --quiet; then
+          if [[ -z "$(git status --porcelain -- SKILL.md checks/fixtures/tokio-special/Cargo.lock)" ]]; then
             exit 0
           fi
           git config user.name 'github-actions[bot]'
