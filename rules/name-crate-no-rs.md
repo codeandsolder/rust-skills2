@@ -1,119 +1,75 @@
 # name-crate-no-rs
 
-> Don't suffix crate names with `-rs` or `-rust`
+> Avoid `-rs`, `-rust`, `rust-`, and similar language-only affixes in crate/package names
 
 ## Why It Matters
 
-Adding `-rs` or `-rust` to crate names is redundant—you're already on crates.io, it's obviously Rust. These suffixes waste characters, clutter the namespace, and can make crate names harder to type. The Rust community discourages this pattern.
+The Rust API Guidelines explicitly recommend against `-rs` and `-rust` as crate-name prefixes or suffixes: the implementation language is already implied by the ecosystem. Prefer a name that identifies the library, protocol, domain, binding target, or other distinguishing purpose.
 
-## Bad
+This is a naming guideline, not a registry rule. Cargo and crates.io can accept names containing `rust` or `rs`, and a real collision or cross-language repository family can justify disambiguation.
 
-```toml
-# Cargo.toml
-[package]
-name = "json-parser-rs"    # Redundant -rs
-name = "my-lib-rust"       # Redundant -rust
-name = "http-client-rs"    # We know it's Rust
-name = "rust-sqlite"       # rust- prefix equally bad
-```
-
-## Good
+## Prefer Descriptive Names
 
 ```toml
-# Cargo.toml
+# Avoid language-only suffixes/prefixes when they add no information.
 [package]
 name = "json-parser"
-name = "my-lib"
-name = "http-client"
-name = "sqlite-wrapper"
-
-# Real crate examples (no -rs):
-# serde (not serde-rs)
-# tokio (not tokio-rs)
-# reqwest (not reqwest-rs)
-# clap (not clap-rs)
 ```
 
-## When Context Is Needed
+Better distinguishing words describe what the package does:
 
 ```toml
-# If you're porting a library from another language:
-name = "python-ast"        # Describes what it's for, not what it's written in
-
-# If you're providing bindings:
-name = "openssl"           # The Rust crate IS the Rust interface
-
-# Platform-specific:
-name = "windows-sys"       # Platform, not language
-```
-
-## Repository Naming
-
-```
-# GitHub repos don't need -rs either
-github.com/user/my-library      # Good
-github.com/user/my-library-rs   # Unnecessary
-
-# Though some do for disambiguation from other language versions
-github.com/rust-lang/rust       # The rust repo itself uses "rust"
-```
-
-## Package Name vs Crate Name
-
-Package names in `Cargo.toml` use **kebab-case** (published on crates.io). Internally, hyphens are converted to underscores for the crate name in `use` statements.
-
-```toml
-# Cargo.toml (kebab-case on crates.io)
 [package]
-name = "my-crate"
+name = "sqlite-wrapper"
 ```
 
-```rust
-// In code: hyphens become underscores
-use my_crate::some_module;
+Standard ecosystem suffixes that convey meaning are different. For example, `-sys` conventionally identifies low-level native/FFI bindings such as `openssl-sys` or `libgit2-sys`.
+
+## Package Name vs Rust Crate Name
+
+Cargo package names and Rust crate identifiers are related but not identical. Cargo package names may contain `-`; Rust crate paths cannot. Unless an explicit target name overrides it, Cargo maps dashes to underscores for the library crate name.
+
+```text
+Cargo package:  json-parser
+Rust crate path: json_parser
+
+Cargo package:  http-client
+Rust crate path: http_client
 ```
 
-Since 2024, `cargo new` warns on non-snake_case package names (PR #12766):
+Both snake_case and kebab-case package names are accepted by Cargo. Current `cargo new`/`cargo init` recommend names that follow one of those styles; they do **not** warn merely because a valid package name contains dashes.
 
-```bash
-$ cargo new my-rust-project
-warning: the name `my-rust-project` is not snake_case
+For example, a mixed-case package name is what triggers the style warning:
+
+```text
+$ cargo new MyProject
+warning: the name `MyProject` is not snake_case or kebab-case ...
 ```
 
-## Exceptions
+That warning behavior dates to Cargo 1.75 (released in 2023), not to the 2024 edition.
 
-```toml
-# Rare cases where disambiguation matters:
-# - If there's a widely-known non-Rust project with the same name
-# - Official Rust project repositories (rust-lang org)
+## Repository Names Are Separate
 
-# But even then, consider alternatives:
-name = "fancy-lib"           # Instead of fancy-rs
-name = "better-json"         # Instead of json-rust
-name = "my-serde-impl"       # Instead of serde-rs-fork
+Repository names are not Rust crate identifiers. A repository may use an `-rs` suffix for practical disambiguation from sibling implementations, mirrors, or an existing project name even when the published Cargo package does not. Apply the guideline where it improves discoverability; do not turn it into a fake syntax rule.
 
-# The -sys suffix is a standard exception for FFI bindings
-name = "openssl-sys"         # OK: standard FFI naming
-name = "libgit2-sys"         # OK: standard FFI naming
-name = "zstd-sys"            # OK: standard FFI naming
-```
+## Decision Guide
 
-## Anti-Patterns
-
-```toml
-# Bad: redundant -rs/-rust suffix
-json-rs
-rust-http
-toml-rust
-
-# Good: descriptive name without language suffix
-json-hyper-codec
-http-client
-toml-edit
-```
+| Situation | Prefer |
+|---|---|
+| Ordinary Rust library | Descriptive package name without language affix |
+| Low-level native bindings | Conventional `-sys` name |
+| Wrapper for a named external project | Name that identifies the wrapped project/purpose |
+| Repository must distinguish several language implementations | Repository-specific suffix may be reasonable |
+| crates.io/package namespace collision | Choose a meaningful qualifier before falling back to language-only noise |
 
 ## See Also
 
 - [proj-workspace-deps](./proj-workspace-deps.md) - Cargo configuration
 - [doc-cargo-metadata](./doc-cargo-metadata.md) - Package metadata
-- [name-funcs-snake](./name-funcs-snake.md) - Naming conventions
+- [name-funcs-snake](./name-funcs-snake.md) - Rust item naming conventions
+
+## References
+
+- [Rust API Guidelines: naming](https://rust-lang.github.io/api-guidelines/naming.html)
+- [Cargo Book: manifest `package.name`](https://doc.rust-lang.org/cargo/reference/manifest.html#the-name-field)
+- [Rust Reference: external crate names](https://doc.rust-lang.org/reference/items/extern-crates.html)
