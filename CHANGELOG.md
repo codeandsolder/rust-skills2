@@ -25,9 +25,10 @@ semantic versioning for the rule set.
   for better navigation between related rules.
 - Hardened CI and integration-test guidance around mutating formatter/generator
   false-greens, canonical production contracts, stale-capability invalidation,
-  and application-level readiness versus transport/channel availability.
+  application-level readiness versus transport/channel availability, and
+  session-ID rotation at authentication or privilege boundaries.
 
-Now 324 rules across 26 categories.
+Now 325 rules across 26 categories.
 
 ## [1.5.1] (skipped in changelog; documented here retroactively)
 
