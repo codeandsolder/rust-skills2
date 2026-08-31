@@ -1,7 +1,7 @@
 ---
 name: rust-skills
 description: >
-  Comprehensive Rust coding guidelines with 324 rules across 26 categories.
+  Comprehensive Rust coding guidelines with 325 rules across 26 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
@@ -23,7 +23,7 @@ metadata:
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 324 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.98 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 325 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.98 (2024 edition).
 
 ## When to Apply
 
@@ -66,7 +66,7 @@ Reference these guidelines when:
 | 23 | Performance Patterns | MEDIUM | `perf-` | 18 |
 | 24 | Project Structure | LOW | `proj-` | 17 |
 | 25 | Clippy & Linting | LOW | `lint-` | 18 |
-| 26 | Anti-patterns | REFERENCE | `anti-` | 20 |
+| 26 | Anti-patterns | REFERENCE | `anti-` | 21 |
 
 ---
 
@@ -473,6 +473,7 @@ Reference these guidelines when:
 - [`anti-block-on-async`](rules/anti-block-on-async.md) - Don't call `block_on` from code that is already running asynchronously
 - [`anti-deref-overuse`](rules/anti-deref-overuse.md) - Implement `Deref` only when transparent target-like behavior is part of the type's intended API
 - [`anti-unsafe-send-sync`](rules/anti-unsafe-send-sync.md) - Never use `unsafe impl Send` or `unsafe impl Sync` merely to silence auto-trait errors; each impl is a safety contract that other unsafe code may rely on
+- [`anti-session-fixation`](rules/anti-session-fixation.md) - Rotate session IDs when authentication or privilege changes so a pre-authentication identifier cannot inherit elevated state.
 
 ---
 
