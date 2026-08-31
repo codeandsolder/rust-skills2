@@ -129,19 +129,39 @@ The goal is not maximal realism at every layer. It is to make the integration bo
 
 For logout, revocation, token rotation, session-ID rotation, permission removal, or similar invalidation behavior, do not stop after asserting that the invalidation operation returned success. Retain the exact old capability and try to use it again.
 
-A strong regression has this shape:
+For simple replacement semantics, a strong regression has this shape:
 
 ```text
 old = obtain_credential()
 assert usable(old)
 
-new = rotate_or_revoke(old)
-
+new = rotate(old)
+assert usable(new)
 assert not_usable(old)
-assert usable(new)       # when rotation returns a replacement
 ```
 
-This catches implementations that update bookkeeping or issue a replacement while accidentally leaving the stale credential authorized. Database flags and successful HTTP responses are useful intermediate observations, but the security-relevant contract is whether the old capability still works.
+The order matters when presenting the old credential has side effects. Some refresh-token rotation schemes treat use of an already-rotated token as a replay signal and revoke the entire active family. In that design, probing `old` first can intentionally kill `new`, so a later `assert usable(new)` cannot distinguish correct replay handling from a replacement that was never valid.
+
+Prove the replacement path before intentionally triggering replay. If every successful use rotates again, advance the chain once and then test the family-level consequence:
+
+```text
+original = obtain_credential()
+replacement = rotate(original)
+active_descendant = rotate(replacement)  # proves replacement was usable
+
+assert replay(original) is rejected
+assert not_usable(active_descendant)      # when replay revokes the family
+```
+
+For plain revocation with no replacement, keep the direct form:
+
+```text
+old = obtain_credential()
+revoke(old)
+assert not_usable(old)
+```
+
+These tests catch implementations that update bookkeeping, issue a replacement, or return a successful invalidation response while leaving the stale capability authorized. Database flags and successful HTTP responses are useful intermediate observations, but the security-relevant contract is what the capabilities can actually do after each transition.
 
 ## Shared Test Utilities
 
