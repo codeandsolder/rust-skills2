@@ -1,0 +1,33 @@
+name: Regenerate rule index
+
+on:
+  push:
+    branches:
+      - rules/web-fullstack-lessons
+    paths:
+      - rules/anti-session-fixation.md
+      - .github/workflows/regenerate-index.yml
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: rules/web-fullstack-lessons
+      - name: Regenerate indexes
+        run: python3 checks/gen_index.py
+      - name: Commit generated files
+        run: |
+          if git diff --quiet -- SKILL.md README.md; then
+            echo "Indexes already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SKILL.md README.md
+          git commit -m "Regenerate rule index"
+          git push
