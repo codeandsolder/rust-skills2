@@ -23,8 +23,12 @@ semantic versioning for the rule set.
 - Added cross-references from ~18 foundational rules to the newer categories
   (`conc-`, `conv-`, `num-`, `serde-`, `trait-`, `closure-`, `coll-`, `pat-`)
   for better navigation between related rules.
+- Hardened CI and integration-test guidance around mutating formatter/generator
+  false-greens, canonical production contracts, stale-capability invalidation,
+  application-level readiness versus transport/channel availability, and
+  session-ID rotation at authentication or privilege boundaries.
 
-Now 324 rules across 26 categories.
+Now 325 rules across 26 categories.
 
 ## [1.5.1] (skipped in changelog; documented here retroactively)
 

@@ -103,6 +103,40 @@ fn main() {}
 - `with_context(|| ...)` computes context only if the underlying operation fails.
 - Add information the source error does not already contain. Repeating the same message at every layer makes chains noisy rather than useful.
 
+## Error Propagation Is Not Rollback
+
+Application orchestration often crosses more than one durable system: a database plus a session store, object storage plus a queue, a local transaction plus an external API, and so on. Once an earlier step has committed a side effect, returning an error from a later step does **not** undo that side effect.
+
+For a multi-step operation, define the success invariant before choosing the error plumbing. Prefer, in order:
+
+1. one real transaction when all state lives in the same transactional system;
+2. delayed publication, so externally usable state is not exposed until prerequisite writes have succeeded;
+3. an explicit compensating action when a later failure must undo an earlier durable write;
+4. a durable workflow/outbox/saga when compensation itself must survive crashes or retries.
+
+A simple application-level pattern is:
+
+```text
+created = create_first_artifact()?
+
+if let Err(error) = persist_second_artifact() {
+    if let Err(cleanup_error) = remove_first_artifact(created) {
+        report_cleanup_failure(cleanup_error)
+    }
+    return Err(error).context("persist second artifact")
+}
+
+return_success()
+```
+
+The cleanup failure should not silently replace the original failure, but it must be observable: a failed compensation means the system may now contain orphaned or usable partial state.
+
+Do not claim atomicity merely because each individual call returns `Result`. If a framework defers persistence until middleware, drop, flush, commit, or another later lifecycle point, decide whether the operation needs to force that persistence while compensation is still possible.
+
+Also roll back or neutralize **pending in-memory state** that a later lifecycle layer can still persist. Returning `Err` does not freeze a request-local session, unit of work, buffered writer, or similar mutable object. For example, if a handler adds authenticated session state, an explicit store save fails, and outer middleware automatically saves every modified session after the handler returns, leaving the auth value in memory can let a transient middleware retry persist a login onto the 500 response. Clear the pending authenticated state before returning the error, in addition to compensating any durable credential already created.
+
+For security-sensitive issuance—sessions, API keys, refresh tokens, capability URLs—the useful invariant is often stronger than "the request returned an error": **if issuance fails, no credential created specifically for that failed issuance remains usable, and no deferred lifecycle step can publish the failed transition afterward**.
+
 ## Reporting the Chain
 
 ```rust
@@ -175,6 +209,8 @@ This is a useful default, not a law. An internal library can reasonably use `any
 - Prefer `with_context` when the message needs formatting or other nontrivial work.
 - Keep domain errors typed when callers need stable recovery semantics.
 - Do not turn every error into a string before wrapping it; preserving the original error keeps the source chain and downcasting information available.
+- When orchestration has already committed durable side effects, pair error propagation with a transaction, delayed publication, compensation, or a durable workflow appropriate to the failure model.
+- Before returning an error, neutralize pending mutable state that outer middleware or deferred lifecycle hooks could still persist.
 
 ## See Also
 

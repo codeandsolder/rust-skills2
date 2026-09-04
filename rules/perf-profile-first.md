@@ -126,6 +126,27 @@ A profile percentage is relative to the sampled run. If you optimize one functio
 
 Sampling also has noise and resolution limits. Very short functions may be attributed to callers, inlined into other frames, or too small to sample reliably. Use assembly/counters/microbenchmarks only when the question requires that level of detail.
 
+## Build and CI Cache Optimizations Need the Same Discipline
+
+Compiler and container caches are performance optimizations, so benchmark them like any other optimization. A cache being configured does not prove that a later runner can reuse it.
+
+Before adding a cache, write down two things:
+
+1. **Persistence boundary:** where do the bytes survive? A cache directory or BuildKit cache mount local to an ephemeral hosted runner disappears with that runner unless some backend explicitly exports it. A cache restored from object storage, a persistent self-hosted volume, or an exported BuildKit cache has a different lifetime.
+2. **Build identity:** which inputs must match for a hit to be valid? Depending on the layer, this can include compiler/toolchain identity, target triple, dependency graph or lockfile, features, profile, environment/configuration, and package/target selection.
+
+For staged Rust container builds, a dependency-cooking step and the real source build should select equivalent compilation work. For example, changing from a package-wide selection in one stage to only one binary target in another can prevent reuse even though both commands mention the same crate. Likewise, introducing a repository `rust-toolchain.toml` only after dependencies were cooked can silently change the compiler identity for the final build.
+
+Do not validate a cache only on the run that seeds it. Measure at least:
+
+- a cold run that establishes the cache,
+- a same-input warm run that proves restoration and reuse,
+- a representative source-only change that should retain dependency reuse.
+
+Inspect the compiler/build output or cache statistics, not just total wall time. Setup, archive/export, network transfer, image load, and runner bootstrap can dominate a warm build even when every compile layer hits.
+
+A useful cache can still be a net loss if restore/export overhead exceeds the work avoided. Keep cache complexity only when the measured end-to-end result justifies it.
+
 ## Preserve Reproducibility
 
 For benchmark comparisons, record enough context to make the result meaningful:
@@ -136,6 +157,8 @@ For benchmark comparisons, record enough context to make the result meaningful:
 - feature flags and concurrency,
 - benchmark/profiler command,
 - repeated samples where noise matters.
+
+For CI/build-cache comparisons, also record whether the run was cold, warm, or source-changing and which cache backend/scope was used.
 
 Do not treat one wall-clock number from a busy development machine as a universal performance fact.
 
@@ -153,6 +176,7 @@ For example, `#[inline(always)]` may improve a microbenchmark while increasing c
 | Does this small implementation change help? | focused benchmark |
 | Is allocation the problem? | allocation profile/counters |
 | Is waiting/queueing the problem? | tracing/latency/queue metrics |
+| Is a build cache actually reusable? | cold + warm + source-change runs, cache/compile logs |
 | Did the optimization help users? | end-to-end metric under representative load |
 | Did it create regressions? | predefined guardrails + tests |
 
