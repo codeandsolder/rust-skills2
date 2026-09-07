@@ -11,6 +11,7 @@ But “never use `format!` in a hot path” is too broad. If the API fundamental
 - can formatting target the real destination directly?
 - can an existing buffer be reused safely?
 - can a logging/diagnostic API accept formatting arguments without first building a string?
+- for decimal primitive integers on Rust 1.98+, can `NumBuffer` + `format_into` avoid the formatting machinery entirely?
 - does profiling show formatting allocation is material at all?
 
 ## Build Into One Existing String
@@ -71,6 +72,30 @@ fn main() {
 ```
 
 This works because callers consume each borrowed result before mutably reusing the formatter. If callers need to retain independent results, they need independent owned storage and this reuse contract no longer fits.
+
+## Rust 1.98+: Decimal Integers Can Format Into `NumBuffer`
+
+For primitive integer-to-decimal conversion, Rust 1.98 added `core::fmt::NumBuffer` and the integer `format_into` methods. The caller owns a fixed-size buffer large enough for any decimal value of that integer type, and formatting returns a `&str` borrowed from it:
+
+```rust
+use core::fmt::NumBuffer;
+
+fn main() {
+    let mut buf = NumBuffer::new();
+
+    assert_eq!(42u64.format_into(&mut buf), "42");
+    assert_eq!((-1972i64).format_into(&mut buf), "-1972");
+}
+```
+
+This avoids heap allocation and bypasses much of the dynamic formatting machinery used by `write!`. The Rust 1.98 release notes report performance comparable to the `itoa` crate, so a project whose MSRV is 1.98+ may no longer need a separate dependency solely for fast primitive decimal integer conversion.
+
+Keep the scope narrow:
+
+- `format_into` is for primitive integer decimal formatting, not arbitrary `Display` values or format strings.
+- the returned `&str` borrows the `NumBuffer`; reuse of the buffer invalidates the previous textual view.
+- if the final API needs an owned `String`, copying the result into one may erase much of the benefit.
+- for hex/binary/width/alignment/custom formatting, use the ordinary formatting traits/macros unless profiling justifies something more specialized.
 
 ## Write Directly to I/O
 
@@ -198,6 +223,7 @@ If formatting is hot enough to matter, benchmark representative operations and i
 
 - Use `format!` when a new owned formatted `String` is the desired result.
 - Use `write!`/`writeln!` when a destination buffer or I/O sink already exists.
+- On Rust 1.98+, consider `NumBuffer` + integer `format_into` for measured hot-path primitive decimal conversion.
 - Reuse buffers only when result lifetimes/ownership make reuse possible.
 - Implement `Display` for values with a natural textual representation so callers control allocation.
 - Treat `format_args!` as borrowed formatting arguments, not owned storage.
