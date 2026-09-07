@@ -11,9 +11,56 @@ Conditionally compiled APIs need two separate things:
 
 On current nightly rustdoc, the unstable `doc_cfg` feature also enables `#[doc(auto_cfg)]` at the crate level by default. Rustdoc can therefore derive availability badges from ordinary `#[cfg(...)]` attributes without manually duplicating the condition as `#[doc(cfg(...))]` on every item.
 
+Rust 1.95 also adds `cfg_select!`, a standard-library macro for choosing the first matching compile-time configuration branch. It fills much of the same role as the `cfg-if` crate and is useful when a single item/expression has mutually exclusive target implementations.
+
 `#[doc(cfg(...))]` remains useful when the condition that is best for readers should deliberately differ from the exact implementation `cfg`. It is documentation only: `#[cfg(...)]` is still what actually includes or excludes the item.
 
 Because `doc_cfg` is unstable on stable Rust 1.98, crates that use this behavior on docs.rs should isolate the feature gate to that nightly documentation build.
+
+## Rust 1.95+: Prefer `cfg_select!` for Mutually Exclusive Alternatives
+
+When the project's MSRV is 1.95+, `cfg_select!` can replace hand-written nested `#[cfg]` blocks or a dependency on `cfg-if` for straightforward compile-time selection:
+
+```rust
+fn platform_name() -> &'static str {
+    cfg_select! {
+        windows => "windows",
+        unix => "unix",
+        _ => "other",
+    }
+}
+
+fn main() {
+    println!("{}", platform_name());
+}
+```
+
+It can also select whole items:
+
+```rust
+cfg_select! {
+    target_os = "linux" => {
+        fn backend() -> &'static str { "epoll" }
+    }
+    target_os = "macos" => {
+        fn backend() -> &'static str { "kqueue" }
+    }
+    _ => {
+        fn backend() -> &'static str { "portable" }
+    }
+}
+```
+
+`cfg_select!` expands the right-hand side of the **first** arm whose predicate is true. Order therefore matters when predicates overlap. Put more specific alternatives before broader ones and keep a `_` fallback when unsupported targets should still compile.
+
+Do not mechanically replace ordinary `#[cfg]` attributes:
+
+- use `#[cfg]` when an item simply exists or does not exist;
+- use `cfg_select!` when exactly one of several compile-time alternatives should provide an item or expression;
+- use `cfg!` when you need a boolean constant but both branches still type-check/compile;
+- keep `cfg-if` when your MSRV predates 1.95 or its existing macro shape materially improves compatibility/readability across a codebase.
+
+The macro does not change public availability documentation by itself. Public target-specific items still need truthful `#[cfg]` boundaries and documentation treatment.
 
 ## Bad: Treating `doc(cfg)` as the Availability Gate
 
@@ -151,12 +198,14 @@ Do not make every normal stable build enable `doc_cfg`; keeping the unstable fea
 
 ## See Also
 
+- [proj-msrv-declare](./proj-msrv-declare.md) — choose an MSRV before depending on `cfg_select!`
 - [doc-cargo-metadata](./doc-cargo-metadata.md) — docs.rs metadata setup
 - [doc-module-inner](./doc-module-inner.md) — module-level documentation
 - [doc-include-str](./doc-include-str.md) — conditional documentation includes
 
 ## References
 
+- [Rust 1.95 release: `cfg_select!`](https://blog.rust-lang.org/2026/04/16/Rust-1.95.0/)
 - [Rustdoc unstable features: `doc(cfg)` and `doc(auto_cfg)`](https://doc.rust-lang.org/rustdoc/unstable-features.html#doccfg-and-docauto_cfg)
 - [Rust Unstable Book: `doc_cfg`](https://doc.rust-lang.org/beta/unstable-book/language-features/doc-cfg.html)
 - [docs.rs build environment](https://docs.rs/about/builds)

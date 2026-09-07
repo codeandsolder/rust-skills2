@@ -7,16 +7,27 @@ semantic versioning for the rule set.
 ## [2.0.0]
 
 ### Changed
-- **Modernized for Rust 1.96 (2024 edition).** Updated throughout for the
-  Rust 2024 edition and current stable (Rust 1.96): RPIT lifetime capture
-  rules, `unsafe extern` blocks, `#[unsafe(no_mangle)]`, `if let` chains
-  (1.88), `core::hint::cold_path` (1.95), `core::hint::select_unpredictable`
-  (1.88), `Atomic*::update` (1.95), `core::range::Range` (1.96),
-  `assert_matches!` (1.96), `From<T> for AssertUnwindSafe<T>` (1.96),
-  `<[T]>::array_windows` (1.94), `<[T]>::as_chunks` (1.88), trait object
-  upcasting (1.86), `#[diagnostic::do_not_recommend]` (1.85),
-  `cargo publish --workspace` (1.90), Tokio 1.52+ APIs, async-std
-  discontinued (March 2025).
+- **Modernized through Rust 1.98.1 (2024 edition).** Updated throughout for the
+  Rust 2024 edition and current patched stable toolchain. Coverage includes RPIT
+  lifetime capture rules, `unsafe extern` blocks, `#[unsafe(no_mangle)]`, let
+  chains and Rust 1.95 `if let` match guards, `cfg_select!` (1.95),
+  `core::hint::cold_path` (1.95), `core::hint::select_unpredictable` (1.88),
+  `Atomic*::update` (1.95), `core::range::Range` (1.96), `assert_matches!`
+  (1.96), `From<T> for AssertUnwindSafe<T>` (1.96), `<[T]>::array_windows`
+  (1.94), `<[T]>::as_chunks` (1.88), trait object upcasting (1.86),
+  `#[diagnostic::do_not_recommend]` (1.85), `cargo publish --workspace` (1.90),
+  Tokio 1.52+ APIs, and async-std's discontinuation (March 2025).
+- Added Rust 1.98 guidance for `core::fmt::NumBuffer` + primitive integer
+  `format_into` in measured hot paths, `f32`/`f64::algebraic_*` as an explicit
+  relaxed/reassociated arithmetic contract, and `str::substr_range` /
+  `[T]::subslice_range` for recovering source spans from borrowed views.
+- Added Rust 1.97 CI/lint guidance: prefer Cargo-native
+  `CARGO_BUILD_WARNINGS=deny` over injecting warning denial through `RUSTFLAGS`,
+  and treat `linker_messages` as its own platform-sensitive lint.
+- Expanded MSRV guidance to separate the compatibility floor from the normal
+  patched current-stable development/build toolchain, call out resolver 3 for
+  virtual Rust-2024 workspaces, and distinguish crate MSRV from the development
+  manifest/parser MSRV introduced by Cargo 1.94 TOML 1.1 syntax.
 - Depth pass: expanded `own-rc-single-thread` (breaking cycles with `Weak`, the
   `Rc::clone` idiom, `strong_count`/`weak_count`, `!Send`/`!Sync`) and
   `own-refcell-interior` (`Cell` for `Copy` types).

@@ -6,6 +6,8 @@
 
 Zero-copy means working with data without copying it. Instead of allocating new memory and copying bytes, you work with references to the original data. This dramatically reduces memory usage and improves performance, especially for large data. The `memchr` crate (2.8+) adds portable SIMD substring search on aarch64, x86_64, and wasm32.
 
+Rust 1.98 also makes a common zero-copy parser task easier: once an iterator or parser gives you a substring/subslice borrowed from the original input, `str::substr_range` and `[T]::subslice_range` recover the corresponding range in the original input without searching or hand-written pointer arithmetic.
+
 ## Bad
 
 ```rust
@@ -40,6 +42,54 @@ fn process_packet(buffer: &[u8]) -> (&[u8], &[u8]) {
     (header, body)
 }
 ```
+
+## Rust 1.98+: Recover Original Ranges From Borrowed Views
+
+When a substring or subslice was actually derived from a larger input, use the standard-library range APIs instead of searching for equal contents or subtracting raw pointers yourself:
+
+```rust
+use core::range::Range;
+
+fn fields(input: &str) -> Vec<Range<usize>> {
+    input
+        .split(',')
+        .map(|field| input.substr_range(field).expect("split result comes from input"))
+        .collect()
+}
+
+fn main() {
+    assert_eq!(
+        fields("ab,cd,ef"),
+        vec![
+            Range { start: 0, end: 2 },
+            Range { start: 3, end: 5 },
+            Range { start: 6, end: 8 },
+        ]
+    );
+}
+```
+
+The slice equivalent works the same way:
+
+```rust
+use core::range::Range;
+
+fn main() {
+    let data = &[0, 5, 10, 0, 20];
+    let middle = &data[1..3];
+    assert_eq!(data.subslice_range(middle), Some(Range { start: 1, end: 3 }));
+}
+```
+
+Important semantics:
+
+- these methods identify where a **borrowed view points inside the original allocation**; they do not search by contents;
+- use `str::find`, `memchr`, `windows().position(...)`, or a parser/search algorithm when you have an independent equal value rather than a view derived from the source;
+- `subslice_range` returns `None` if the view does not point within the source or is not element-aligned;
+- `[T]::subslice_range` panics for zero-sized element types because pointer position cannot identify an element range meaningfully;
+- the returned Rust 1.98 range is `core::range::Range<usize>`; convert to legacy `core::ops::Range` where an older API specifically requires that type.
+
+This is especially useful for tokenizers and parsers that want to keep borrowed token text while also recording source spans.
 
 ## Using bytes::Bytes
 
@@ -167,4 +217,5 @@ fn send_to_thread(data: &[u8]) {
 
 - [own-cow-conditional](own-cow-conditional.md) - Use Cow for conditional ownership
 - [own-borrow-over-clone](own-borrow-over-clone.md) - Prefer borrowing over cloning
+- [own-range-copy](own-range-copy.md) - Rust 1.96+ copyable range values and legacy interop
 - [mem-arena-allocator](mem-arena-allocator.md) - Arena allocators for batch operations

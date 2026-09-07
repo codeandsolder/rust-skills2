@@ -72,6 +72,18 @@ must_use_candidate = "allow"      # Too many suggestions
 | `too_many_lines` | Arbitrary threshold |
 | `struct_excessive_bools` | Valid for config structs |
 
+## Rust 1.98: Pedantic Lints Can Surface Proc-Macro Expansions
+
+Rust/Clippy 1.98 added `clippy::unused_async_trait_impl` to the pedantic group. In handwritten trait implementations, an `async fn` with no `.await` is worth reviewing: a synchronous method, an immediately-ready future, or a different trait shape may express the contract better.
+
+The diagnostic can also originate entirely in a third-party derive/proc macro. In that case the source crate may have no way to rewrite the generated trait method. Do not respond by disabling `clippy::pedantic` for the whole crate or workspace.
+
+Use the narrowest practical suppression around the source item that invokes the macro, document why the generated code is outside your control, and prefer `#[expect(...)]` over `#[allow(...)]` when the exception is expected to disappear after a dependency upgrade. An expectation becomes stale when the lint stops firing, which turns the workaround into something CI can tell you to remove.
+
+If the macro invocation lives in a large out-of-line module and attaching the expectation directly to the derived item is impractical, a module-scoped expectation is a reasonable fallback, but it is broader: review that scope carefully so it does not hide new handwritten occurrences of the same lint.
+
+The same principle applies to other new pedantic lints exposed by a compiler upgrade: first determine whether the warning points to code you own or generated code, then make the exception no broader than the actual incompatibility.
+
 ## Full Configuration
 
 ```toml
