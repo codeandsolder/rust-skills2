@@ -1,6 +1,6 @@
 # pat-if-let-chains
 
-> Use `if let` / `while let` chains to combine pattern bindings and conditions, and Rust 1.95+ `if let` guards inside `match` when an arm needs an additional fallible pattern check
+> Use `if let` / `while let` chains to combine pattern bindings and conditions
 
 ## Why It Matters
 
