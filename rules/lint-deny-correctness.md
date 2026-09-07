@@ -2,11 +2,19 @@
 
 **Rule**: `lint-deny-correctness`
 
-> Deny clippy::correctness and equivalent rustc lints
+> Deny correctness lints, and on Cargo 1.97+ prefer Cargo-native warning denial in CI over injecting `-D warnings` through `RUSTFLAGS`
 
 ## Why It Matters
 
-Correctness lints catch code that is outright wrong — logic errors, undefined behavior, or code that doesn't do what you think. These should always be errors, not warnings. Many clippy correctness lints are now being uplifted to the Rust compiler.
+Correctness lints catch code that is outright wrong — logic errors, undefined behavior, or code that doesn't do what you think. These should always be errors, not warnings. Many Clippy correctness lints are now being uplifted to the Rust compiler.
+
+CI also commonly wants to fail on ordinary compiler/build-script warnings. Before Cargo 1.97, projects often used `RUSTFLAGS=-Dwarnings`, which changes compiler flags and therefore build-cache identities. Cargo 1.97 added a native warning policy: `CARGO_BUILD_WARNINGS=deny` or the equivalent Cargo configuration can make warnings fail the build without perturbing the underlying rustc flags/cache key.
+
+These are related but distinct controls:
+
+- `[lints.rust]` / `[lints.clippy]` define source lint policy;
+- `CARGO_BUILD_WARNINGS=deny` controls whether rendered Cargo build warnings make the command fail;
+- `cargo clippy -- -D warnings` remains useful when you specifically want every rustc/Clippy lint emitted by that invocation promoted to error.
 
 ## Bad
 
@@ -14,6 +22,14 @@ Correctness lints catch code that is outright wrong — logic errors, undefined 
 # No explicit correctness lint configuration — relying on defaults
 [lints.clippy]
 # missing: correctness = "deny"
+```
+
+Also avoid making `RUSTFLAGS=-Dwarnings` the default CI mechanism purely to turn warnings into failures:
+
+```yaml
+# Avoid when Cargo 1.97+ is available: this changes rustc flags/cache identity.
+env:
+  RUSTFLAGS: -Dwarnings
 ```
 
 ## Good
@@ -37,6 +53,23 @@ suspicious  = { level = "deny", priority = -1 }
 style       = { level = "warn", priority = -1 }
 complexity  = { level = "warn", priority = -1 }
 perf        = { level = "warn", priority = -1 }
+```
+
+On Cargo 1.97+ CI jobs can make Cargo warnings fatal without altering `RUSTFLAGS`:
+
+```yaml
+env:
+  CARGO_BUILD_WARNINGS: deny
+
+steps:
+  - run: cargo check --locked --workspace --all-targets
+  - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+```
+
+For a local one-off command, the same policy can be applied only to that invocation:
+
+```bash
+CARGO_BUILD_WARNINGS=deny cargo check
 ```
 
 ## What It Catches
@@ -99,21 +132,38 @@ function_casts_as_integer      = "warn"
 uninhabited_static             = "deny"
 ```
 
+## Rust 1.97+: Linker Messages Are Their Own Lint
+
+Rust 1.97 stopped hiding successful-linker output by default. Linker diagnostics are emitted through the `linker_messages` rustc lint, which is `warn` by default.
+
+Do **not** assume `-D warnings` or Cargo's build-warning policy is a portable reason to blindly deny every linker message. `linker_messages` is deliberately special and is not part of the ordinary `warnings` lint group because linker output is platform/toolchain dependent and rustc does not control it as precisely as compiler diagnostics.
+
+If a specific supported linker emits known harmless chatter, allow the lint deliberately and document why:
+
+```toml
+[lints.rust]
+linker_messages = "allow"
+```
+
+Prefer fixing real linker warnings first. Do not globally suppress `linker_messages` just because a newly upgraded compiler exposed previously hidden output.
+
 ## Running Clippy
 
 ```bash
 # Basic check
 cargo clippy
 
-# With all warnings as errors
+# With all rustc/Clippy warnings from this invocation as errors
 cargo clippy -- -D warnings
 
 # Check specific lint category
 cargo clippy -- -W clippy::correctness
 
-# In CI (fail on warnings)
-cargo clippy -- -D warnings -D clippy::correctness
+# Cargo 1.97+: fail the build on Cargo-rendered warnings without RUSTFLAGS
+CARGO_BUILD_WARNINGS=deny cargo clippy -- -D warnings
 ```
+
+`CARGO_BUILD_WARNINGS=deny` can be paired with Cargo's `--keep-going` when a CI job wants to collect more failures before exiting rather than stopping at the first package warning/error.
 
 ## See Also
 
@@ -121,3 +171,4 @@ cargo clippy -- -D warnings -D clippy::correctness
 - [lint-warn-perf](lint-warn-perf.md) — Warn on performance issues
 - [lint-uplifted](lint-uplifted.md) — Tracking clippy lints uplifted to rustc
 - [lint-lints-table](lint-lints-table.md) — `[lints]` table configuration
+- [proj-msrv-declare](proj-msrv-declare.md) — separate compatibility-floor and current-stable CI lanes
