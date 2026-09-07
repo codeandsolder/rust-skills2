@@ -3,7 +3,7 @@
 #
 #     bash checks/check.sh
 #
-# Toolchain/target are pinned by checks/rust-toolchain.toml (Rust 1.98.0) and
+# Toolchain/target are pinned by checks/rust-toolchain.toml (Rust 1.98.1) and
 # x86_64-unknown-linux-gnu. `cargo check` type-checks without linking.
 set -euo pipefail
 
