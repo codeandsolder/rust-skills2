@@ -81,12 +81,15 @@ For primitive integer-to-decimal conversion, Rust 1.98 added `core::fmt::NumBuff
 use core::fmt::NumBuffer;
 
 fn main() {
-    let mut buf = NumBuffer::new();
+    let mut unsigned = NumBuffer::new();
+    assert_eq!(42u64.format_into(&mut unsigned), "42");
 
-    assert_eq!(42u64.format_into(&mut buf), "42");
-    assert_eq!((-1972i64).format_into(&mut buf), "-1972");
+    let mut signed = NumBuffer::new();
+    assert_eq!((-1972i64).format_into(&mut signed), "-1972");
 }
 ```
+
+`NumBuffer` is parameterized by the integer type through `format_into`, so use a buffer compatible with the integer type being formatted rather than reusing one buffer across unrelated integer types.
 
 This avoids heap allocation and bypasses much of the dynamic formatting machinery used by `write!`. The Rust 1.98 release notes report performance comparable to the `itoa` crate, so a project whose MSRV is 1.98+ may no longer need a separate dependency solely for fast primitive decimal integer conversion.
 
