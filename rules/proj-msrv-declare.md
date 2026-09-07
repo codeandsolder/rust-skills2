@@ -1,6 +1,6 @@
 # proj-msrv-declare
 
-> Declare `rust-version` as the compatibility contract, use resolver 3 for Rust-2024 dependency selection, test the MSRV explicitly, and keep the normal development/build toolchain on a patched current stable release
+> Declare `rust-version` (MSRV) in Cargo.toml and test it in CI
 
 ## Why It Matters
 
