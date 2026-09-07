@@ -1,6 +1,6 @@
 # num-float-compare
 
-> Be explicit about floating-point semantics: approximate comparison for numerical closeness, `total_cmp` for total ordering, and Rust 1.98 algebraic operations only when relaxed/reordered arithmetic is acceptable
+> Use approximate comparison when you mean numerical closeness; use exact equality for exact semantics and `total_cmp` for total ordering
 
 ## Why It Matters
 
