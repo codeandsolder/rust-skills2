@@ -1,6 +1,6 @@
 # mem-zero-copy
 
-> Use zero-copy patterns with slices and `Bytes`; on Rust 1.98+ use `substr_range` / `subslice_range` when you need the original indices of an already-borrowed view
+> Use zero-copy patterns with slices and `Bytes`
 
 ## Why It Matters
 
