@@ -1,6 +1,6 @@
 # doc-cfg-patterns
 
-> Use real `#[cfg(...)]` attributes for availability; use Rust 1.95+ `cfg_select!` for mutually exclusive compile-time alternatives, and let rustdoc derive availability badges when nightly `doc_cfg` is enabled
+> Use real `#[cfg(...)]` attributes for availability; when nightly rustdoc's `doc_cfg` is enabled, let `doc(auto_cfg)` surface those conditions and use `doc(cfg)` only when you need to override the displayed condition
 
 ## Why It Matters
 
