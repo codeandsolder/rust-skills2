@@ -1,0 +1,57 @@
+name: Stable Rust review queue
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  queue:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Queue review for current stable Rust
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="$({ curl -fsSL https://static.rust-lang.org/dist/channel-rust-stable.toml; } | python3 -c 'import sys, tomllib; print(tomllib.load(sys.stdin.buffer)["pkg"]["rust"]["version"].split()[0])')"
+          test -n "$VERSION"
+          echo "Current stable Rust: $VERSION"
+
+          gh label create "automation:rust-release" --repo "$REPO" --color "8250df" --description "Queued automatically when stable Rust changes" --force
+
+          marker="rust-stable-${VERSION}"
+          existing="$(gh issue list --repo "$REPO" --state all --limit 200 --search "${marker} in:body" --json number --jq '.[0].number // empty')"
+          if [[ -n "$existing" ]]; then
+            echo "Rust $VERSION review already exists as issue #$existing"
+            exit 0
+          fi
+
+          body="$(cat <<EOF
+          <!-- ${marker} -->
+          <!-- automation-queue:rust-release -->
+
+          Rust **${VERSION}** is now the stable toolchain.
+
+          Do a complete refresh of this repository against the new stable release rather than merely updating a version string:
+
+          - Read the official Rust ${VERSION} announcement and detailed release notes/changelog.
+          - Review relevant language, standard-library, rustc, Cargo, Clippy, rustfmt, target/platform, and tooling changes.
+          - Re-read `SKILL.md`, rules, checks, README/docs, examples, CI, and project conventions for stale guidance, obsolete workarounds, newly preferable idioms, or missing recommendations.
+          - Adopt useful newly-stable features and current best practices where they improve the guidance; remove workarounds the release makes unnecessary.
+          - Run the repository checks and fix fallout.
+          - If the release genuinely requires no repository changes, document what was reviewed and close this issue as a no-op.
+
+          This issue is generated automatically. A ChatGPT maintenance automation is expected to implement it.
+          EOF
+          )"
+
+          gh issue create --repo "$REPO" --title "Rust ${VERSION}: full best-practices refresh" --label "automation:rust-release" --body "$body"
