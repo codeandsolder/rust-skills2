@@ -17,6 +17,9 @@ python3 "$ROOT/checks/gen_index.py" --check
 echo "==> verifier metadata regression tests"
 python3 "$ROOT/checks/test_gen_metadata.py"
 
+echo "==> maintenance renderer regression tests"
+python3 "$ROOT/checks/test_maintenance_renderer.py"
+
 echo "==> generating example files from rules"
 cd "$ROOT/checks"
 python3 gen.py
