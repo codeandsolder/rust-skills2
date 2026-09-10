@@ -35,7 +35,8 @@ jobs:
             exit 0
           fi
 
-          body="$(cat <<EOF
+          export marker VERSION
+          body="$(python3 .github/scripts/render-maintenance-template.py <<'EOF'
           <!-- ${marker} -->
           <!-- automation-queue:rust-release -->
 
@@ -45,7 +46,7 @@ jobs:
 
           - Read the official Rust ${VERSION} announcement and detailed release notes/changelog.
           - Review relevant language, standard-library, rustc, Cargo, Clippy, rustfmt, target/platform, and tooling changes.
-          - Re-read \`SKILL.md\`, rules, checks, README/docs, examples, CI, and project conventions for stale guidance, obsolete workarounds, newly preferable idioms, or missing recommendations.
+          - Re-read `SKILL.md`, rules, checks, README/docs, examples, CI, and project conventions for stale guidance, obsolete workarounds, newly preferable idioms, or missing recommendations.
           - Adopt useful newly-stable features and current best practices where they improve the guidance; remove workarounds the release makes unnecessary.
           - Run the repository checks and fix fallout.
           - If the release genuinely requires no repository changes, document what was reviewed and close this issue as a no-op.
