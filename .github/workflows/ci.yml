@@ -27,3 +27,5 @@ jobs:
       # The exact same command contributors run locally.
       - name: Run checks
         run: bash checks/check.sh
+      - name: Validate packed skill
+        run: python scripts/package_skill.py

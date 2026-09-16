@@ -1,0 +1,73 @@
+name: Package skill
+
+on:
+  pull_request:
+    paths:
+      - SKILL.md
+      - LICENSE
+      - "rules/**"
+      - scripts/package_skill.py
+      - .github/workflows/skill-release.yml
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build packed skill
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - name: Build uploadable skill archives
+        run: python scripts/package_skill.py
+      - name: Upload packed skill artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-skills-package
+          path: |
+            dist/rust-skills.zip
+            dist/rust-skills.skill
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+  release:
+    name: Attach package to GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packed skill artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-skills-package
+          path: dist
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          assets=(
+            dist/rust-skills.zip
+            dist/rust-skills.skill
+            dist/SHA256SUMS
+          )
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --clobber
+          else
+            gh release create "$tag" "${assets[@]}" \
+              --verify-tag \
+              --generate-notes \
+              --title "$tag"
+          fi
