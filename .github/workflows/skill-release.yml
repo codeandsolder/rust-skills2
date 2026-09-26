@@ -28,7 +28,7 @@ jobs:
       - name: Build uploadable skill archives
         run: python scripts/package_skill.py
       - name: Upload packed skill artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: rust-skills-package
           path: |
@@ -46,7 +46,7 @@ jobs:
       contents: write
     steps:
       - name: Download packed skill artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: rust-skills-package
           path: dist
