@@ -46,7 +46,7 @@ jobs:
       contents: write
     steps:
       - name: Download packed skill artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: rust-skills-package
           path: dist
