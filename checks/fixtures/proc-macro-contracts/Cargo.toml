@@ -5,5 +5,5 @@ resolver = "3"
 [workspace.dependencies]
 proc-macro2 = "1"
 quote = "1"
-syn = { version = "2", features = ["derive"] }
+syn = { version = "3", features = ["derive"] }
 proc-macro-crate = "3"

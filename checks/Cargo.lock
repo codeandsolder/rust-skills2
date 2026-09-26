@@ -1165,7 +1165,7 @@ dependencies = [
  "smallvec",
  "smartstring",
  "static_assertions",
- "syn 2.0.117",
+ "syn 3.0.4",
  "tempfile",
  "thin-vec",
  "thiserror",
