@@ -72,10 +72,22 @@ They still fail CI. A narrow `#[expect(lint, reason = "...")]` is available
 only for a genuine nightly false positive, generated-code issue, or similarly
 unavoidable case.
 
-Outer `#[allow(...)]` attributes are denied by default. Handwritten code should use a narrow
-`#[expect(..., reason = "...")]` for suppressible groups. Generated code may explicitly suppress
-`clippy::allow_attributes` when broad allows are unavoidable; this cannot weaken the concrete
-lint categories passed as `forbid`.
+Handwritten source is checked before Clippy runs:
+
+- any source-level `#[allow(...)]` (including one nested in `cfg_attr`) is rejected;
+- an expectation may name one specific lint, but may not name a lint group;
+- expectations for lints that the current nightly places in Clippy's
+  `correctness`, `suspicious`, or `perf` groups are rejected;
+- expectations of `clippy::allow_attributes` and
+  `clippy::allow_attributes_without_reason` are rejected.
+
+The checker obtains group membership from `clippy-driver +nightly -W help` at
+runtime instead of maintaining a stale copied list. This closes the suppression
+gap left by keeping whole groups at `deny` for proc-macro compatibility.
+
+Generated code is not source-scanned. It may explicitly suppress style-only
+groups when the generator requires it; the concrete command-line `forbid`
+lints still cannot be lowered by generated `allow` or `expect` attributes.
 
 ## Why `.expect()` is forbidden
 
