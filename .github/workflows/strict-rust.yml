@@ -25,13 +25,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Install latest nightly Clippy
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy
+
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: rust-skills2-nightly-strict
+          cache-on-failure: true
 
       - name: rust-skills2 strict gate
         uses: $/.github/actions/rust-strict
         with:
           working-directory: ${{ inputs.working-directory }}
           cargo-args: ${{ inputs.cargo-args }}
+          install-toolchain: "false"
