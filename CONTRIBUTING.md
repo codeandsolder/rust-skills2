@@ -54,7 +54,7 @@ adding a rule, improving an existing one, or fixing an example.
    never hand-edit the generated table or Quick Reference:
 
    ```bash
-   python3 checks/gen_index.py
+   uv run --no-project python checks/gen_index.py
    ```
 
 5. **Add a `CHANGELOG.md` entry** under the next version.
@@ -64,15 +64,7 @@ adding a rule, improving an existing one, or fixing an example.
 Run the same checks CI runs:
 
 ```bash
-# structure, links, index parity, and that SKILL.md/README are up to date
-python3 checks/validate.py
-python3 checks/gen_index.py --check
-
-# compile-check the examples (Rust >= 1.95)
-cd checks
-python3 gen.py
-cargo check --examples --keep-going --message-format=json > check.json
-python3 analyze.py check.json --check-baseline baseline.txt
+bash checks/check.sh
 ```
 
 If the compile gate reports a real bug, fix the example. If you intentionally
