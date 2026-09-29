@@ -37,7 +37,7 @@ jobs:
           cache-on-failure: true
 
       - name: rust-skills2 strict gate
-        uses: $/.github/actions/rust-strict
+        uses: codeandsolder/rust-skills2/.github/actions/rust-strict@main
         with:
           working-directory: ${{ inputs.working-directory }}
           cargo-args: ${{ inputs.cargo-args }}
