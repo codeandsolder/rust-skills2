@@ -31,9 +31,11 @@ unwrap_used = "warn"
 # Root Cargo.toml
 [workspace.lints.rust]
 unsafe_code = "deny"
-unsafe_op_in_unsafe_fn = "deny"  # Edition 2024
+unsafe_op_in_unsafe_fn = "deny"
+unfulfilled_lint_expectations = "deny"
+unexpected_cfgs = "warn"
+rust_2024_compatibility = { level = "warn", priority = -1 }
 missing_docs = "warn"
-keyword_idents = "deny"          # Edition 2024
 
 [workspace.lints.clippy]
 # Correctness
@@ -75,11 +77,10 @@ unsafe_code = "deny"
 unsafe_op_in_unsafe_fn = "deny"       # Edition 2024
 missing_debug_implementations = "warn"
 
-# Edition 2024 lints
-keyword_idents = "deny"
-anonymous_lifetime_in_impl_trait = "deny"
-if_let_rescope = "warn"
-strict_module_headers = "warn"
+# Edition migration / configuration hygiene
+rust_2024_compatibility = { level = "warn", priority = -1 }
+unexpected_cfgs = "warn"
+unfulfilled_lint_expectations = "deny"
 
 # Quality
 unused_results = "warn"
@@ -206,12 +207,12 @@ missing_errors_doc = "allow"  # Override pedantic for this lint
 
 ```toml
 [workspace.lints.rust]
-# Edition 2024 lints — explicit, deny-by-default in Edition 2024
-unsafe_op_in_unsafe_fn          = "deny"
-keyword_idents                  = "deny"
-anonymous_lifetime_in_impl_trait = "deny"
-if_let_rescope                  = "warn"
-strict_module_headers           = "warn"
+# Use rustc's real compatibility group instead of hand-maintaining guessed
+# Edition lint names. Raise specific high-confidence rules separately.
+rust_2024_compatibility = { level = "warn", priority = -1 }
+unsafe_op_in_unsafe_fn = "deny"
+unexpected_cfgs = "warn"
+unfulfilled_lint_expectations = "deny"
 ```
 
 ## See Also
