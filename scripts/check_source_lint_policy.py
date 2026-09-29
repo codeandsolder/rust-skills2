@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Reject broad or high-risk lint suppressions in handwritten Rust source.
 
-The compiler is the primary policy mechanism. This checker covers the gap where
-whole Clippy groups cannot safely be `forbid` because proc macros legitimately
-inject internal lint allowances. It reads the *current nightly* group membership
+The compiler is the primary policy mechanism. This checker makes selected lints
+unsuppressible in handwritten source without using command-line `forbid`,
+because proc macros legitimately inject internal lint allowances. It reads the *current nightly* group membership
 from `clippy-driver -W help`, so the policy follows Clippy as lints move between
 categories.
 """
@@ -25,6 +25,18 @@ BLOCKED_CLIPPY_GROUPS = {
 BLOCKED_EXPECT_LINTS = {
     "clippy::allow_attributes",
     "clippy::allow_attributes_without_reason",
+    "clippy::await_holding_lock",
+    "clippy::dbg_macro",
+    "clippy::expect_used",
+    "clippy::missing_safety_doc",
+    "clippy::panic",
+    "clippy::todo",
+    "clippy::undocumented_unsafe_blocks",
+    "clippy::unimplemented",
+    "clippy::unwrap_used",
+    "unexpected_cfgs",
+    "unfulfilled_lint_expectations",
+    "unsafe_op_in_unsafe_fn",
 }
 IGNORED_DIRS = {
     ".git",
