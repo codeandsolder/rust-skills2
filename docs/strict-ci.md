@@ -45,7 +45,7 @@ early. It deliberately supplies its own strict `clippy.toml`, so a repository
 cannot weaken the shared gate with settings such as allowing `.unwrap()` or
 `.expect()` in tests or const evaluation.
 
-The policy pass clears both `RUSTC_WRAPPER` and `RUSTC_WORKSPACE_WRAPPER`. Clippy reads its configuration during
+The policy pass clears both `RUSTC_WRAPPER` and `RUSTC_WORKSPACE_WRAPPER`. The rust-skills2 example/fixture verifier does the same for all Cargo invocations. Clippy reads its configuration during
 compiler execution, so distributing clippy-driver to a worker that cannot see
 the action checkout can make the policy fail or diverge. The reusable gate
 therefore runs Clippy locally and relies on the normal target cache instead of
@@ -77,14 +77,20 @@ They still fail CI. A narrow `#[expect(lint, reason = "...")]` is available
 only for a genuine nightly false positive, generated-code issue, or similarly
 unavoidable case.
 
-Handwritten source is checked before Clippy runs:
+Handwritten source and compiler configuration are checked before Clippy runs:
 
-- any source-level `#[allow(...)]` (including one nested in `cfg_attr`) is rejected;
-- an expectation may name one specific lint, but may not name a lint group;
+- any source-level `#[allow(...)]` or `#[warn(...)]` (including one nested in
+  `cfg_attr`) is rejected, because either can lower a command-line `deny`;
+- an expectation must name exactly one specific lint and include
+  `reason = "..."`; it may not name a lint group;
 - expectations for lints that the current nightly places in Clippy's
   `correctness`, `suspicious`, or `perf` groups are rejected;
-- expectations of `clippy::allow_attributes` and
-  `clippy::allow_attributes_without_reason` are rejected.
+- expectations of the explicit non-negotiable error/safety lints and the
+  allow-policy lints are rejected;
+- effective Cargo rustflags plus every environment variable containing
+  `RUSTFLAGS` are rejected if they contain `--cap-lints` or
+  `--force-warn`, both of which can turn a command-line deny into a
+  non-failing warning.
 
 The checker obtains group membership from `clippy-driver +nightly -W help` at
 runtime instead of maintaining a stale copied list. This closes the suppression
