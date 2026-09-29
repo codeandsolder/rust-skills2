@@ -72,7 +72,11 @@ def check_compiler_flag_policy() -> list[str]:
     violations: list[str] = []
 
     for name, value in sorted(os.environ.items()):
-        if "RUSTFLAGS" not in name:
+        is_rustflags = (
+            name in {"RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_RUSTFLAGS"}
+            or (name.startswith("CARGO_TARGET_") and name.endswith("_RUSTFLAGS"))
+        )
+        if not is_rustflags:
             continue
         if "--cap-lints" in value or "--force-warn" in value:
             violations.append(
@@ -292,6 +296,12 @@ def lint_attributes(text: str) -> list[tuple[str, list[str], bool, int]]:
         close_bracket = matching(masked, open_bracket, "[", "]")
         if close_bracket is None:
             continue
+
+        body = masked[open_bracket + 1 : close_bracket]
+        head = re.match(r"\s*([A-Za-z_][A-Za-z0-9_-]*)\b", body)
+        if head is None or head.group(1) not in {"allow", "warn", "expect", "cfg_attr"}:
+            continue
+
         found.extend(meta_lints(text, masked, open_bracket + 1, close_bracket))
     return found
 
