@@ -135,7 +135,7 @@ expect_used = "deny"
 panic = "deny"
 ```
 
-In CI, rust-skills2 raises these concrete lints to `forbid`, so source-level `#[allow]` and `#[expect]` cannot lower them.
+In CI, rust-skills2 keeps these lints at `deny` so proc-macro-generated code can manage its internal lint levels, while the source-policy precheck rejects handwritten `#[allow]`, `#[warn]`, and expectations of these non-negotiable lints.
 
 Keep version trivia out of the rule: run current/pinned Clippy and let CI report the exact syntactic cases it recognizes.
 
