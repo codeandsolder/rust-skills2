@@ -72,8 +72,10 @@ They still fail CI. A narrow `#[expect(lint, reason = "...")]` is available
 only for a genuine nightly false positive, generated-code issue, or similarly
 unavoidable case.
 
-Outer `#[allow(...)]` attributes are forbidden by the gate. Use a narrow
-`#[expect(..., reason = "...")]` for the suppressible groups instead.
+Outer `#[allow(...)]` attributes are denied by default. Handwritten code should use a narrow
+`#[expect(..., reason = "...")]` for suppressible groups. Generated code may explicitly suppress
+`clippy::allow_attributes` when broad allows are unavoidable; this cannot weaken the concrete
+lint categories passed as `forbid`.
 
 ## Why `.expect()` is forbidden
 
