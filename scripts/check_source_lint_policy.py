@@ -23,6 +23,13 @@ BLOCKED_CLIPPY_GROUPS = {
     "clippy::suspicious",
     "clippy::perf",
 }
+ALLOWED_PERF_EXPECT_LINTS = {
+    # `large_enum_variant` is deliberately heuristic: boxing can regress hot
+    # variants through allocation and pointer chasing. The project rule requires
+    # measurement rather than mechanical boxing, so keep a narrow, reasoned
+    # expectation available while all other perf-group suppressions stay blocked.
+    "clippy::large_enum_variant",
+}
 BLOCKED_EXPECT_LINTS = {
     "clippy::allow_attributes",
     "clippy::allow_attributes_without_reason",
@@ -502,7 +509,7 @@ def main() -> int:
                         f"{location}: expectation of lint group {lint} is forbidden; "
                         "expect one specific suppressible lint instead"
                     )
-                elif lint in blocked_members:
+                elif lint in blocked_members and lint not in ALLOWED_PERF_EXPECT_LINTS:
                     owner = next(
                         group
                         for group in BLOCKED_CLIPPY_GROUPS

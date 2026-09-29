@@ -73,7 +73,8 @@ policy checker rejects `#[allow]` entirely and rejects `#[expect]` for:
 - rustc `unexpected_cfgs`, `unsafe_op_in_unsafe_fn`, and stale lint
   expectations;
 - every lint that the current nightly places in Clippy's `correctness`,
-  `suspicious`, or `perf` groups.
+  `suspicious`, or `perf` groups, except the deliberately heuristic
+  `large_enum_variant` lint when it is a single reasoned expectation.
 
 This keeps policy strict at handwritten source boundaries while remaining
 composable with proc-macro-generated implementation details.
@@ -90,7 +91,9 @@ Handwritten source and compiler configuration are checked before Clippy runs:
 - an expectation must name exactly one specific lint and include
   `reason = "..."`; it may not name a lint group;
 - expectations for lints that the current nightly places in Clippy's
-  `correctness`, `suspicious`, or `perf` groups are rejected;
+  `correctness`, `suspicious`, or `perf` groups are rejected, except
+  `clippy::large_enum_variant`, whose own project rule requires a measured
+  layout/allocation tradeoff rather than mechanical boxing;
 - expectations of the explicit non-negotiable error/safety lints and the
   allow-policy lints are rejected;
 - effective Cargo rustflags plus every environment variable containing
