@@ -19,16 +19,16 @@ permissions:
 
 jobs:
   strict-rust:
-    name: Nightly Clippy strict policy
+    name: Strict nightly Rust policy
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install latest nightly Clippy
+      - name: Install latest nightly Rust tools
         uses: dtolnay/rust-toolchain@nightly
         with:
-          components: clippy
+          components: clippy,rustfmt
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2

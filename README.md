@@ -23,7 +23,7 @@ That's it. The CLI figures out which agents you have and installs the skill to t
 
 ## Enforce it in CI
 
-For AI-maintained Rust, the repository also provides a strict nightly-Clippy
+For AI-maintained Rust, the repository also provides a strict nightly Rust
 gate. Import it as one GitHub Actions job:
 
 ```yaml
@@ -32,7 +32,7 @@ jobs:
     uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
 ```
 
-It runs the centrally maintained policy with warnings fatal, pedantic + nursery
+It runs `rustfmt --check` plus the centrally maintained Clippy policy with warnings fatal, pedantic + nursery
 enabled, and unsuppressible high-signal rules for unwrap/expect, explicit
 panic placeholders, unsafe documentation, lock-across-await, unexpected cfgs,
 and stale lint expectations. Checked-in generated Rust can opt into an exact-file
