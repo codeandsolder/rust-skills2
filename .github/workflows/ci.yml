@@ -29,7 +29,7 @@ jobs:
       - name: Run checks
         run: bash checks/check.sh
       - name: Validate packed skill
-        run: python scripts/package_skill.py
+        run: uv run --no-project python scripts/package_skill.py
 
   strict-gate-self-test:
     name: Strict reusable gate self-test
@@ -127,4 +127,47 @@ jobs:
             exit 1
           fi
           echo "strict gate correctly rejected #[allow(...)]"
+
+      - name: Handwritten warn must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-warn
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted #[warn(...)]" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected #[warn(...)]"
+
+      - name: Cargo cap-lints must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-cap-lints
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted Cargo --cap-lints" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected Cargo --cap-lints"
+
+      - name: Environment force-warn must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-pass
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+          RUSTFLAGS: "--force-warn clippy::unwrap_used"
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted environment --force-warn" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected environment --force-warn"
 
