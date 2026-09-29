@@ -156,6 +156,61 @@ def has_generated_marker(path: Path) -> bool:
     )
 
 
+def is_generated_include_wrapper(path: Path) -> bool:
+    """Accept a lint-scope wrapper only when it contains generated Rust includes and no items."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return False
+
+    literal_includes = re.findall(r'include!\s*\(\s*"([^"]+)"\s*\)\s*;', text)
+    if not literal_includes:
+        return False
+
+    for relative in literal_includes:
+        included = (path.parent / relative).resolve()
+        if not included.is_file() or not has_generated_marker(included):
+            return False
+
+    masked = mask_noncode(text)
+    chars = list(masked)
+
+    # Blank every outer/inner Rust attribute, including multiline #[expect(...)] blocks.
+    index = 0
+    while index < len(chars):
+        if chars[index] != "#":
+            index += 1
+            continue
+        bracket = index + 1
+        if bracket < len(chars) and chars[bracket] == "!":
+            bracket += 1
+        if bracket >= len(chars) or chars[bracket] != "[":
+            index += 1
+            continue
+
+        depth = 0
+        end = bracket
+        while end < len(chars):
+            if chars[end] == "[":
+                depth += 1
+            elif chars[end] == "]":
+                depth -= 1
+                if depth == 0:
+                    end += 1
+                    break
+            end += 1
+        if depth != 0:
+            return False
+        for pos in range(index, end):
+            if chars[pos] != "\n":
+                chars[pos] = " "
+        index = end
+
+    body = "".join(chars)
+    body = re.sub(r"include!\s*\([^;]+\)\s*;", "", body, flags=re.DOTALL)
+    return body.strip() == ""
+
+
 def workspace_packages() -> list[dict[str, object]]:
     metadata = json.loads(
         run_text(["cargo", "+nightly", "metadata", "--no-deps", "--format-version", "1"])
@@ -230,10 +285,11 @@ def generated_lint_boundaries(packages: list[dict[str, object]]) -> set[Path]:
                     f"target entrypoint: {relative}"
                 )
                 continue
-            if not has_generated_marker(candidate):
+            if not has_generated_marker(candidate) and not is_generated_include_wrapper(candidate):
                 violations.append(
-                    f"{root / 'Cargo.toml'}: generated lint boundary lacks a generated-file "
-                    f"marker near the top: {relative}"
+                    f"{root / 'Cargo.toml'}: generated lint boundary must either identify "
+                    f"generated provenance near the top or be a pure include! wrapper around "
+                    f"marked generated Rust: {relative}"
                 )
                 continue
             boundaries.add(candidate)

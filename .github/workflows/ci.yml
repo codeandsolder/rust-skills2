@@ -68,6 +68,12 @@ jobs:
           fi
           echo "strict gate correctly rejected an escaping generated lint boundary"
 
+      - name: Pure generated include wrapper may own generated-code lint scope
+        uses: ./.github/actions/rust-strict
+        with:
+          working-directory: checks/fixtures/strict-ci-generated-wrapper
+          cargo-args: "--locked --all-targets"
+
       - name: Generated lint boundary requires generated marker
         shell: bash
         env:
