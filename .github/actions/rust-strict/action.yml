@@ -24,12 +24,19 @@ runs:
       with:
         components: clippy
 
+    - name: Install uv
+      uses: astral-sh/setup-uv@v10.2.0
+      with:
+        version: latest-known
+        enable-cache: false
+
     - name: Show nightly toolchain
       shell: bash
       run: |
         rustc +nightly --version
         cargo +nightly --version
         cargo +nightly clippy --version
+        uv --version
 
     - name: Run rust-skills2 strict policy
       shell: bash
