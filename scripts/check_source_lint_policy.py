@@ -208,8 +208,7 @@ def matching(text: str, start: int, opening: str, closing: str) -> int | None:
     return None
 
 
-def meta_lints(original: str, masked: str, start: int, end: int) -> list[tuple[str, list[str], int]]:
-    calls: list[tuple[str, list[str], int]] = []
+def meta_lints(\n    original: str, masked: str, start: int, end: int\n) -> list[tuple[str, list[str], bool, int]]:\n    calls: list[tuple[str, list[str], bool, int]] = []
     body = masked[start:end]
     for match in re.finditer(r"\b(allow|expect)\s*\(", body):
         kind = match.group(1)
@@ -220,15 +219,13 @@ def meta_lints(original: str, masked: str, start: int, end: int) -> list[tuple[s
 
         lint_body_masked = masked[open_paren + 1 : close_paren]
         lint_body_original = original[open_paren + 1 : close_paren]
-        lints: list[str] = []
-        offset = 0
+        lints: list[str] = []\n        has_reason = False\n        offset = 0
         for masked_item in lint_body_masked.split(","):
             item_len = len(masked_item)
             original_item = lint_body_original[offset : offset + item_len]
             offset += item_len + 1
 
-            if re.match(r"^\s*reason\s*=", masked_item):
-                continue
+            if re.match(r"^\\s*reason\\s*=", masked_item):\n                has_reason = True\n                continue
             path = re.match(
                 r"^\s*([A-Za-z_][A-Za-z0-9_-]*(?:::[A-Za-z_][A-Za-z0-9_-]*)*)\s*$",
                 masked_item,
@@ -236,13 +233,11 @@ def meta_lints(original: str, masked: str, start: int, end: int) -> list[tuple[s
             if path is not None:
                 lints.append(normalize_lint(path.group(1)))
 
-        calls.append((kind, lints, start + match.start()))
+        calls.append((kind, lints, has_reason, start + match.start()))
     return calls
 
 
-def lint_attributes(text: str) -> list[tuple[str, list[str], int]]:
-    masked = mask_noncode(text)
-    found: list[tuple[str, list[str], int]] = []
+def lint_attributes(text: str) -> list[tuple[str, list[str], bool, int]]:\n    masked = mask_noncode(text)\n    found: list[tuple[str, list[str], bool, int]] = []
     for match in re.finditer(r"#\s*!?\s*\[", masked):
         open_bracket = masked.find("[", match.start(), match.end())
         close_bracket = matching(masked, open_bracket, "[", "]")
@@ -267,7 +262,7 @@ def main() -> int:
             violations.append(f"{path}: non-UTF-8 Rust source cannot be policy-checked")
             continue
 
-        for kind, lints, offset in lint_attributes(text):
+        for kind, lints, has_reason, offset in lint_attributes(text):
             line = text.count("\n", 0, offset) + 1
             location = f"{path}:{line}"
 
@@ -278,8 +273,7 @@ def main() -> int:
                 )
                 continue
 
-            expectation_count += 1
-            for lint in lints:
+            expectation_count += 1\n            if len(lints) != 1:\n                violations.append(\n                    f"{location}: #[expect] must name exactly one lint; found {len(lints)}"\n                )\n            if not has_reason:\n                violations.append(\n                    f"{location}: #[expect] must include reason = \\"...\\""\n                )\n\n            for lint in lints:
                 if lint in group_names:
                     violations.append(
                         f"{location}: expectation of lint group {lint} is forbidden; "
