@@ -6,7 +6,7 @@
 
 Rust's `expect` lint level records that a specific lint is supposed to fire. When the lint no longer fires, `unfulfilled_lint_expectations` reports the stale suppression.
 
-That makes `#[expect]` useful for narrow exceptions to noisy or context-dependent lints. It is not a general escape hatch: high-signal correctness/safety policy should be enforced with `forbid`, and broad lint-group expectations hide too much.
+That makes `#[expect]` useful for narrow exceptions to noisy or context-dependent lints. It is not a general escape hatch: the strict gate rejects expectations for high-signal correctness/safety policy, and broad lint-group expectations hide too much. Compiler lint levels remain `deny` so proc-macro-generated code can use its own internal lint attributes.
 
 This rule concerns the **lint attribute** `#[expect(...)]`, not the panic-producing `Result::expect`/`Option::expect` methods.
 
@@ -46,7 +46,7 @@ If the function stops triggering `too_many_lines`, `unfulfilled_lint_expectation
 unfulfilled_lint_expectations = "deny"
 ```
 
-The rust-skills2 strict gate raises this to `forbid`, so a nested lint attribute cannot suppress stale-expectation checking.
+The rust-skills2 strict gate rejects handwritten attempts to lower or expect this lint, so stale-expectation checking remains mandatory without breaking proc-macro-generated code.
 
 ## Do Not Expect Whole Groups
 
@@ -66,7 +66,7 @@ The reusable strict gate rejects group-level expectations in handwritten source.
 
 Correctness, suspicious, and performance diagnostics should be fixed rather than locally waived during normal AI development. The reusable gate discovers current group membership from nightly Clippy and rejects handwritten expectations for members of those categories.
 
-Concrete non-negotiable lints such as `unwrap_used`, `expect_used`, explicit `panic`, undocumented unsafe blocks, and lock guards held across `await` are command-line `forbid` lints, so an expectation cannot lower them at all.
+Concrete non-negotiable lints such as `unwrap_used`, `expect_used`, explicit `panic`, undocumented unsafe blocks, and lock guards held across `await` are deny-level in Clippy and explicitly blocked from handwritten `#[expect]` by the source-policy precheck.
 
 ## Generated Code Is the Main `allow` Exception
 
@@ -106,7 +106,7 @@ When replacing a handwritten `allow`:
 - Never expect correctness/suspicious/perf policy lints.
 - Keep `#[expect]` narrow and reasoned for the remaining suppressible lints.
 - Reserve `#[allow]` for generated code that cannot use fulfillment semantics.
-- Use `forbid` for rules that must not be locally waived.
+- For rules that must not be locally waived, keep compiler lint levels at `deny` and let the strict source-policy precheck reject handwritten lowering/suppression attributes.
 
 ## See Also
 
