@@ -108,7 +108,7 @@ fn run_worker() -> thread::Result<u32> {
 }
 
 fn main() {
-    assert_eq!(run_worker(), Ok(42));
+    assert!(matches!(run_worker(), Ok(42)));
 }
 ```
 
