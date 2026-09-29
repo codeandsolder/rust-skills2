@@ -29,6 +29,9 @@ if [[ ! -f Cargo.toml ]]; then
     exit 2
 fi
 
+echo "rust-skills2: cargo +nightly fmt --all --check"
+cargo +nightly fmt --all --check
+
 SOURCE_POLICY_SCRIPT="$ACTION_DIR/../../../scripts/check_source_lint_policy.py"
 if [[ ! -f "$SOURCE_POLICY_SCRIPT" ]]; then
     echo "rust-skills2: source policy checker missing at $SOURCE_POLICY_SCRIPT" >&2
