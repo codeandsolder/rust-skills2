@@ -288,7 +288,7 @@ PRs welcome. To add or change a rule:
 1. Create `rules/<prefix>-<name>.md` using a `kebab-case` id with an existing category prefix (`own-`, `err-`, `mem-`, …).
 2. Follow the format of existing rules: a `>` one-line summary, then `## Why It Matters`, `## Bad`, `## Good`, and `## See Also` (with links that resolve).
 3. Make sure code examples compile on current stable Rust, or explicitly mark/document examples that are intentionally fragments, compile-fail cases, or require nightly.
-4. Run `python3 checks/gen_index.py` after changing rule summaries so `SKILL.md` stays in sync.
+4. Run `uv run --no-project python checks/gen_index.py` after changing rule summaries so `SKILL.md` stays in sync.
 
 ````markdown
 # prefix-rule-name

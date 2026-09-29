@@ -88,17 +88,17 @@ To inspect current state:
 
 ```bash
 cd checks
-python3 gen.py
+uv run --no-project python gen.py
 cargo check --examples --target x86_64-unknown-linux-gnu --keep-going \
   --message-format=json > check.json 2> check.err || true
-python3 analyze.py check.json
+uv run --no-project python analyze.py check.json
 ```
 
 Migration helpers (review their output before committing it):
 
 ```bash
-python3 analyze.py check.json --emit-baseline > baseline.generated.txt
-python3 analyze.py check.json --emit-good-exceptions > good-exceptions.generated.txt
+uv run --no-project python analyze.py check.json --emit-baseline > baseline.generated.txt
+uv run --no-project python analyze.py check.json --emit-good-exceptions > good-exceptions.generated.txt
 ```
 
 Do **not** regenerate either debt file merely to make CI green. Fix real example
@@ -108,7 +108,7 @@ stale legacy debt; the generated diff should be treated as code-review material.
 
 ## Notes
 
-- The harness is pinned by `checks/rust-toolchain.toml` to Rust 1.98.0.
+- The harness is pinned by `checks/rust-toolchain.toml` to Rust 1.98.1.
 - Generated `examples/`, `check.json`, `check.err`, and `manifest.json` are ignored.
 - `gen.py` still auto-skips legacy `Bad`, placeholder, proc-macro, ellipsis, and
   nightly snippets outside `Good`; new/edited rules should prefer explicit metadata.

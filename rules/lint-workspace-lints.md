@@ -64,7 +64,8 @@ workspace = true
 
 # Cargo issue #13157 prevents manifest-level per-crate overrides when
 # workspace = true is set. Prefer narrow code-level #[expect(..., reason = "...")]
-# for genuinely suppressible lints; non-negotiable CI lints should be forbid.
+# for genuinely suppressible lints. Non-negotiable CI lints need a source-policy precheck;
+# command-line `forbid` is not proc-macro-safe because generated code may emit internal allows.
 ```
 
 ## Recommended Lint Configuration
@@ -153,9 +154,10 @@ fn generated_dispatch(/* ... */) {
 
 For non-negotiable lints such as `unwrap_used`, `expect_used`, explicit
 `panic!`, undocumented unsafe blocks, or lock guards held across `await`,
-fix the code instead of adding an expectation. The reusable strict gate passes
-these categories as `forbid`, so source-level `#[allow]` and `#[expect]`
-cannot lower them.
+fix the code instead of adding an expectation. The reusable strict gate keeps
+these lints at `deny` for proc-macro compatibility, then rejects handwritten
+`#[allow]`, `#[warn]`, and expectations of these non-negotiable lints in a
+source-policy precheck.
 
 ## CI Integration
 

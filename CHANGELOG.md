@@ -6,6 +6,11 @@ semantic versioning for the rule set.
 
 ## [2.0.0]
 
+### Added
+- Added the reusable strict nightly-Clippy CI gate and source-policy preflight.
+  The gate keeps lint levels at `deny` for proc-macro compatibility while
+  rejecting handwritten lint-level downgrades and non-negotiable expectations.
+
 ### Changed
 - **Modernized through Rust 1.98.1 (2024 edition).** Updated throughout for the
   Rust 2024 edition and current patched stable toolchain. Coverage includes RPIT
