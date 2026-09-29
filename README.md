@@ -35,8 +35,10 @@ jobs:
 It runs the centrally maintained policy with warnings fatal, pedantic + nursery
 enabled, and unsuppressible high-signal rules for unwrap/expect, explicit
 panic placeholders, unsafe documentation, lock-across-await, unexpected cfgs,
-and stale lint expectations. See [docs/strict-ci.md](./docs/strict-ci.md) for
-the policy and customization points.
+and stale lint expectations. Checked-in generated Rust can opt into an exact-file
+lint boundary via package metadata; the generated file still runs through strict
+Clippy. See [docs/strict-ci.md](./docs/strict-ci.md) for the policy and
+customization points.
 
 ## How to use it
 

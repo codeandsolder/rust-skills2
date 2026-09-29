@@ -1,0 +1,10 @@
+[package]
+name = "strict-ci-blocked-generated-boundary"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata.rust-skills2]
+generated-lint-boundaries = ["../strict-ci-blocked-expect/src/lib.rs"]
+
+[workspace]

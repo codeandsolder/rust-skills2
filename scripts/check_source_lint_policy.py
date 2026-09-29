@@ -140,17 +140,77 @@ def clippy_groups() -> tuple[set[str], dict[str, set[str]]]:
     return set(groups), groups
 
 
-def workspace_package_roots() -> list[Path]:
+def workspace_packages() -> list[dict[str, object]]:
     metadata = json.loads(
         run_text(["cargo", "+nightly", "metadata", "--no-deps", "--format-version", "1"])
     )
     members = set(metadata["workspace_members"])
-    roots = {
-        Path(package["manifest_path"]).resolve().parent
-        for package in metadata["packages"]
-        if package["id"] in members
-    }
-    return sorted(roots)
+    return sorted(
+        (package for package in metadata["packages"] if package["id"] in members),
+        key=lambda package: package["manifest_path"],
+    )
+
+
+def generated_lint_boundaries(packages: list[dict[str, object]]) -> set[Path]:
+    boundaries: set[Path] = set()
+    violations: list[str] = []
+
+    for package in packages:
+        root = Path(str(package["manifest_path"])).resolve().parent
+        package_metadata = package.get("metadata") or {}
+        if not isinstance(package_metadata, dict):
+            continue
+        rust_skills2 = package_metadata.get("rust-skills2") or {}
+        if not isinstance(rust_skills2, dict):
+            violations.append(
+                f"{root / 'Cargo.toml'}: package.metadata.rust-skills2 must be a table"
+            )
+            continue
+
+        declared = rust_skills2.get("generated-lint-boundaries", [])
+        if not isinstance(declared, list) or any(not isinstance(item, str) for item in declared):
+            violations.append(
+                f"{root / 'Cargo.toml'}: "
+                "package.metadata.rust-skills2.generated-lint-boundaries must be an array of paths"
+            )
+            continue
+
+        for relative in declared:
+            relative_path = Path(relative)
+            if relative_path.is_absolute():
+                violations.append(
+                    f"{root / 'Cargo.toml'}: generated lint boundary must be relative: {relative}"
+                )
+                continue
+
+            candidate = (root / relative_path).resolve()
+            try:
+                candidate.relative_to(root)
+            except ValueError:
+                violations.append(
+                    f"{root / 'Cargo.toml'}: generated lint boundary escapes package root: {relative}"
+                )
+                continue
+
+            if candidate.suffix != ".rs":
+                violations.append(
+                    f"{root / 'Cargo.toml'}: generated lint boundary must name one .rs file: {relative}"
+                )
+                continue
+            if not candidate.is_file():
+                violations.append(
+                    f"{root / 'Cargo.toml'}: generated lint boundary does not exist: {relative}"
+                )
+                continue
+            boundaries.add(candidate)
+
+    if violations:
+        print("rust-skills2: invalid generated lint boundary metadata:", file=sys.stderr)
+        for violation in violations:
+            print(f"  - {violation}", file=sys.stderr)
+        raise SystemExit(1)
+
+    return boundaries
 
 
 def rust_files(roots: list[Path]) -> list[Path]:
@@ -311,9 +371,14 @@ def main() -> int:
     blocked_members = set().union(*(groups[group] for group in BLOCKED_CLIPPY_GROUPS))
 
     expectation_count = 0
-    files = rust_files(workspace_package_roots())
+    packages = workspace_packages()
+    roots = [Path(str(package["manifest_path"])).resolve().parent for package in packages]
+    boundaries = generated_lint_boundaries(packages)
+    files = rust_files(roots)
 
     for path in files:
+        if path in boundaries:
+            continue
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
@@ -370,7 +435,8 @@ def main() -> int:
 
     print(
         f"rust-skills2: source lint suppression policy OK "
-        f"({len(files)} Rust files, {expectation_count} expectation attributes)"
+        f"({len(files)} Rust files, {len(boundaries)} generated lint boundaries, "
+        f"{expectation_count} expectation attributes)"
     )
     return 0
 

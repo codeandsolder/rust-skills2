@@ -96,9 +96,21 @@ The checker obtains group membership from `clippy-driver +nightly -W help` at
 runtime instead of maintaining a stale copied list. This closes the suppression
 gap left by keeping whole groups at `deny` for proc-macro compatibility.
 
-Generated code is not source-scanned. It may lower lint levels internally
-when the generator requires it; handwritten code still cannot lower the
-non-negotiable categories above.
+Checked-in generated Rust is source-scanned by default. When a package must keep
+generator-owned Rust in the repository (for example bindgen output), declare each
+generated boundary as an exact file path in package metadata:
+
+```toml
+[package.metadata.rust-skills2]
+generated-lint-boundaries = ["src/ffi/generated.rs"]
+```
+
+Only the listed `.rs` files are exempt from the handwritten-source suppression
+checker; they are still compiled by the full strict Clippy command and therefore
+must carry whatever generator-owned lint attributes are required. Declarations
+must be relative files inside the package root, must exist, and cannot name a
+directory or escape with `..`. Prefer regenerating or isolating generated code
+over adding a boundary, and never use this for handwritten modules.
 
 ## Why `.expect()` is forbidden
 
