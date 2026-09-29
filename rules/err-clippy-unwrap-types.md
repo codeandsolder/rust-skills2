@@ -29,7 +29,7 @@ expect_used = "deny"
 panic = "deny"
 ```
 
-The rust-skills2 strict CI gate raises these concrete rules to `forbid`, so a local lint attribute cannot weaken them.
+The rust-skills2 strict CI gate keeps these rules at compiler-level `deny` for proc-macro compatibility, then rejects handwritten `#[allow]`, `#[warn]`, and expectations of these non-negotiable lints before Clippy runs.
 
 ## Mutex Poisoning: Choose the Semantics Explicitly
 
