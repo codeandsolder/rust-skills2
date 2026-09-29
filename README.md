@@ -21,6 +21,23 @@ npx add-skill codeandsolder/rust-skills2
 
 That's it. The CLI figures out which agents you have and installs the skill to the right place.
 
+## Enforce it in CI
+
+For AI-maintained Rust, the repository also provides a strict nightly-Clippy
+gate. Import it as one GitHub Actions job:
+
+```yaml
+jobs:
+  strict-rust:
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
+```
+
+It runs the centrally maintained policy with warnings fatal, pedantic + nursery
+enabled, and unsuppressible high-signal rules for unwrap/expect, explicit
+panic placeholders, unsafe documentation, lock-across-await, unexpected cfgs,
+and stale lint expectations. See [docs/strict-ci.md](./docs/strict-ci.md) for
+the policy and customization points.
+
 ## How to use it
 
 After installing, just ask your agent:
