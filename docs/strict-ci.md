@@ -11,9 +11,10 @@ jobs:
     uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
 ```
 
-The default command is equivalent to:
+The default gate runs:
 
 ```text
+cargo +nightly fmt --all --check
 cargo +nightly clippy --locked --workspace --all-targets -- <strict policy>
 ```
 
@@ -40,7 +41,7 @@ jobs:
 
 ## Policy
 
-The gate always runs the latest nightly Clippy so new diagnostics are surfaced
+The gate always runs the latest nightly rustfmt and Clippy so formatting drift and new diagnostics are surfaced
 early. It deliberately supplies its own strict `clippy.toml`, so a repository
 cannot weaken the shared gate with settings such as allowing `.unwrap()` or
 `.expect()` in tests or const evaluation.
