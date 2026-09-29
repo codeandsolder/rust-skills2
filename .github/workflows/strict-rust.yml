@@ -31,7 +31,7 @@ jobs:
           shared-key: rust-skills2-nightly-strict
 
       - name: rust-skills2 strict gate
-        uses: codeandsolder/rust-skills2/.github/actions/rust-strict@ci/strict-rust-gate
+        uses: $/.github/actions/rust-strict
         with:
           working-directory: ${{ inputs.working-directory }}
           cargo-args: ${{ inputs.cargo-args }}
