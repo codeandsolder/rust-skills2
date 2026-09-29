@@ -28,10 +28,13 @@ jobs:
       working-directory: rust
 ```
 
-Projects with unusual feature topology can change the Cargo-side arguments
-without changing the lint policy. Package, feature, target, and similar
-selection flags are supported; policy-changing or redirecting arguments such as
-`--config`, `-Z`, an extra `--`, and `--manifest-path` are rejected:
+Projects with unusual feature topology can change the Cargo-side selectors
+without changing the lint policy. `cargo-args` is intentionally fail-closed:
+it accepts workspace/package, feature, compilation target, target-kind, and
+lock/offline selectors only. Arbitrary Cargo options are rejected, including
+policy overrides (`--config`, `-Z`), rustc argument injection (a second
+`--`), manifest redirection, mutating `--fix`, and early-exit options such as
+`--help`, `--version`, or `--explain`:
 
 ```yaml
 jobs:
