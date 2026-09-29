@@ -48,6 +48,26 @@ jobs:
           working-directory: checks/fixtures/strict-ci-pass
           cargo-args: "--locked --all-targets"
 
+      - name: Explicit generated lint boundary may own generated-code expectations
+        uses: ./.github/actions/rust-strict
+        with:
+          working-directory: checks/fixtures/strict-ci-generated-boundary
+          cargo-args: "--locked --all-targets"
+
+      - name: Generated lint boundary may not escape package root
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-generated-boundary
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted an escaping generated lint boundary" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected an escaping generated lint boundary"
+
       - name: Non-negotiable expectation must fail
         shell: bash
         env:
