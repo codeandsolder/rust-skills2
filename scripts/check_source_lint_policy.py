@@ -66,6 +66,9 @@ def clippy_groups() -> tuple[set[str], dict[str, set[str]]]:
         if line.startswith("Lint groups loaded by this crate:"):
             in_groups = True
             continue
+        if line.startswith("Lint ") and line.endswith(":"):
+            in_groups = False
+            continue
         if not in_groups:
             continue
 
