@@ -1,0 +1,21 @@
+# This file intentionally overrides a repository-local clippy.toml for the
+# rust-skills2 strict gate. The gate must not be weakenable by local settings.
+
+avoid-breaking-exported-api = false
+
+allow-dbg-in-tests = false
+allow-expect-in-consts = false
+allow-expect-in-tests = false
+allow-panic-in-tests = false
+allow-print-in-tests = false
+allow-unwrap-in-consts = false
+allow-unwrap-in-tests = false
+
+# Let nightly Clippy flag MSRV-incompatible test code too.
+check-incompatible-msrv-in-tests = true
+
+# Do not suppress restriction lints just because code is const-evaluated.
+suppress-restriction-lint-in-const = false
+
+# Prefer the modern formatting form consistently.
+allow-mixed-uninlined-format-args = false
