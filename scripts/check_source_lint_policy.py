@@ -11,6 +11,7 @@ categories.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -64,6 +65,33 @@ def run_text(argv: list[str]) -> str:
         print(result.stdout, file=sys.stderr)
         raise SystemExit(2)
     return result.stdout
+
+
+def check_compiler_flag_policy() -> list[str]:
+    """Reject rustflags that can cap or force lint levels below the gate."""
+    violations: list[str] = []
+
+    for name, value in sorted(os.environ.items()):
+        if "RUSTFLAGS" not in name:
+            continue
+        if "--cap-lints" in value or "--force-warn" in value:
+            violations.append(
+                f"environment {name} contains a lint-level override "
+                f"(--cap-lints/--force-warn)"
+            )
+
+    config = run_text(["cargo", "+nightly", "-Z", "unstable-options", "config", "get"])
+    for line in config.splitlines():
+        if ".rustflags =" not in line and not line.startswith("build.rustflags ="):
+            continue
+        if "--cap-lints" in line or "--force-warn" in line:
+            key = line.split("=", 1)[0].strip()
+            violations.append(
+                f"Cargo config {key} contains a lint-level override "
+                f"(--cap-lints/--force-warn)"
+            )
+
+    return violations
 
 
 def clippy_groups() -> tuple[set[str], dict[str, set[str]]]:
@@ -225,7 +253,7 @@ def meta_lints(
 ) -> list[tuple[str, list[str], bool, int]]:
     calls: list[tuple[str, list[str], bool, int]] = []
     body = masked[start:end]
-    for match in re.finditer(r"\b(allow|expect)\s*\(", body):
+    for match in re.finditer(r"\b(allow|warn|expect)\s*\(", body):
         kind = match.group(1)
         open_paren = start + body.find("(", match.start())
         close_paren = matching(masked, open_paren, "(", ")")
@@ -268,10 +296,10 @@ def lint_attributes(text: str) -> list[tuple[str, list[str], bool, int]]:
     return found
 
 def main() -> int:
+    violations = check_compiler_flag_policy()
     group_names, groups = clippy_groups()
     blocked_members = set().union(*(groups[group] for group in BLOCKED_CLIPPY_GROUPS))
 
-    violations: list[str] = []
     expectation_count = 0
     files = rust_files(workspace_package_roots())
 
@@ -286,10 +314,10 @@ def main() -> int:
             line = text.count("\n", 0, offset) + 1
             location = f"{path}:{line}"
 
-            if kind == "allow":
+            if kind in {"allow", "warn"}:
                 violations.append(
-                    f"{location}: #[allow(...)] is forbidden in handwritten source; "
-                    "use a narrow #[expect(..., reason = \"...\")] only for suppressible lints"
+                    f"{location}: #[{kind}(...)] is forbidden in handwritten source; "
+                    "it can lower the strict command-line lint level"
                 )
                 continue
 
