@@ -195,3 +195,31 @@ jobs:
           fi
           echo "strict gate correctly rejected environment --force-warn"
 
+      - name: Cargo argument config override must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-pass
+          RUST_SKILLS2_CARGO_ARGS: '--locked --all-targets --config build.rustflags=["--cap-lints=allow"]'
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted cargo-args --config" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected cargo-args --config"
+
+      - name: Cargo rustc separator injection must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-pass
+          RUST_SKILLS2_CARGO_ARGS: '--locked --all-targets -- -Aclippy::unwrap_used'
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted cargo-args rustc injection" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected cargo-args rustc injection"
+

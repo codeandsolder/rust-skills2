@@ -29,7 +29,9 @@ jobs:
 ```
 
 Projects with unusual feature topology can change the Cargo-side arguments
-without changing the lint policy:
+without changing the lint policy. Package, feature, target, and similar
+selection flags are supported; policy-changing or redirecting arguments such as
+`--config`, `-Z`, an extra `--`, and `--manifest-path` are rejected:
 
 ```yaml
 jobs:
