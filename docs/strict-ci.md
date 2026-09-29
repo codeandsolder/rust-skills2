@@ -45,27 +45,32 @@ early. It deliberately supplies its own strict `clippy.toml`, so a repository
 cannot weaken the shared gate with settings such as allowing `.unwrap()` or
 `.expect()` in tests or const evaluation.
 
-The policy pass clears `RUSTC_WRAPPER`. Clippy reads its configuration during
+The policy pass clears both `RUSTC_WRAPPER` and `RUSTC_WORKSPACE_WRAPPER`. Clippy reads its configuration during
 compiler execution, so distributing clippy-driver to a worker that cannot see
 the action checkout can make the policy fail or diverge. The reusable gate
 therefore runs Clippy locally and relies on the normal target cache instead of
 distributed compiler execution.
 
-Concrete non-negotiable rules are passed as `forbid`. A source-level
-`#[allow]` or `#[expect]` therefore cannot suppress:
+All compiler and Clippy lints are passed at `deny`, not `forbid`.
+External derive/proc macros legitimately inject internal lint allowances;
+forbidding either a group or a concrete lint can make rustc reject generated
+code. Leptos/TypedBuilder, for example, emits an internal
+`allow(clippy::panic)`.
+
+Handwritten source still cannot waive the non-negotiable rules. The source
+policy checker rejects `#[allow]` entirely and rejects `#[expect]` for:
 
 - `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`,
   and `dbg_macro`;
 - undocumented unsafe blocks and missing unsafe API documentation;
 - blocking lock guards held across await;
 - rustc `unexpected_cfgs`, `unsafe_op_in_unsafe_fn`, and stale lint
-  expectations.
+  expectations;
+- every lint that the current nightly places in Clippy's `correctness`,
+  `suspicious`, or `perf` groups.
 
-Clippy correctness, suspicious, and performance groups are `deny`, not
-`forbid`. External derive/proc macros such as Serde legitimately inject
-internal lint allowances; forbidding an entire group makes rustc reject those
-macro-generated attributes via `forbidden_lint_groups`. The groups still fail
-CI by default, while the concrete policies above remain impossible to waive.
+This keeps policy strict at handwritten source boundaries while remaining
+composable with proc-macro-generated implementation details.
 
 Style, complexity, pedantic, and nursery are denied rather than forbidden.
 They still fail CI. A narrow `#[expect(lint, reason = "...")]` is available
@@ -85,9 +90,9 @@ The checker obtains group membership from `clippy-driver +nightly -W help` at
 runtime instead of maintaining a stale copied list. This closes the suppression
 gap left by keeping whole groups at `deny` for proc-macro compatibility.
 
-Generated code is not source-scanned. It may explicitly suppress style-only
-groups when the generator requires it; the concrete command-line `forbid`
-lints still cannot be lowered by generated `allow` or `expect` attributes.
+Generated code is not source-scanned. It may lower lint levels internally
+when the generator requires it; handwritten code still cannot lower the
+non-negotiable categories above.
 
 ## Why `.expect()` is forbidden
 
