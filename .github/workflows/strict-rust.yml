@@ -43,3 +43,10 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
           cargo-args: ${{ inputs.cargo-args }}
           install-toolchain: "false"
+
+      - name: Show Cargo future-incompatibility report
+        if: failure()
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: |
+          cargo +nightly report future-incompatibilities || true
