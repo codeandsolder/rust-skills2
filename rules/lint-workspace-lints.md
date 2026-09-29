@@ -170,19 +170,18 @@ cannot lower them.
 
 ## CI Integration
 
+For the shared policy, prefer the reusable workflow so adoption is one job:
+
 ```yaml
 # .github/workflows/ci.yml
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Strict Rust policy
-        uses: codeandsolder/rust-skills2/.github/actions/rust-strict@main
-      
-      - name: Rustdoc
-        run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+  strict-rust:
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
 ```
+
+Keep project-specific lanes beside it. For example, a library workspace can add
+a rustdoc job with `RUSTDOCFLAGS="-D warnings"`, while embedded/wasm projects
+can add their target matrices without weakening the shared lint policy.
 
 ## Lint Categories
 
