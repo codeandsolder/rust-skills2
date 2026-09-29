@@ -29,6 +29,30 @@ if [[ ! -f Cargo.toml ]]; then
     exit 2
 fi
 
+read -r -a CARGO_ARGS <<< "${RUST_SKILLS2_CARGO_ARGS:---locked --workspace --all-targets}"
+
+# The caller may choose package/feature/target topology, but it may not inject
+# Cargo/rustc policy that can weaken or redirect the shared gate. For example,
+# --config build.rustflags=["--cap-lints=allow"] can make a command-line deny
+# silently non-fatal.
+for ((i = 0; i < ${#CARGO_ARGS[@]}; i++)); do
+    arg="${CARGO_ARGS[$i]}"
+    case "$arg" in
+        --)
+            echo "rust-skills2: cargo-args must not contain '--' (rustc argument injection)" >&2
+            exit 2
+            ;;
+        --config|--config=*|-Z|-Z*)
+            echo "rust-skills2: cargo-args must not override Cargo policy: $arg" >&2
+            exit 2
+            ;;
+        --manifest-path|--manifest-path=*)
+            echo "rust-skills2: use working-directory instead of --manifest-path: $arg" >&2
+            exit 2
+            ;;
+    esac
+done
+
 echo "rust-skills2: cargo +nightly fmt --all --check"
 cargo +nightly fmt --all --check
 
@@ -52,8 +76,6 @@ export CARGO_BUILD_WARNINGS=deny
 # deterministic. Target caches still make repeated CI runs cheap.
 export RUSTC_WRAPPER=
 export RUSTC_WORKSPACE_WRAPPER=
-
-read -r -a CARGO_ARGS <<< "${RUST_SKILLS2_CARGO_ARGS:---locked --workspace --all-targets}"
 
 # Everything is deny-level at compiler/Clippy level. Proc macros legitimately
 # inject internal allow attributes, so command-line forbid is not composable
