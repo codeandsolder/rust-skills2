@@ -79,10 +79,10 @@ LINT_ARGS=(
     -Fclippy::missing_safety_doc
     -Fclippy::await_holding_lock
 
-    # Ordinary outer #[allow(...)] is not accepted. For suppressible lints use
-    # a precise #[expect(..., reason = "...")]; forbidden lints cannot be
-    # expected because their level cannot be lowered.
-    -Fclippy::allow_attributes
+    # Ordinary outer #[allow(...)] is rejected by default. Generated code may
+    # explicitly suppress this meta-lint when it genuinely needs broad allows.
+    # Forbidden lints below cannot be lowered by either allow or expect.
+    -Dclippy::allow_attributes
     -Dclippy::allow_attributes_without_reason
 )
 
