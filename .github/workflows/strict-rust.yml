@@ -33,6 +33,7 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
+          workspaces: ${{ inputs.working-directory }}
           shared-key: rust-skills2-nightly-strict
           cache-on-failure: true
 
