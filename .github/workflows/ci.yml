@@ -57,3 +57,17 @@ jobs:
           fi
           echo "strict gate correctly rejected suppression of a forbidden lint"
 
+      - name: Direct Result expect must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-result-expect
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted Result::expect" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected Result::expect"
+
