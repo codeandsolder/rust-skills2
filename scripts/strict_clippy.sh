@@ -35,6 +35,12 @@ fi
 export CLIPPY_CONF_DIR="$ACTION_DIR"
 export CARGO_BUILD_WARNINGS=deny
 
+# Clippy reads policy files at compiler execution time. A distributed RUSTC_WRAPPER
+# can execute clippy-driver on a worker that cannot see the action checkout, making
+# CLIPPY_CONF_DIR either fail or silently diverge. Keep the policy pass local and
+# deterministic. Target caches still make repeated CI runs cheap.
+export RUSTC_WRAPPER=
+
 read -r -a CARGO_ARGS <<< "${RUST_SKILLS2_CARGO_ARGS:---locked --workspace --all-targets}"
 
 # High-confidence categories use `forbid`: source-level #[allow] and #[expect]
