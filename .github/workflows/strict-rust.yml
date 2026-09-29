@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install latest nightly Clippy
+      - name: Install latest nightly Rust tools
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: clippy,rustfmt
