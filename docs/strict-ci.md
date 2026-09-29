@@ -51,16 +51,21 @@ the action checkout can make the policy fail or diverge. The reusable gate
 therefore runs Clippy locally and relies on the normal target cache instead of
 distributed compiler execution.
 
-High-confidence rules are passed as `forbid`. A source-level `#[allow]` or
-`#[expect]` therefore cannot suppress:
+Concrete non-negotiable rules are passed as `forbid`. A source-level
+`#[allow]` or `#[expect]` therefore cannot suppress:
 
-- Clippy correctness, suspicious, and performance groups;
 - `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`,
   and `dbg_macro`;
 - undocumented unsafe blocks and missing unsafe API documentation;
 - blocking lock guards held across await;
 - rustc `unexpected_cfgs`, `unsafe_op_in_unsafe_fn`, and stale lint
   expectations.
+
+Clippy correctness, suspicious, and performance groups are `deny`, not
+`forbid`. External derive/proc macros such as Serde legitimately inject
+internal lint allowances; forbidding an entire group makes rustc reject those
+macro-generated attributes via `forbidden_lint_groups`. The groups still fail
+CI by default, while the concrete policies above remain impossible to waive.
 
 Style, complexity, pedantic, and nursery are denied rather than forbidden.
 They still fail CI. A narrow `#[expect(lint, reason = "...")]` is available
