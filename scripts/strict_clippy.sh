@@ -29,6 +29,14 @@ if [[ ! -f Cargo.toml ]]; then
     exit 2
 fi
 
+SOURCE_POLICY_SCRIPT="$ACTION_DIR/../../../scripts/check_source_lint_policy.py"
+if [[ ! -f "$SOURCE_POLICY_SCRIPT" ]]; then
+    echo "rust-skills2: source policy checker missing at $SOURCE_POLICY_SCRIPT" >&2
+    exit 2
+fi
+
+uv run --no-project python "$SOURCE_POLICY_SCRIPT"
+
 # The reusable gate intentionally owns Clippy configuration. A project-local
 # clippy.toml may contain useful developer preferences, but it must not be able
 # to weaken the central CI policy (for example by allowing unwrap in consts).
