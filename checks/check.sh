@@ -31,7 +31,8 @@ run_python gen.py
 run_python check_contract_inventory.py
 
 echo "==> compile-checking ordinary examples (target: $TARGET)"
-cargo check --examples --target "$TARGET" --keep-going --message-format=json \
+RUSTC_WRAPPER= RUSTC_WORKSPACE_WRAPPER= \
+    cargo check --examples --target "$TARGET" --keep-going --message-format=json \
     > check.json 2> check.err || true
 
 echo "==> enforcing expectations and legacy baseline"
