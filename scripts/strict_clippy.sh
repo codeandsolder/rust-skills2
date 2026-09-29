@@ -54,9 +54,14 @@ LINT_ARGS=(
     -Funexpected_cfgs
     -Funsafe_op_in_unsafe_fn
 
-    -Fclippy::correctness
-    -Fclippy::suspicious
-    -Fclippy::perf
+    # Group-level forbid is not viable: proc-macro expansions (including serde
+    # derives) legitimately inject internal allow attributes, and rustc rejects
+    # those as incompatible with a forbidden group. Keep the groups fatal but
+    # suppressible for generated-code edge cases; concrete non-negotiable
+    # policies below remain forbid.
+    -Dclippy::correctness
+    -Dclippy::suspicious
+    -Dclippy::perf
 
     -Dclippy::style
     -Dclippy::complexity
