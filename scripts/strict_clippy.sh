@@ -48,6 +48,7 @@ export CARGO_BUILD_WARNINGS=deny
 # CLIPPY_CONF_DIR either fail or silently diverge. Keep the policy pass local and
 # deterministic. Target caches still make repeated CI runs cheap.
 export RUSTC_WRAPPER=
+export RUSTC_WORKSPACE_WRAPPER=
 
 read -r -a CARGO_ARGS <<< "${RUST_SKILLS2_CARGO_ARGS:---locked --workspace --all-targets}"
 
