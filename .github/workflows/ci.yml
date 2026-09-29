@@ -86,6 +86,34 @@ jobs:
           fi
           echo "strict gate correctly rejected a correctness expectation"
 
+      - name: Unreasoned expectation must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-unreasoned-expect
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted an unreasoned expectation" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected an unreasoned expectation"
+
+      - name: Multi-lint expectation must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-multi-expect
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted a multi-lint expectation" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected a multi-lint expectation"
+
       - name: Handwritten allow must fail
         shell: bash
         env:
