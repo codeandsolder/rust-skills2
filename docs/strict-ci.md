@@ -45,6 +45,12 @@ early. It deliberately supplies its own strict `clippy.toml`, so a repository
 cannot weaken the shared gate with settings such as allowing `.unwrap()` or
 `.expect()` in tests or const evaluation.
 
+The policy pass clears `RUSTC_WRAPPER`. Clippy reads its configuration during
+compiler execution, so distributing clippy-driver to a worker that cannot see
+the action checkout can make the policy fail or diverge. The reusable gate
+therefore runs Clippy locally and relies on the normal target cache instead of
+distributed compiler execution.
+
 High-confidence rules are passed as `forbid`. A source-level `#[allow]` or
 `#[expect]` therefore cannot suppress:
 
