@@ -40,15 +40,15 @@ missing_docs = "warn"
 [workspace.lints.clippy]
 # Correctness
 unwrap_used = "deny"
-expect_used = "warn"
+expect_used = "deny"
 panic = "deny"
 
-# Style
-needless_pass_by_value = "warn"
-redundant_clone = "warn"
-
-# Complexity
-cognitive_complexity = "warn"
+# Strict style/complexity for AI-maintained code
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+style = { level = "deny", priority = -1 }
+complexity = { level = "deny", priority = -1 }
+perf = { level = "deny", priority = -1 }
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"
@@ -62,9 +62,9 @@ workspace = true
 [lints]
 workspace = true
 
-# Per-crate overrides must use code-level #![allow(...)]
-# because Cargo issue #13157 prevents per-lint overrides
-# when workspace = true is set.
+# Cargo issue #13157 prevents manifest-level per-crate overrides when
+# workspace = true is set. Prefer narrow code-level #[expect(..., reason = "...")]
+# for genuinely suppressible lints; non-negotiable CI lints should be forbid.
 ```
 
 ## Recommended Lint Configuration
@@ -128,7 +128,7 @@ missing_crate_level_docs = "warn"
 
 ## Per-Crate Overrides
 
-> **CRITICAL**: Cargo issue [#13157](https://github.com/rust-lang/cargo/issues/13157) — when `[lints] workspace = true` is set, member `Cargo.toml` files **cannot** override individual lints. The member must use code-level `#![allow(...)]` instead.
+> **CRITICAL**: Cargo issue [#13157](https://github.com/rust-lang/cargo/issues/13157) — when `[lints] workspace = true` is set, member `Cargo.toml` files **cannot** override individual lints. For a genuinely suppressible lint, use the narrowest code-level `#[expect(..., reason = "...")]`. Do not use an expectation to waive correctness/safety policy.
 
 ### Works (✅) — Full workspace inheritance, no overrides
 
@@ -150,21 +150,23 @@ workspace = true
 unwrap_used = "allow"
 ```
 
-### Correct Approach — Code-level allow
+### Correct Approach — Narrow, reasoned expectation
 
 ```rust
-// crate-b/src/main.rs
-// Binary entry point — allow unwrap for this crate
-#![allow(clippy::unwrap_used)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "generated protocol dispatch table; splitting it obscures the mapping"
+)]
+fn generated_dispatch(/* ... */) {
+    // ...
+}
 ```
 
-Or use a module-level allow:
-
-```rust
-// crate-b/src/lib.rs
-// Test utilities can print
-#![allow(clippy::print_stdout)]
-```
+For non-negotiable lints such as `unwrap_used`, `expect_used`, explicit
+`panic!`, undocumented unsafe blocks, or lock guards held across `await`,
+fix the code instead of adding an expectation. The reusable strict gate passes
+these categories as `forbid`, so source-level `#[allow]` and `#[expect]`
+cannot lower them.
 
 ## CI Integration
 
@@ -175,12 +177,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Strict Rust policy
+        uses: codeandsolder/rust-skills2/.github/actions/rust-strict@main
       
       - name: Rustdoc
         run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
@@ -194,13 +192,14 @@ jobs:
 # All lints in category at once
 correctness = { level = "deny", priority = -1 }
 suspicious  = { level = "deny", priority = -1 }
-style       = { level = "warn", priority = -1 }
-complexity  = { level = "warn", priority = -1 }
-perf        = { level = "warn", priority = -1 }
-pedantic    = { level = "warn", priority = -1 }
+style       = { level = "deny", priority = -1 }
+complexity  = { level = "deny", priority = -1 }
+perf        = { level = "deny", priority = -1 }
+pedantic    = { level = "deny", priority = -1 }
+nursery     = { level = "deny", priority = -1 }
 
-# Then override specific lints with higher priority (0 = default)
-missing_errors_doc = "allow"  # Override pedantic for this lint
+# Keep unavoidable exceptions narrow and reasoned in source with #[expect].
+# The central CI gate makes non-negotiable categories unsuppressible.
 ```
 
 ## Edition 2024 Workspace Lints
