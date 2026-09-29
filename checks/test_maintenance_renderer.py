@@ -46,7 +46,7 @@ def main() -> None:
     assert "missing template variable: missing" in missing.stderr
 
     workflow = WORKFLOW.read_text()
-    quoted_call = "body=\"$(python3 .github/scripts/render-maintenance-template.py <<'EOF'"
+    quoted_call = "body=\"$(uv run --no-project python .github/scripts/render-maintenance-template.py <<'EOF'"
     assert workflow.count(quoted_call) == 1
     assert 'body="$(cat <<EOF' not in workflow
     assert "`SKILL.md`" in workflow

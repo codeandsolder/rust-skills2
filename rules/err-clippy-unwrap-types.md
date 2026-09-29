@@ -1,133 +1,56 @@
 # err-clippy-unwrap-types
 
-> Use `allow-unwrap-types` only for types where the project deliberately chooses a panic-on-error policy
+> Do not use Clippy's `allow-unwrap-types` to punch type-wide holes in a strict no-unwrap/no-expect policy
 
 ## Why It Matters
 
-Clippy's `unwrap_used` and `expect_used` restriction lints are intentionally broad. Sometimes a project has a type-specific policy where panicking is the desired response to that error. Current Clippy supports an `allow-unwrap-types` configuration list so those types can be exempted without disabling the lint everywhere.
+Clippy supports an `allow-unwrap-types` configuration list that exempts selected receiver types from `unwrap_used` and `expect_used`.
 
-This is a **lint policy**, not a safety proof. In particular, `Mutex::lock().unwrap()` means "panic if this lock is poisoned." A poisoned lock indicates that a thread panicked while holding exclusive access and the protected data may no longer satisfy its invariants. Whether to propagate that panic, repair the state, or continue with the guard is an application decision.
+That is useful in codebases whose policy intentionally permits panic-style extraction for whole classes of values. It is the wrong tradeoff for strict AI-maintained code: a type-wide exemption is easy to grow, hard to review at the call site, and silently preserves hidden panic paths.
 
-## Bad
+Keep the lint universal and handle the type's error semantics explicitly.
 
-<!-- rust-check: compile -->
-```rust
-use std::collections::HashMap;
-use std::sync::{Mutex, RwLock};
+## Bad: Type-Wide Escape Hatch
 
-struct User;
-
-struct AppState {
-    cache: Mutex<Vec<u8>>,
-    config: RwLock<String>,
-}
-
-fn use_state(state: &AppState) {
-    let cache = state.cache.lock().unwrap();
-    let config = state.config.read().unwrap();
-    let _ = (cache.len(), config.len());
-}
-
-fn unchecked_lookup(map: &HashMap<u64, User>, id: u64) -> &User {
-    map.get(&id).unwrap()
-}
+```toml
+# clippy.toml
+allow-unwrap-types = ["std::sync::LockResult"]
 ```
 
-If the project responds by disabling `clippy::unwrap_used` globally, both the deliberate lock policy and unrelated unchecked lookups become invisible to that lint.
+With that configuration, every lock unwrap/expect becomes invisible to the restriction lints.
 
-## Good
-
-Keep the lint enabled:
+## Good: Keep the Policy Uniform
 
 ```toml
 # Cargo.toml
 [lints.clippy]
 unwrap_used = "deny"
-expect_used = "warn"
+expect_used = "deny"
+panic = "deny"
 ```
 
-Then configure the narrow type exemption in `clippy.toml` or `.clippy.toml`:
+The rust-skills2 strict CI gate keeps these rules at compiler-level `deny` for proc-macro compatibility, then rejects handwritten `#[allow]`, `#[warn]`, and expectations of these non-negotiable lints before Clippy runs.
 
-```toml
-# This says that unwrap/expect on LockResult is an accepted project policy.
-allow-unwrap-types = ["std::sync::LockResult"]
-```
+## Mutex Poisoning: Choose the Semantics Explicitly
 
-Now the code itself can remain ordinary Rust:
+### Best-effort continuation
 
-<!-- rust-check: compile -->
-```rust
-use std::collections::HashMap;
-use std::sync::{Mutex, RwLock};
-
-struct User;
-
-struct AppState {
-    cache: Mutex<Vec<u8>>,
-    config: RwLock<String>,
-}
-
-fn use_state(state: &AppState) {
-    // With the Clippy configuration above, these are exempt because their
-    // receiver type is LockResult. Runtime semantics are unchanged: poison
-    // still causes a panic here.
-    let cache = state.cache.lock().unwrap();
-    let config = state.config.read().unwrap();
-    let _ = (cache.len(), config.len());
-}
-
-fn unchecked_lookup(map: &HashMap<u64, User>, id: u64) -> &User {
-    // HashMap::get returns Option, so this remains an unwrap_used violation.
-    map.get(&id).unwrap()
-}
-```
-
-`allow-unwrap-types` applies to both `unwrap_used` and `expect_used`.
-
-## Where the Configuration Lives
-
-Clippy documents `clippy.toml` and `.clippy.toml` configuration files. It starts searching from the first available location in this order:
-
-1. `CLIPPY_CONF_DIR`,
-2. `CARGO_MANIFEST_DIR`,
-3. the current directory,
-
-then walks upward through parent directories. Clippy currently labels this configuration-file interface unstable.
-
-Do not put `allow-unwrap-types` under `[workspace.metadata.clippy]`, `[lints.clippy]`, or a target table in `.cargo/config.toml`. `[lints.clippy]` controls lint **levels**; `allow-unwrap-types` is a separate Clippy configuration value.
-
-## Poisoning Policy Is the Real Decision
-
-### Panic on poison
-
-If a panic while holding the lock means the process/thread should not continue with potentially inconsistent state, `unwrap()` or an explanatory `expect()` is a coherent policy:
+If the protected state remains usable after poisoning, handle that branch visibly:
 
 ```rust
-use std::sync::Mutex;
-
-fn next_id(ids: &Mutex<u64>) -> u64 {
-    let mut id = ids.lock().expect("id allocator state poisoned");
-    *id += 1;
-    *id
-}
-```
-
-### Continue despite poison
-
-`PoisonError::into_inner()` gives access to the guard despite poisoning. That is not automatically "safer" than panicking; it explicitly accepts possibly tainted state and should be justified by the protected invariant:
-
-```rust
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 
 fn read_best_effort(cache: &Mutex<Vec<u8>>) -> usize {
-    let guard = cache.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let guard = cache.lock().unwrap_or_else(PoisonError::into_inner);
     guard.len()
 }
 ```
 
+This is a real policy decision: the code accepts possibly tainted state. The `unwrap_or_else` combinator handles the error branch; it is not panic extraction.
+
 ### Repair and clear poison
 
-If the program can restore a known-good invariant, repair the state and then clear the poison flag:
+If the program can restore a known-good invariant, repair before continuing:
 
 ```rust
 use std::sync::Mutex;
@@ -142,20 +65,27 @@ fn reset_after_poison(state: &Mutex<Vec<u8>>) {
 }
 ```
 
-Choose among these policies based on what a panic can do to the protected state, not merely to silence a lint.
+### Propagate or translate
 
-## When to Use `allow-unwrap-types`
+When continuing is not safe, return a domain error from the operation rather than panicking on the lock result. This is often cleaner if a lock guards state whose invariants may have been interrupted by the original panic.
 
-Use it when all of these are true:
+## Where the Configuration Lives
 
-- the lint is valuable for the rest of the codebase,
-- the exempted type has a deliberate, documented panic policy,
-- applying that policy uniformly to the whole type is appropriate.
+If maintaining a legacy codebase that already uses `allow-unwrap-types`, remember that it is a Clippy configuration value in `clippy.toml`/`.clippy.toml`, not a lint level under `[lints.clippy]`.
 
-If only one call site is exceptional, a local `#[expect(clippy::unwrap_used, reason = "...")]` is usually more precise than a type-wide exemption.
+For strict rust-skills2 CI, the central action supplies its own Clippy configuration via `CLIPPY_CONF_DIR`; downstream repositories therefore cannot use local `allow-unwrap-types` to weaken the gate.
+
+## Migration Pattern
+
+```text
+1. Remove allow-unwrap-types from Clippy configuration.
+2. Run unwrap_used + expect_used as hard errors.
+3. For every lock/result extraction, decide whether to recover, repair, propagate, or terminate at the top-level boundary.
+4. Keep the policy universal instead of replacing the type-wide exemption with local expectations.
+```
 
 ## See Also
 
-- [err-no-unwrap-prod](./err-no-unwrap-prod.md) — Expected failures versus panic-worthy invariants
-- [err-expect-not-allow](./err-expect-not-allow.md) — Prefer `#[expect]` for local lint exceptions
-- [err-expect-bugs-only](./err-expect-bugs-only.md) — Using `expect()` for invariants
+- [err-no-unwrap-prod](./err-no-unwrap-prod.md) — Preserve failure channels
+- [err-expect-not-allow](./err-expect-not-allow.md) — Narrow expectations for suppressible lints only
+- [err-expect-bugs-only](./err-expect-bugs-only.md) — Explicit alternatives to panic-producing `expect()`

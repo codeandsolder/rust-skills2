@@ -1,0 +1,47 @@
+name: rust-skills2 strict Rust gate
+description: Run the central rust-skills2 nightly Clippy policy against a checked-out Rust workspace.
+
+inputs:
+  working-directory:
+    description: Rust workspace directory relative to the checkout root.
+    required: false
+    default: "."
+  cargo-args:
+    description: Space-separated cargo clippy arguments before the rustc/Clippy lint flags.
+    required: false
+    default: "--locked --workspace --all-targets"
+  install-toolchain:
+    description: Install latest nightly Clippy before running. Set false when the caller already installed it.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install latest nightly Clippy
+      if: ${{ inputs.install-toolchain == 'true' }}
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: clippy
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v10.2.0
+      with:
+        version: latest-known
+        enable-cache: false
+
+    - name: Show nightly toolchain
+      shell: bash
+      run: |
+        rustc +nightly --version
+        cargo +nightly --version
+        cargo +nightly clippy --version
+        uv --version
+
+    - name: Run rust-skills2 strict policy
+      shell: bash
+      env:
+        RUST_SKILLS2_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        RUST_SKILLS2_CARGO_ARGS: ${{ inputs.cargo-args }}
+      run: |
+        bash "$GITHUB_ACTION_PATH/../../../scripts/strict_clippy.sh"

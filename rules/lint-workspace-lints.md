@@ -31,22 +31,24 @@ unwrap_used = "warn"
 # Root Cargo.toml
 [workspace.lints.rust]
 unsafe_code = "deny"
-unsafe_op_in_unsafe_fn = "deny"  # Edition 2024
+unsafe_op_in_unsafe_fn = "deny"
+unfulfilled_lint_expectations = "deny"
+unexpected_cfgs = "warn"
+rust_2024_compatibility = { level = "warn", priority = -1 }
 missing_docs = "warn"
-keyword_idents = "deny"          # Edition 2024
 
 [workspace.lints.clippy]
 # Correctness
 unwrap_used = "deny"
-expect_used = "warn"
+expect_used = "deny"
 panic = "deny"
 
-# Style
-needless_pass_by_value = "warn"
-redundant_clone = "warn"
-
-# Complexity
-cognitive_complexity = "warn"
+# Strict style/complexity for AI-maintained code
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+style = { level = "deny", priority = -1 }
+complexity = { level = "deny", priority = -1 }
+perf = { level = "deny", priority = -1 }
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"
@@ -60,9 +62,9 @@ workspace = true
 [lints]
 workspace = true
 
-# Per-crate overrides must use code-level #![allow(...)]
-# because Cargo issue #13157 prevents per-lint overrides
-# when workspace = true is set.
+# Cargo issue #13157 prevents manifest-level per-crate overrides when
+# workspace = true is set. Prefer narrow code-level #[expect(..., reason = "...")]
+# for genuinely suppressible lints; non-negotiable CI lints should be forbid.
 ```
 
 ## Recommended Lint Configuration
@@ -75,49 +77,37 @@ unsafe_code = "deny"
 unsafe_op_in_unsafe_fn = "deny"       # Edition 2024
 missing_debug_implementations = "warn"
 
-# Edition 2024 lints
-keyword_idents = "deny"
-anonymous_lifetime_in_impl_trait = "deny"
-if_let_rescope = "warn"
-strict_module_headers = "warn"
+# Edition migration / configuration hygiene
+rust_2024_compatibility = { level = "warn", priority = -1 }
+unexpected_cfgs = "warn"
+unfulfilled_lint_expectations = "deny"
 
 # Quality
 unused_results = "warn"
 unused_qualifications = "warn"
 
 [workspace.lints.clippy]
-# === Correctness (deny) ===
+# === Strict quality groups ===
 correctness = { level = "deny", priority = -1 }
-
-# === Suspicious (deny) ===
 suspicious = { level = "deny", priority = -1 }
+style = { level = "deny", priority = -1 }
+complexity = { level = "deny", priority = -1 }
+perf = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
 
-# === Style (warn) ===
-style = { level = "warn", priority = -1 }
-
-# === Complexity (warn) ===
-complexity = { level = "warn", priority = -1 }
-
-# === Perf (warn) ===
-perf = { level = "warn", priority = -1 }
-
-# === Pedantic (selective) ===
-# Not all pedantic lints are useful
-doc_markdown = "warn"
-needless_pass_by_value = "warn"
-redundant_closure_for_method_calls = "warn"
-semicolon_if_nothing_returned = "warn"
-
-# === Nursery (selective) ===
-cognitive_complexity = "warn"
-useless_let_if_seq = "warn"
-
-# === Restriction (selective) ===
+# === High-signal restriction lints ===
 unwrap_used = "deny"
-expect_used = "warn"
-dbg_macro = "warn"
-print_stdout = "warn"  # Use logging instead
-todo = "warn"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+undocumented_unsafe_blocks = "deny"
+missing_safety_doc = "deny"
+await_holding_lock = "deny"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"
@@ -127,7 +117,7 @@ missing_crate_level_docs = "warn"
 
 ## Per-Crate Overrides
 
-> **CRITICAL**: Cargo issue [#13157](https://github.com/rust-lang/cargo/issues/13157) — when `[lints] workspace = true` is set, member `Cargo.toml` files **cannot** override individual lints. The member must use code-level `#![allow(...)]` instead.
+> **CRITICAL**: Cargo issue [#13157](https://github.com/rust-lang/cargo/issues/13157) — when `[lints] workspace = true` is set, member `Cargo.toml` files **cannot** override individual lints. For a genuinely suppressible lint, use the narrowest code-level `#[expect(..., reason = "...")]`. Do not use an expectation to waive correctness/safety policy.
 
 ### Works (✅) — Full workspace inheritance, no overrides
 
@@ -149,41 +139,38 @@ workspace = true
 unwrap_used = "allow"
 ```
 
-### Correct Approach — Code-level allow
+### Correct Approach — Narrow, reasoned expectation
 
 ```rust
-// crate-b/src/main.rs
-// Binary entry point — allow unwrap for this crate
-#![allow(clippy::unwrap_used)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "generated protocol dispatch table; splitting it obscures the mapping"
+)]
+fn generated_dispatch(/* ... */) {
+    // ...
+}
 ```
 
-Or use a module-level allow:
-
-```rust
-// crate-b/src/lib.rs
-// Test utilities can print
-#![allow(clippy::print_stdout)]
-```
+For non-negotiable lints such as `unwrap_used`, `expect_used`, explicit
+`panic!`, undocumented unsafe blocks, or lock guards held across `await`,
+fix the code instead of adding an expectation. The reusable strict gate passes
+these categories as `forbid`, so source-level `#[allow]` and `#[expect]`
+cannot lower them.
 
 ## CI Integration
+
+For the shared policy, prefer the reusable workflow so adoption is one job:
 
 ```yaml
 # .github/workflows/ci.yml
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      
-      - name: Rustdoc
-        run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+  strict-rust:
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
 ```
+
+Keep project-specific lanes beside it. For example, a library workspace can add
+a rustdoc job with `RUSTDOCFLAGS="-D warnings"`, while embedded/wasm projects
+can add their target matrices without weakening the shared lint policy.
 
 ## Lint Categories
 
@@ -193,25 +180,26 @@ jobs:
 # All lints in category at once
 correctness = { level = "deny", priority = -1 }
 suspicious  = { level = "deny", priority = -1 }
-style       = { level = "warn", priority = -1 }
-complexity  = { level = "warn", priority = -1 }
-perf        = { level = "warn", priority = -1 }
-pedantic    = { level = "warn", priority = -1 }
+style       = { level = "deny", priority = -1 }
+complexity  = { level = "deny", priority = -1 }
+perf        = { level = "deny", priority = -1 }
+pedantic    = { level = "deny", priority = -1 }
+nursery     = { level = "deny", priority = -1 }
 
-# Then override specific lints with higher priority (0 = default)
-missing_errors_doc = "allow"  # Override pedantic for this lint
+# Keep unavoidable exceptions narrow and reasoned in source with #[expect].
+# The central CI gate makes non-negotiable categories unsuppressible.
 ```
 
 ## Edition 2024 Workspace Lints
 
 ```toml
 [workspace.lints.rust]
-# Edition 2024 lints — explicit, deny-by-default in Edition 2024
-unsafe_op_in_unsafe_fn          = "deny"
-keyword_idents                  = "deny"
-anonymous_lifetime_in_impl_trait = "deny"
-if_let_rescope                  = "warn"
-strict_module_headers           = "warn"
+# Use rustc's real compatibility group instead of hand-maintaining guessed
+# Edition lint names. Raise specific high-confidence rules separately.
+rust_2024_compatibility = { level = "warn", priority = -1 }
+unsafe_op_in_unsafe_fn = "deny"
+unexpected_cfgs = "warn"
+unfulfilled_lint_expectations = "deny"
 ```
 
 ## See Also

@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -14,9 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
-          python-version: "3.x"
+          version: latest-known
+          enable-cache: false
       # Toolchain/target are pinned by checks/rust-toolchain.toml (Rust 1.98.1).
       - uses: dtolnay/rust-toolchain@1.98.1
         with:
@@ -28,4 +33,145 @@ jobs:
       - name: Run checks
         run: bash checks/check.sh
       - name: Validate packed skill
-        run: python scripts/package_skill.py
+        run: uv run --no-project python scripts/package_skill.py
+
+  strict-gate-self-test:
+    name: Strict reusable gate self-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Passing fixture
+        uses: ./.github/actions/rust-strict
+        with:
+          working-directory: checks/fixtures/strict-ci-pass
+          cargo-args: "--locked --all-targets"
+
+      - name: Non-negotiable expectation must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-expect
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted #[expect(clippy::unwrap_used)]" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected suppression of a non-negotiable lint"
+
+      - name: Direct Result expect must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-result-expect
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted Result::expect" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected Result::expect"
+
+      - name: Correctness expectation must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-group-expect
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted a correctness expectation" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected a correctness expectation"
+
+      - name: Unreasoned expectation must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-unreasoned-expect
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted an unreasoned expectation" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected an unreasoned expectation"
+
+      - name: Multi-lint expectation must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-multi-expect
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted a multi-lint expectation" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected a multi-lint expectation"
+
+      - name: Handwritten allow must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-allow
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted #[allow(...)]" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected #[allow(...)]"
+
+      - name: Handwritten warn must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-warn
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted #[warn(...)]" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected #[warn(...)]"
+
+      - name: Cargo cap-lints must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-cap-lints
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted Cargo --cap-lints" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected Cargo --cap-lints"
+
+      - name: Environment force-warn must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-pass
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+          RUSTFLAGS: "--force-warn clippy::unwrap_used"
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted environment --force-warn" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected environment --force-warn"
+

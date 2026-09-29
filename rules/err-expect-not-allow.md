@@ -1,145 +1,115 @@
 # err-expect-not-allow
 
-> Prefer `#[expect(...)]` when you are suppressing a lint that should currently fire and want stale suppressions detected
+> Prefer narrow, reasoned `#[expect(...)]` for suppressible lints; never use expectations to waive correctness, safety, or panic policy
 
 ## Why It Matters
 
-Rust 1.81 stabilized the `expect` lint level. `#[expect(lint_name)]` suppresses an expected lint emission **and records that the emission is supposed to exist**. If the lint would no longer fire, the compiler emits `unfulfilled_lint_expectations` at the attribute.
+Rust's `expect` lint level records that a specific lint is supposed to fire. When the lint no longer fires, `unfulfilled_lint_expectations` reports the stale suppression.
 
-That makes `#[expect]` a strong default for targeted suppressions during refactoring or for deliberate exceptions whose justification depends on the current code actually triggering a lint.
+That makes `#[expect]` useful for narrow exceptions to noisy or context-dependent lints. It is not a general escape hatch: the strict gate rejects expectations for high-signal correctness/safety policy, and broad lint-group expectations hide too much. Compiler lint levels remain `deny` so proc-macro-generated code can use its own internal lint attributes.
 
-`#[allow]` is not obsolete. It is appropriate when the policy is “this lint is permitted here whether or not the current configuration/code shape happens to trigger it.”
+This rule concerns the **lint attribute** `#[expect(...)]`, not the panic-producing `Result::expect`/`Option::expect` methods.
 
-## Bad: A Stale `allow` Is Silent
-
-```rust
-#[allow(unused_variables)]
-fn process() {
-    let value = 42;
-    println!("{value}");
-}
-
-fn main() {
-    process();
-}
-```
-
-The function no longer has an unused variable, but the `allow` remains silently. That may be fine if the scope intentionally permits unused variables; it is poor if the annotation was meant to excuse one specific current warning.
-
-## Good: Expect the Specific Current Lint
+## Bad: Permanent Handwritten `allow`
 
 ```rust
-#[expect(unused_variables, reason = "placeholder kept for the next migration step")]
-fn process() {
-    let future_value = 42;
+#[allow(clippy::too_many_lines)]
+fn generated_dispatch() {
+    // large mechanically generated-looking dispatch table
 }
 
-fn main() {
-    process();
-}
+fn main() {}
 ```
 
-The expectation is fulfilled because `unused_variables` would otherwise be emitted and is suppressed by this `expect`.
+The allowance remains silently even if the function later becomes short enough that no exception is needed.
 
-## What Happens When the Lint Disappears
+## Good: Expect One Specific Suppressible Lint
 
-If the code later becomes:
-
-```text
-#[expect(unused_variables, reason = "placeholder kept for the next migration step")]
-fn process() {
-    let future_value = 42;
-    println!("{future_value}");
+```rust
+#[expect(
+    clippy::too_many_lines,
+    reason = "protocol dispatch table mirrors the wire specification"
+)]
+fn generated_dispatch() {
+    // ...
 }
+
+fn main() {}
 ```
 
-then `unused_variables` no longer fires. Rust emits the `unfulfilled_lint_expectations` lint with a diagnostic such as `this lint expectation is unfulfilled`.
+If the function stops triggering `too_many_lines`, `unfulfilled_lint_expectations` tells us to remove the stale attribute.
 
-The stale expectation is the warning; the original lint is **not** described as “fulfilled” after it disappears.
-
-## The Lint Name Is `unfulfilled_lint_expectations`
-
-To make stale expectations fail CI, raise that compiler lint:
+## Make Stale Expectations Fail CI
 
 ```toml
 [lints.rust]
 unfulfilled_lint_expectations = "deny"
 ```
 
-There is no compiler lint named `fulfill_expectations` for this purpose.
+The rust-skills2 strict gate rejects handwritten attempts to lower or expect this lint, so stale-expectation checking remains mandatory without breaking proc-macro-generated code.
 
-## Clippy Expectations
+## Do Not Expect Whole Groups
 
-`expect` also works with tool lints when the tool is running:
+Avoid broad attributes such as:
 
-```rust
-#[expect(
-    clippy::unwrap_used,
-    reason = "validated nonempty input is an invariant at this boundary"
-)]
-fn first(values: &[u8]) -> u8 {
-    *values.first().unwrap()
-}
-
-fn main() {
-    assert_eq!(first(&[3]), 3);
-}
+```text
+#[expect(clippy::pedantic)]
+#[expect(clippy::correctness)]
+#[expect(warnings)]
 ```
 
-When Clippy evaluates this code, the expectation is useful only if `clippy::unwrap_used` is enabled at a level that would otherwise emit there.
+A group can gain new members as the toolchain changes, silently widening the exception. Name the one concrete lint whose tradeoff was reviewed.
 
-Rust 1.81 also stabilized lint `reason = "..."` syntax. Give suppressions concise reasons that explain the exceptional design decision rather than restating the lint name.
+The reusable strict gate rejects group-level expectations in handwritten source.
 
-## When `#[allow]` Is Better
+## Do Not Expect High-Signal Categories
 
-Use `allow` when you intentionally permit a lint in a scope and do **not** require a current violation to exist. Common examples include configuration-dependent code where some targets trigger the lint and others do not, generated code, or a module whose policy deliberately differs from the crate default.
+Correctness, suspicious, and performance diagnostics should be fixed rather than locally waived during normal AI development. The reusable gate discovers current group membership from nightly Clippy and rejects handwritten expectations for members of those categories.
 
-```rust
-#[allow(dead_code, reason = "platform hooks are selected by cfg in downstream builds")]
-mod platform_hooks {
-    pub fn unix_hook() {}
-    pub fn windows_hook() {}
-}
+Concrete non-negotiable lints such as `unwrap_used`, `expect_used`, explicit `panic`, undocumented unsafe blocks, and lock guards held across `await` are deny-level in Clippy and explicitly blocked from handwritten `#[expect]` by the source-policy precheck.
 
-fn main() {}
-```
+## Generated Code Is the Main `allow` Exception
 
-Using `expect(dead_code)` mechanically here could create unfulfilled expectations on configurations where an item becomes used.
+Generated source sometimes needs unconditional lint permissions because different targets or generator versions emit different shapes. A generator may emit a reasoned crate/module-level `allow` for style-only lints.
+
+Handwritten source should not copy that pattern. The reusable strict gate source-checks workspace Rust files and rejects handwritten `#[allow(...)]` attributes while leaving build/proc-macro output outside the source tree alone.
 
 ## Scope and Fulfillment Matter
 
-An expectation is fulfilled only by a lint emission suppressed by that expectation. A nested `#[allow]`, `#[warn]`, or another more-local `#[expect]` can change which attribute handles the lint. Do not treat an outer `expect` as a simple assertion that “somewhere below here this lint exists.”
+An expectation is fulfilled only by a lint emission suppressed by that expectation. Keep it immediately next to the deliberate lint site and explain the design constraint, not the lint name.
 
-When the exact scope matters, put the expectation as close as practical to the deliberate lint site.
+Good reasons describe facts such as:
 
-## `forbid` Is Different
+- framework trait shape requires an otherwise-unused async boundary;
+- a generated protocol table must stay contiguous for auditability;
+- a proc-macro expansion currently triggers a documented false positive.
 
-`#[forbid(lint)]` is deliberately stronger than `deny`: descendant scopes cannot lower that lint with `allow` or `expect`. If a crate chooses `forbid`, a local expectation is not an escape hatch.
+Bad reasons merely say “Clippy complains” or “needed for CI.”
 
 ## Migration Pattern
 
-When replacing a targeted `allow`:
+When replacing a handwritten `allow`:
 
 ```text
-1. Confirm which concrete lint the annotation is suppressing.
-2. Move the suppression close to the intentional lint site if practical.
-3. Replace `allow` with `expect` and record the reason.
-4. Enable or deny `unfulfilled_lint_expectations` in CI if stale suppressions must fail the build.
-5. Keep `allow` when unconditional permission, rather than current fulfillment, is the actual policy.
+1. Check whether the code can be improved so no suppression is needed.
+2. Identify the one concrete lint that remains unavoidable.
+3. Verify that the lint is not part of a non-suppressible policy category.
+4. Move the attribute to the smallest practical item.
+5. Replace allow with #[expect(lint, reason = "...")].
+6. Keep unfulfilled_lint_expectations fatal in CI.
 ```
-
-Clippy's `allow_attributes` restriction lint can help projects migrate ordinary `#[allow(...)]` attributes toward `#[expect(...)]` where that policy is desired.
 
 ## Practical Guidance
 
-- Use `expect` for a suppression whose continued existence should be checked.
-- Use `allow` for an intentionally permissive scope where no current emission is required.
-- Name `unfulfilled_lint_expectations` when configuring stale-expectation enforcement.
-- Include a `reason` that explains the exception.
-- Keep expectations narrow enough that it is clear what fulfills them.
+- Fix the code before reaching for any suppression.
+- Never expect a lint group.
+- Never expect correctness/suspicious/perf policy lints.
+- Keep `#[expect]` narrow and reasoned for the remaining suppressible lints.
+- Reserve `#[allow]` for generated code that cannot use fulfillment semantics.
+- For rules that must not be locally waived, keep compiler lint levels at `deny` and let the strict source-policy precheck reject handwritten lowering/suppression attributes.
 
 ## See Also
 
-- [err-expect-bugs-only](./err-expect-bugs-only.md) - Justified uses of `expect()`
-- [lint-deny-correctness](./lint-deny-correctness.md) - Lint-level policy
-- [err-no-unwrap-prod](./err-no-unwrap-prod.md) - Handling unwrap/expect policies
+- [err-expect-bugs-only](./err-expect-bugs-only.md) - Avoid panic-producing `expect()`
+- [lint-deny-correctness](./lint-deny-correctness.md) - Critical lint policy
+- [err-no-unwrap-prod](./err-no-unwrap-prod.md) - Avoid panic-style extraction

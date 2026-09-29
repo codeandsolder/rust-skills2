@@ -1,17 +1,14 @@
 # err-result-over-panic
 
-> Use `Result<T, E>` for anticipated runtime failure; use panic for violated assumptions, bugs, and APIs whose documented contract chooses to panic
+> Use `Result<T, E>` for fallible operations; encode invariants explicitly and keep deliberate termination at the application boundary
 
 ## Why It Matters
 
-Rust has two complementary failure mechanisms:
+`Result` makes failure part of the function's contract. Callers can inspect, propagate, retry, substitute a fallback, report, or deliberately terminate.
 
-- `Result` represents anticipated runtime failures that callers may propagate, inspect, retry, replace with a fallback, or report.
-- panic represents a failure of an assumption or contract where ordinary return-based recovery is not the API being offered.
+Panic is appropriate for assertion-style contracts and failures inside code that already has panic semantics, but it should not be the default transport for ordinary errors or a hidden substitute for invariant modeling. In particular, `unwrap()`/`expect()` make panic paths easy to add and hard to audit.
 
-A panic is **not literally uncatchable**: with the unwinding panic strategy, `catch_unwind` can establish an unwind boundary. But panic catching is not Rust's general-purpose replacement for `Result`, and with `panic = "abort"` the process aborts instead of unwinding.
-
-## Bad: Panic on Ordinary Runtime Failures
+## Bad: Panic on Runtime Failure
 
 ```rust
 fn parse_port(input: &str) -> u16 {
@@ -24,8 +21,6 @@ fn read_user_file(path: &str) -> String {
 
 fn main() {}
 ```
-
-If `input` is user-controlled or the file is external state, parse and I/O failure are ordinary outcomes. Panicking prevents the caller from selecting its own policy.
 
 ## Good: Return the Failure
 
@@ -43,8 +38,6 @@ fn read_user_file(path: &str) -> Result<String, io::Error> {
 
 fn main() {}
 ```
-
-A caller can now propagate, retry, fall back, or convert the error.
 
 ## Typed Application Example
 
@@ -70,21 +63,21 @@ fn parse_config(path: &str) -> Result<Value, ConfigError> {
 fn main() {}
 ```
 
-The important property is not the specific error crate; it is that an expected I/O/parse failure remains representable in the return type.
+The specific error crate is incidental; the important property is that the failure remains representable in the return type.
 
-## Panic for a Violated Internal Invariant
+## Encode Invariants Without Re-Looking-Up Fallibly
+
+When an operation itself can produce the desired reference, use that API rather than inserting and then `expect()`-ing a second lookup.
 
 ```rust
 use std::collections::HashMap;
 
-fn inserted_value<'a>(
-    map: &'a mut HashMap<String, u32>,
+fn inserted_value(
+    map: &mut HashMap<String, u32>,
     key: String,
     value: u32,
-) -> &'a u32 {
-    map.insert(key.clone(), value);
-    map.get(&key)
-        .expect("key should exist immediately after insertion")
+) -> &mut u32 {
+    map.entry(key).or_insert(value)
 }
 
 fn main() {
@@ -93,35 +86,41 @@ fn main() {
 }
 ```
 
-If this assumption fails, the implementation is broken; changing user input is not the recovery path.
+More generally, validate once and construct a type/state that directly carries the guarantee.
 
-## Documented Caller Contracts May Panic
+## Documented Caller Contracts May Assert
 
-Libraries are not required to eliminate every panic. Many Rust APIs panic when a caller violates a documented precondition. Indexing a slice out of bounds is the obvious standard example.
+Some APIs intentionally panic when callers violate a documented precondition. Slice indexing is the standard example.
 
-For your own public API, decide deliberately whether an invalid argument is:
+For your own public API, decide deliberately whether invalid input is:
 
 - an anticipated condition represented by `Result`/`Option`, or
-- a contract violation for which the API documents a panic.
+- a caller contract violation enforced by an assertion/indexing operation.
 
-If a public function can panic under ordinary-looking inputs, document the condition in a `# Panics` section.
+If a public function can panic under ordinary-looking inputs, document the condition in a `# Panics` section. This is not a reason to use `expect()` for internal extraction.
 
-## Startup Failures Are an Application Policy Choice
-
-A binary with no useful degraded mode may choose to stop immediately when a required prerequisite is absent:
+## Startup Failures Belong at the Application Boundary
 
 ```rust
-fn required_runtime_root() -> String {
-    std::env::var("APP_ROOT")
-        .expect("APP_ROOT should be set by the service launcher")
+use std::process::ExitCode;
+
+fn run() -> Result<(), std::env::VarError> {
+    let _root = std::env::var("APP_ROOT")?;
+    Ok(())
 }
 
-fn main() {
-    let _ = required_runtime_root();
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("fatal: APP_ROOT is unavailable: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }
 ```
 
-That can be acceptable, but returning an error from `main` or printing a structured diagnostic is often friendlier. “The program cannot continue” does not by itself require a panic.
+“The program cannot continue” does not require a hidden panic.
 
 ## `catch_unwind` Is a Boundary Tool, Not Normal Error Handling
 
@@ -135,65 +134,22 @@ fn run_plugin_boundary(mut callback: impl FnMut()) -> bool {
 fn main() {}
 ```
 
-`catch_unwind` is useful at isolation/FFI/framework boundaries where unwinding must be contained. It only catches unwinding panics, not aborting panics, and `AssertUnwindSafe` is a correctness assertion that deserves review.
+Use panic isolation at FFI/framework/plugin boundaries where unwinding already exists. Do not convert routine file/network/validation errors into panics just to catch them later.
 
-Do not convert routine file/network/validation errors into panics merely so they can be caught later.
+## Tests
 
-## Rust 1.92+: Backtraces with `panic = "abort"` on Linux
-
-Rust 1.92 changed Linux code generation so unwind tables are emitted by default even with `-Cpanic=abort`. That restored the ability to produce stack backtraces for aborting panics on Linux without separately forcing unwind tables.
-
-```toml
-[profile.release]
-panic = "abort"
-```
-
-A panic hook can capture a backtrace before the abort:
+Tests can return `Result` and use `?` for setup:
 
 ```rust
-use std::backtrace::Backtrace;
-
-fn install_hook() {
-    std::panic::set_hook(Box::new(|info| {
-        let backtrace = Backtrace::force_capture();
-        eprintln!("panic: {info}\nbacktrace:\n{backtrace}");
-    }));
-}
-
-fn main() {
-    install_hook();
-}
-```
-
-If those unwind tables are unwanted, `-Cforce-unwind-tables=no` can explicitly disable them. This backtrace improvement does **not** make `catch_unwind` work with `panic = "abort"`; no Rust panic unwinding occurs in that mode.
-
-## Rust 1.96: Better Pattern Assertions in Tests
-
-`assert_matches!` stabilized in Rust 1.96 and is preferable to `assert!(matches!(...))` when the failing value's debug representation would help:
-
-```rust
-#[derive(Debug)]
-enum ParseError {
-    Syntax,
-}
-
-fn parse(_: &str) -> Result<(), ParseError> {
-    Err(ParseError::Syntax)
-}
-
 #[test]
-fn reports_syntax_error() {
-    assert_matches!(parse("bad"), Err(ParseError::Syntax));
+fn parses_port() -> Result<(), std::num::ParseIntError> {
+    let port: u16 = "8080".parse()?;
+    assert_eq!(port, 8080);
+    Ok(())
 }
-
-fn main() {}
 ```
 
-This is test ergonomics, not a reason to choose panic over `Result` in the production API.
-
-## Do Not Invent an `AssertUnwindSafe` Migration
-
-Rust 1.96 added `From<T> for AssertUnwindSafe<T>` for already-`UnwindSafe` values. The tuple-struct constructor `AssertUnwindSafe(value)` existed long before that release. Do not present ordinary `catch_unwind(AssertUnwindSafe(closure))` syntax as newly enabled by the `From` implementation.
+Assertions remain the test harness's normal failure mechanism.
 
 ## Decision Guide
 
@@ -202,24 +158,23 @@ Rust 1.96 added `From<T> for AssertUnwindSafe<T>` for already-`UnwindSafe` value
 | invalid user/request input | `Result` / validation |
 | file, network, service, or parse failure | `Result` |
 | optional absence | `Option` or `Result`, depending on semantics |
-| violated internal invariant | panic / assertion can be appropriate |
-| caller violates documented precondition | documented panic can be appropriate |
-| test fixture/setup unexpectedly fails | `expect` / `unwrap` is often fine |
+| internal invariant | encode in type/state; otherwise explicit invariant error |
+| caller violates documented precondition | documented assertion/indexing contract |
+| test fixture/setup unexpectedly fails | test returns `Result` and uses `?` |
 | boundary must contain third-party unwinding | `catch_unwind` when panic strategy permits |
-| application cannot start | explicit error exit or panic, by application policy |
+| application cannot start | diagnostic + failure `ExitCode` at outer boundary |
 
 ## Practical Guidance
 
-- Model failures callers can reasonably encounter as return values.
-- Reserve panic for broken assumptions/contracts rather than ordinary adverse conditions.
-- Do not claim panics are categorically unrecoverable; distinguish unwinding from aborting panic strategies.
+- Model fallible operations as return values.
+- Do not use `unwrap()`/`expect()` as invariant shorthand.
+- Keep process termination policy in the top-level runner.
 - Do not use `catch_unwind` as routine error control flow.
-- Document public panic conditions.
-- Treat startup panic versus error reporting as an application UX/operations decision.
+- Document intentional public panic contracts.
 
 ## See Also
 
 - [err-thiserror-lib](./err-thiserror-lib.md) - Typed errors
 - [err-anyhow-app](./err-anyhow-app.md) - Application error reports
-- [err-expect-bugs-only](./err-expect-bugs-only.md) - Justified `expect()` usage
-- [err-no-unwrap-prod](./err-no-unwrap-prod.md) - Avoiding unjustified unwraps
+- [err-expect-bugs-only](./err-expect-bugs-only.md) - Explicit alternatives to `expect()`
+- [err-no-unwrap-prod](./err-no-unwrap-prod.md) - Avoid panic-style extraction
