@@ -1,5 +1,5 @@
 name: rust-skills2 strict Rust gate
-description: Run the central rust-skills2 nightly Clippy policy against a checked-out Rust workspace.
+description: Run the central rust-skills2 strict nightly Rust policy against a checked-out Rust workspace.
 
 inputs:
   working-directory:
@@ -11,14 +11,14 @@ inputs:
     required: false
     default: "--locked --workspace --all-targets"
   install-toolchain:
-    description: Install latest nightly Clippy before running. Set false when the caller already installed it.
+    description: Install latest nightly Clippy and rustfmt before running. Set false when the caller already installed them.
     required: false
     default: "true"
 
 runs:
   using: composite
   steps:
-    - name: Install latest nightly Clippy
+    - name: Install latest nightly Rust tools
       if: ${{ inputs.install-toolchain == 'true' }}
       uses: dtolnay/rust-toolchain@nightly
       with:
