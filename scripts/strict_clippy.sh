@@ -52,22 +52,21 @@ export RUSTC_WORKSPACE_WRAPPER=
 
 read -r -a CARGO_ARGS <<< "${RUST_SKILLS2_CARGO_ARGS:---locked --workspace --all-targets}"
 
-# High-confidence categories use `forbid`: source-level #[allow] and #[expect]
-# cannot suppress them. Opinionated/churn-prone groups remain `deny`: they
-# still fail CI, but a narrowly-scoped #[expect(..., reason = "...")] can be
-# used when nightly Clippy has a genuine false positive or generated-code issue.
+# Everything is deny-level at compiler/Clippy level. Proc macros legitimately
+# inject internal allow attributes, so command-line forbid is not composable
+# even for concrete lints (for example Leptos/TypedBuilder allows clippy::panic).
+# The source-policy pass above makes selected lints unsuppressible in handwritten
+# source while still allowing macro-generated code to manage its own internals.
 LINT_ARGS=(
     -Dwarnings
 
-    -Funfulfilled_lint_expectations
-    -Funexpected_cfgs
-    -Funsafe_op_in_unsafe_fn
+    -Dunfulfilled_lint_expectations
+    -Dunexpected_cfgs
+    -Dunsafe_op_in_unsafe_fn
 
-    # Group-level forbid is not viable: proc-macro expansions (including serde
-    # derives) legitimately inject internal allow attributes, and rustc rejects
-    # those as incompatible with a forbidden group. Keep the groups fatal but
-    # suppressible for generated-code edge cases; concrete non-negotiable
-    # policies below remain forbid.
+    # Proc-macro expansions legitimately inject internal allow attributes.
+    # Keep groups fatal at source boundaries while allowing macro internals to
+    # lower lint levels where their generated implementation requires it.
     -Dclippy::correctness
     -Dclippy::suspicious
     -Dclippy::perf
@@ -77,20 +76,19 @@ LINT_ARGS=(
     -Dclippy::pedantic
     -Dclippy::nursery
 
-    -Fclippy::unwrap_used
-    -Fclippy::expect_used
-    -Fclippy::panic
-    -Fclippy::todo
-    -Fclippy::unimplemented
-    -Fclippy::dbg_macro
+    -Dclippy::unwrap_used
+    -Dclippy::expect_used
+    -Dclippy::panic
+    -Dclippy::todo
+    -Dclippy::unimplemented
+    -Dclippy::dbg_macro
 
-    -Fclippy::undocumented_unsafe_blocks
-    -Fclippy::missing_safety_doc
-    -Fclippy::await_holding_lock
+    -Dclippy::undocumented_unsafe_blocks
+    -Dclippy::missing_safety_doc
+    -Dclippy::await_holding_lock
 
-    # Ordinary outer #[allow(...)] is rejected by default. Generated code may
-    # explicitly suppress this meta-lint when it genuinely needs broad allows.
-    # Forbidden lints below cannot be lowered by either allow or expect.
+    # Handwritten #[allow] and high-risk #[expect] are rejected by the source
+    # policy pass. Generated code may still manage lint levels internally.
     -Dclippy::allow_attributes
     -Dclippy::allow_attributes_without_reason
 )
