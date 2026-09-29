@@ -95,19 +95,19 @@ Reference these guidelines when:
 
 - [`err-thiserror-lib`](rules/err-thiserror-lib.md) - Use `thiserror` to derive typed library errors when it removes boilerplate without hiding the API
 - [`err-anyhow-app`](rules/err-anyhow-app.md) - Use `anyhow` at application boundaries when callers need context and reporting more than a stable typed error API
-- [`err-result-over-panic`](rules/err-result-over-panic.md) - Use `Result<T, E>` for anticipated runtime failure; use panic for violated assumptions, bugs, and APIs whose documented contract chooses to panic
+- [`err-result-over-panic`](rules/err-result-over-panic.md) - Use `Result<T, E>` for fallible operations; encode invariants explicitly and keep deliberate termination at the application boundary
 - [`err-context-chain`](rules/err-context-chain.md) - Add context at abstraction boundaries so an error says what operation failed as well as why
-- [`err-no-unwrap-prod`](rules/err-no-unwrap-prod.md) - Avoid `unwrap()` for expected runtime failures; reserve panics for deliberate invariants
-- [`err-expect-bugs-only`](rules/err-expect-bugs-only.md) - Use `expect()` when failure violates a justified assumption; return or handle errors for anticipated runtime failures
+- [`err-no-unwrap-prod`](rules/err-no-unwrap-prod.md) - Avoid `unwrap()` and `expect()`; preserve failures explicitly and encode invariants in types
+- [`err-expect-bugs-only`](rules/err-expect-bugs-only.md) - Avoid `expect()` even for invariants; encode the invariant, propagate failure, or terminate deliberately at the process boundary
 - [`err-question-mark`](rules/err-question-mark.md) - Use `?` when a fallible operation should short-circuit through the surrounding error context
 - [`err-from-impl`](rules/err-from-impl.md) - Implement specific `From<SourceError>` conversions when the conversion is unconditional, unambiguous, and preserves the information callers need
 - [`err-source-chain`](rules/err-source-chain.md) - Preserve underlying causes in the error source chain
 - [`err-lowercase-msg`](rules/err-lowercase-msg.md) - Keep `Error` display messages concise, usually lowercase, and usually without trailing punctuation so they compose cleanly
 - [`err-doc-errors`](rules/err-doc-errors.md) - Document meaningful `Err` conditions in a `# Errors` section
 - [`err-custom-type`](rules/err-custom-type.md) - Define domain error types when callers benefit from knowing what failed
-- [`err-clippy-unwrap-types`](rules/err-clippy-unwrap-types.md) - Use `allow-unwrap-types` only for types where the project deliberately chooses a panic-on-error policy
+- [`err-clippy-unwrap-types`](rules/err-clippy-unwrap-types.md) - Do not use Clippy's `allow-unwrap-types` to punch type-wide holes in a strict no-unwrap/no-expect policy
 - [`err-diagnostic-do-not-recommend`](rules/err-diagnostic-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` on trait impls whose appearance in diagnostics would mislead users
-- [`err-expect-not-allow`](rules/err-expect-not-allow.md) - Prefer `#[expect(...)]` when you are suppressing a lint that should currently fire and want stale suppressions detected
+- [`err-expect-not-allow`](rules/err-expect-not-allow.md) - Prefer narrow, reasoned `#[expect(...)]` for suppressible lints; never use expectations to waive correctness, safety, or panic policy
 - [`err-no-std-error`](rules/err-no-std-error.md) - Use `core::error::Error` for genuine `no_std` error types; current `thiserror` supports this on Rust 1.81+
 - [`err-try-block-experimental`](rules/err-try-block-experimental.md) - `try {}` blocks remain nightly-only; prefer stable `Result`/`Option` contexts unless the scoped expression is worth the nightly dependency
 
@@ -368,7 +368,7 @@ Reference these guidelines when:
 - [`doc-errors-section`](rules/doc-errors-section.md) - Document meaningful failure conditions in a `# Errors` section
 - [`doc-panics-section`](rules/doc-panics-section.md) - Include `# Panics` section for functions that can panic
 - [`doc-safety-section`](rules/doc-safety-section.md) - Document caller obligations with `# Safety`; justify local unsafe operations with `// SAFETY:` proofs
-- [`doc-question-mark`](rules/doc-question-mark.md) - Give doctests a `Result`-returning context when demonstrating `?`
+- [`doc-question-mark`](rules/doc-question-mark.md) - Give doctests a `Result`-returning context when demonstrating fallible operations; do not hide setup failure with unwrap/expect
 - [`doc-hidden-setup`](rules/doc-hidden-setup.md) - Hide incidental doctest setup with `# ` while leaving the behavior users need to understand visible
 - [`doc-intra-links`](rules/doc-intra-links.md) - Use intra-doc links for important relationships that rustdoc should resolve and validate
 - [`doc-link-types`](rules/doc-link-types.md) - Cross-link related public types and operations when the links help readers navigate the API
@@ -453,14 +453,14 @@ Reference these guidelines when:
 
 ### 26. Anti-patterns (REFERENCE)
 
-- [`anti-unwrap-abuse`](rules/anti-unwrap-abuse.md) - Avoid `unwrap()` for recoverable production errors; reserve panics for proven invariants and bugs
-- [`anti-expect-lazy`](rules/anti-expect-lazy.md) - Do not use `expect()` for ordinary runtime failures; use it to document deliberate panic invariants
+- [`anti-unwrap-abuse`](rules/anti-unwrap-abuse.md) - Avoid `unwrap()` and `expect()`; make failure handling or invariant representation explicit
+- [`anti-expect-lazy`](rules/anti-expect-lazy.md) - Do not use `expect()` as a shortcut for either error handling or invariant enforcement
 - [`anti-clone-excessive`](rules/anti-clone-excessive.md) - Do not clone merely to satisfy ownership when borrowing, moving, or deliberate sharing better matches the API
 - [`anti-lock-across-await`](rules/anti-lock-across-await.md) - Do not hold blocking lock guards across `.await`; an async mutex may intentionally span `.await` when the protected resource must remain exclusively owned.
 - [`anti-string-for-str`](rules/anti-string-for-str.md) - Prefer `&str` over `&String` when the API only needs string contents
 - [`anti-vec-for-slice`](rules/anti-vec-for-slice.md) - Accept slices when an API only needs element access; accept `Vec` references when vector-specific capacity or length-changing operations are genuinely part of the contract
 - [`anti-index-over-iter`](rules/anti-index-over-iter.md) - Don't use indexing when iterators work
-- [`anti-panic-expected`](rules/anti-panic-expected.md) - Do not use panics as the API for expected runtime failures
+- [`anti-panic-expected`](rules/anti-panic-expected.md) - Do not use panics as the API for expected runtime failures; keep deliberate termination and assertions explicit at their real boundary
 - [`anti-empty-catch`](rules/anti-empty-catch.md) - Do not accidentally discard errors; make best-effort and discard semantics explicit
 - [`anti-over-abstraction`](rules/anti-over-abstraction.md) - Introduce generics and traits when they express a stable semantic boundary; do not generalize code solely for hypothetical flexibility
 - [`anti-premature-optimize`](rules/anti-premature-optimize.md) - Don't optimize before profiling
