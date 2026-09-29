@@ -1,10 +1,10 @@
 [package]
-name = "strict-ci-generated-boundary"
+name = "strict-ci-blocked-generated-root"
 version = "0.0.0"
 edition = "2024"
 publish = false
 
 [package.metadata.rust-skills2]
-generated-lint-boundaries = ["src/generated.rs"]
+generated-lint-boundaries = ["src/lib.rs"]
 
 [workspace]
