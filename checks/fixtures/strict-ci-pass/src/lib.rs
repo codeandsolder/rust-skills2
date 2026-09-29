@@ -9,6 +9,18 @@ pub struct SerdeProbe {
     pub value: u8,
 }
 
+/// Returns its argument.
+///
+/// This expectation is intentionally allowed: it targets one specific
+/// pedantic lint and carries a reason, proving narrow exceptions still work.
+#[expect(
+    clippy::must_use_candidate,
+    reason = "positive fixture verifies narrow pedantic expectations remain available"
+)]
+pub const fn allowed_pedantic_expectation(value: u8) -> u8 {
+    value
+}
+
 /// Adds two small integers.
 #[must_use]
 pub const fn add(left: u8, right: u8) -> u8 {
