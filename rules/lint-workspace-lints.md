@@ -87,38 +87,27 @@ unused_results = "warn"
 unused_qualifications = "warn"
 
 [workspace.lints.clippy]
-# === Correctness (deny) ===
+# === Strict quality groups ===
 correctness = { level = "deny", priority = -1 }
-
-# === Suspicious (deny) ===
 suspicious = { level = "deny", priority = -1 }
+style = { level = "deny", priority = -1 }
+complexity = { level = "deny", priority = -1 }
+perf = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
 
-# === Style (warn) ===
-style = { level = "warn", priority = -1 }
-
-# === Complexity (warn) ===
-complexity = { level = "warn", priority = -1 }
-
-# === Perf (warn) ===
-perf = { level = "warn", priority = -1 }
-
-# === Pedantic (selective) ===
-# Not all pedantic lints are useful
-doc_markdown = "warn"
-needless_pass_by_value = "warn"
-redundant_closure_for_method_calls = "warn"
-semicolon_if_nothing_returned = "warn"
-
-# === Nursery (selective) ===
-cognitive_complexity = "warn"
-useless_let_if_seq = "warn"
-
-# === Restriction (selective) ===
+# === High-signal restriction lints ===
 unwrap_used = "deny"
-expect_used = "warn"
-dbg_macro = "warn"
-print_stdout = "warn"  # Use logging instead
-todo = "warn"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+undocumented_unsafe_blocks = "deny"
+missing_safety_doc = "deny"
+await_holding_lock = "deny"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"
