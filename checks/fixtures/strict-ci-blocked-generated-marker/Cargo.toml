@@ -1,5 +1,5 @@
 [package]
-name = "strict-ci-generated-boundary"
+name = "strict-ci-blocked-generated-marker"
 version = "0.0.0"
 edition = "2024"
 publish = false
