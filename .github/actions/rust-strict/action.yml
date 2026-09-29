@@ -7,7 +7,7 @@ inputs:
     required: false
     default: "."
   cargo-args:
-    description: Space-separated cargo clippy arguments before the rustc/Clippy lint flags.
+    description: Space-separated Cargo selector arguments (package/features/target/target-kind/lock behavior).
     required: false
     default: "--locked --workspace --all-targets"
   install-toolchain:

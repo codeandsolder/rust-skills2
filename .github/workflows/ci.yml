@@ -257,3 +257,37 @@ jobs:
           fi
           echo "strict gate correctly rejected cargo-args rustc injection"
 
+      - name: Cargo mutating fix mode must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-pass
+          RUST_SKILLS2_CARGO_ARGS: '--locked --all-targets --fix'
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted cargo-args --fix" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected cargo-args --fix"
+
+      - name: Cargo early-exit option must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-pass
+          RUST_SKILLS2_CARGO_ARGS: '--help'
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted cargo-args --help" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected cargo-args --help"
+
+      - name: Cargo package selector remains supported
+        uses: ./.github/actions/rust-strict
+        with:
+          working-directory: checks/fixtures/strict-ci-pass
+          cargo-args: "--locked --package strict-ci-pass --all-targets"
+

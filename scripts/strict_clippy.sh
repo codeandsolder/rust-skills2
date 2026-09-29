@@ -31,23 +31,36 @@ fi
 
 read -r -a CARGO_ARGS <<< "${RUST_SKILLS2_CARGO_ARGS:---locked --workspace --all-targets}"
 
-# The caller may choose package/feature/target topology, but it may not inject
-# Cargo/rustc policy that can weaken or redirect the shared gate. For example,
-# --config build.rustflags=["--cap-lints=allow"] can make a command-line deny
-# silently non-fatal.
+# cargo-args is deliberately a selector surface, not an arbitrary Cargo CLI.
+# Fail closed so current or future options cannot mutate the checkout, exit
+# successfully without checking, inject rustc flags, or override Cargo policy.
 for ((i = 0; i < ${#CARGO_ARGS[@]}; i++)); do
     arg="${CARGO_ARGS[$i]}"
     case "$arg" in
-        --)
-            echo "rust-skills2: cargo-args must not contain '--' (rustc argument injection)" >&2
-            exit 2
+        --locked|--frozen|--offline|--workspace|--all-targets|--all-features|--no-default-features|--lib|--bins|--examples|--tests|--benches|--keep-going|--no-deps)
             ;;
-        --config|--config=*|-Z|-Z*)
-            echo "rust-skills2: cargo-args must not override Cargo policy: $arg" >&2
-            exit 2
+        -p|--package|--exclude|-F|--features|--target|--bin|--example|--test|--bench)
+            if ((i + 1 >= ${#CARGO_ARGS[@]})); then
+                echo "rust-skills2: cargo-args option requires a value: $arg" >&2
+                exit 2
+            fi
+            ((i += 1))
+            value="${CARGO_ARGS[$i]}"
+            if [[ -z "$value" || "$value" == -* ]]; then
+                echo "rust-skills2: invalid value for cargo-args option $arg: $value" >&2
+                exit 2
+            fi
             ;;
-        --manifest-path|--manifest-path=*)
-            echo "rust-skills2: use working-directory instead of --manifest-path: $arg" >&2
+        --package=*|--exclude=*|--features=*|--target=*|--bin=*|--example=*|--test=*|--bench=*)
+            value="${arg#*=}"
+            if [[ -z "$value" ]]; then
+                echo "rust-skills2: cargo-args option requires a non-empty value: $arg" >&2
+                exit 2
+            fi
+            ;;
+        *)
+            echo "rust-skills2: unsupported cargo-args option: $arg" >&2
+            echo "rust-skills2: cargo-args may select workspace/package/features/target/target-kind and lock/offline behavior only" >&2
             exit 2
             ;;
     esac

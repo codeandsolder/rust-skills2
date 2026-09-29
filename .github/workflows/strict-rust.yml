@@ -9,7 +9,7 @@ on:
         type: string
         default: "."
       cargo-args:
-        description: Space-separated cargo clippy arguments.
+        description: Space-separated Cargo selector arguments (package/features/target/target-kind/lock behavior).
         required: false
         type: string
         default: "--locked --workspace --all-targets"
