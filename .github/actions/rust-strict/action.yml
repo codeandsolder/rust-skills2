@@ -32,4 +32,4 @@ runs:
         RUST_SKILLS2_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         RUST_SKILLS2_CARGO_ARGS: ${{ inputs.cargo-args }}
       run: |
-        "$GITHUB_ACTION_PATH/../../../scripts/strict_clippy.sh"
+        bash "$GITHUB_ACTION_PATH/../../../scripts/strict_clippy.sh"
