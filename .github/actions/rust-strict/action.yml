@@ -10,11 +10,16 @@ inputs:
     description: Space-separated cargo clippy arguments before the rustc/Clippy lint flags.
     required: false
     default: "--locked --workspace --all-targets"
+  install-toolchain:
+    description: Install latest nightly Clippy before running. Set false when the caller already installed it.
+    required: false
+    default: "true"
 
 runs:
   using: composite
   steps:
     - name: Install latest nightly Clippy
+      if: ${{ inputs.install-toolchain == 'true' }}
       uses: dtolnay/rust-toolchain@nightly
       with:
         components: clippy
