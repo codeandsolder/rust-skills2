@@ -48,6 +48,12 @@ jobs:
           working-directory: checks/fixtures/strict-ci-pass
           cargo-args: "--locked --all-targets"
 
+      - name: Reasoned large-enum performance tradeoff may stay inline
+        uses: ./.github/actions/rust-strict
+        with:
+          working-directory: checks/fixtures/strict-ci-large-enum-expect
+          cargo-args: "--locked --all-targets"
+
       - name: Explicit generated lint boundary may own generated-code expectations
         uses: ./.github/actions/rust-strict
         with:
