@@ -1,16 +1,16 @@
 # err-expect-bugs-only
 
-> Use `expect()` when failure violates a justified assumption; return or handle errors for anticipated runtime failures
+> Avoid `expect()` even for invariants; encode the invariant, propagate failure, or terminate deliberately at the process boundary
 
 ## Why It Matters
 
-`expect()` turns `None` or `Err` into a panic. That is appropriate when the program has a well-founded reason the value **should** be present or successful and failure indicates a broken invariant, violated startup assumption, or test expectation.
+`expect()` is still an implicit panic. A useful message makes the panic easier to diagnose, but it does not make abrupt unwinding a better API or control-flow boundary.
 
-It is a poor substitute for error handling when failure is an ordinary possibility: user input can be invalid, files can be absent, networks can fail, and remote data can be malformed.
+For AI-maintained code, the implementation cost of handling the case explicitly is small. Prefer to make invalid states unrepresentable, preserve failure as `Result`/`Option`, or convert the failure into a clear diagnostic at the application's outer boundary.
 
-The distinction is about the contract and recovery model, not whether the code happens to be in a library or binary.
+This also keeps one policy across libraries, binaries, tests, and benchmarks: callers can see where failure is handled instead of finding hidden panic paths later.
 
-## Bad: Panic on Anticipated Failures
+## Bad
 
 ```rust
 use std::fs;
@@ -19,16 +19,16 @@ fn parse_port(input: &str) -> u16 {
     input.parse().expect("port should parse")
 }
 
-fn load_optional_config(path: &str) -> String {
+fn load_config(path: &str) -> String {
     fs::read_to_string(path).expect("config should exist")
 }
 
 fn main() {}
 ```
 
-If `input` comes from a user or `path` names an optional/external file, those failures are normal runtime outcomes and should be represented explicitly.
+Both operations can fail at runtime, and `expect()` converts those failures into implicit process control flow.
 
-## Good: Return the Anticipated Failure
+## Good: Preserve the Failure
 
 ```rust
 use std::fs;
@@ -39,156 +39,125 @@ fn parse_port(input: &str) -> Result<u16, ParseIntError> {
     input.parse()
 }
 
-fn load_optional_config(path: &str) -> Result<String, io::Error> {
+fn load_config(path: &str) -> Result<String, io::Error> {
     fs::read_to_string(path)
 }
 
 fn main() {}
 ```
 
-## Good: `expect()` for a Source-Code Invariant
+Let the caller decide whether to retry, fall back, report the error, or terminate.
 
-A hard-coded regular expression that has already been reviewed as source code is a reasonable place for `expect()`:
+## Good: Encode the Invariant in the Type
+
+If construction guarantees a property, store that property directly instead of repeatedly extracting from a fallible container.
 
 ```rust
-use regex::Regex;
+use std::num::NonZeroU16;
 
-fn date_regex() -> Regex {
-    Regex::new(r"^\d{4}-\d{2}-\d{2}$")
-        .expect("hard-coded date regex should be valid")
+#[derive(Clone, Copy)]
+struct ValidatedPort(NonZeroU16);
+
+impl ValidatedPort {
+    fn new(port: u16) -> Option<Self> {
+        NonZeroU16::new(port).map(Self)
+    }
+
+    const fn get(self) -> u16 {
+        self.0.get()
+    }
 }
 
 fn main() {
-    assert!(date_regex().is_match("2026-08-27"));
+    assert_eq!(ValidatedPort::new(8080).map(ValidatedPort::get), Some(8080));
 }
 ```
 
-If this panics, changing runtime input cannot fix it; the source code itself contains an invalid regex.
+A missing or zero port is rejected at construction, so later code does not need `expect()` to recover a promised invariant.
 
-## Good: `expect()` After an Explicit Invariant Check
+## Good: Terminate Deliberately at the Application Boundary
+
+A binary may decide that startup cannot continue. Make that policy visible at the boundary and return an exit status after producing a useful diagnostic.
 
 ```rust
-fn first_after_nonempty_check(values: &[u32]) -> u32 {
-    assert!(!values.is_empty(), "caller must provide at least one value");
-    *values
-        .first()
-        .expect("slice should be nonempty after the assertion above")
+use std::process::ExitCode;
+
+fn run() -> Result<(), &'static str> {
+    Err("required configuration is missing")
 }
 
-fn main() {
-    assert_eq!(first_after_nonempty_check(&[7, 8]), 7);
-}
-```
-
-This example is slightly redundant—the indexing operation could express the same invariant—but it demonstrates the important point: the message explains **why** `Some` is expected.
-
-## Recommended Message Style
-
-The standard library recommends phrasing `expect` messages around the reason the value **should** be `Some` or `Ok`.
-
-```rust
-fn extension(path: &std::path::Path) -> &std::ffi::OsStr {
-    path.extension()
-        .expect("validated input path should have an extension")
-}
-
-fn main() {}
-```
-
-Prefer messages such as:
-
-```text
-validated input path should have an extension
-hard-coded regex should be valid
-queue should contain the item inserted immediately above
-wrapper script should set IMPORTANT_PATH
-```
-
-A `BUG:` prefix can be a useful project convention for internal invariants, but it is **not** a Rust requirement and should not replace explaining the assumption.
-
-Avoid messages that merely repeat the symptom:
-
-```text
-failed
-unexpected None
-invalid state
-unwrap failed
-```
-
-Those say what happened, not why success was expected.
-
-## Startup Assumptions Are a Policy Choice
-
-A binary may reasonably decide that some missing prerequisite makes startup impossible:
-
-```rust
-fn required_home() -> String {
-    std::env::var("HOME")
-        .expect("HOME should be set in the supported runtime environment")
-}
-
-fn main() {
-    let _ = required_home();
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("fatal: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }
 ```
 
-That does not make missing environment variables universally “bugs.” A CLI that can produce a friendly diagnostic may prefer returning an error instead. Use `expect()` when panic is the intended response to violation of the assumption.
+This is preferable to burying an `expect()` deep in startup code. The same pattern works for benchmark harnesses and one-shot tools.
 
-## Tests and Examples
+## Good: Tests Return Errors Too
 
-`unwrap()` and `expect()` are often fine in tests when the test itself asserts that setup or an operation succeeds:
+Tests do not need `unwrap()` or `expect()` merely to fail loudly.
 
 ```rust
 #[test]
-fn parses_valid_port() {
-    let port: u16 = "8080".parse().expect("test fixture should be a valid port");
+fn parses_valid_port() -> Result<(), std::num::ParseIntError> {
+    let port: u16 = "8080".parse()?;
     assert_eq!(port, 8080);
+    Ok(())
 }
-
-fn main() {}
 ```
 
-A useful `expect` message can still make a failing test easier to diagnose.
+For `Option`, compare it directly, use pattern matching, or convert it to a test error.
+
+## Source-Code Constants
+
+Before using `expect()` for a hard-coded value, check whether the type already provides a constant or infallible constructor. For example, prefer `std::net::Ipv4Addr::LOCALHOST` over parsing the string `"127.0.0.1"`.
+
+If a hard-coded value genuinely requires fallible initialization, keep the fallibility explicit in the initialization path rather than hiding it behind a panic.
 
 ## Linting Policy
 
-Clippy's `expect_used` and `unwrap_used` lints are restriction lints. Projects that deny them can make narrow exceptions where an invariant is genuinely clearer with `expect()`:
+For strict AI development, make panic-style extraction non-suppressible in CI:
 
-```rust
-#[expect(clippy::expect_used, reason = "hard-coded regex is a source invariant")]
-fn parser() -> regex::Regex {
-    regex::Regex::new(r"^[a-z]+$")
-        .expect("hard-coded parser regex should be valid")
-}
-
-fn main() {}
+```text
+-Fclippy::unwrap_used
+-Fclippy::expect_used
+-Fclippy::panic
 ```
 
-Use the lint policy to force justification, not to pretend every panic conversion is equally harmful.
+`forbid` is intentional: a local `#[allow]` or `#[expect]` must not turn an implicit abort back on.
+
+The rust-skills2 reusable strict gate applies this policy centrally.
 
 ## Decision Guide
 
-| Failure means | Usually prefer |
+| Situation | Prefer |
 |---|---|
-| invalid user/request input | `Result`, validation, or explicit handling |
-| missing/failed external resource | `Result` or fallback |
+| invalid user/request input | validation + `Result` |
+| missing/failed external resource | `Result`, retry, or fallback |
 | network/service failure | `Result`, retry, or fallback |
-| violated internal invariant | panic / `expect()` can be appropriate |
-| invalid hard-coded source data | `expect()` can be appropriate |
-| unsupported startup environment | application policy: diagnostic or `expect()` |
-| test fixture unexpectedly invalid | `expect()` / `unwrap()` is usually fine |
+| internal invariant | encode it in types/state; otherwise return an explicit invariant error |
+| hard-coded source data | infallible constant/constructor where available; otherwise explicit initialization error |
+| unsupported startup environment | diagnostic + `ExitCode` at the application boundary |
+| test fixture unexpectedly invalid | test returns `Result`, pattern match, or assert on the `Result`/`Option` itself |
 
 ## Practical Guidance
 
-- Before writing `expect()`, state why success is guaranteed or intentionally assumed.
-- Phrase the message around that expectation, commonly with “should.”
-- Do not use `expect()` to erase ordinary user, I/O, network, or parsing failures.
-- A `BUG:` prefix is optional house style, not the substance of a good message.
-- If callers can meaningfully recover, preserve the failure as `Result` instead of panicking.
+- Do not mechanically replace `unwrap()` with `expect()`; both hide a panic path.
+- Push recoverable failures upward with `?`.
+- Push invariant guarantees downward into constructors and types.
+- Keep process termination in `main`/the top-level runner where the policy is obvious.
+- Prefer returning `ExitCode` from `main` over calling `process::exit` from deep code.
+- Tests can return `Result`; benchmarks can print a fatal setup error and return/exit at their harness boundary.
 
 ## See Also
 
-- [err-no-unwrap-prod](./err-no-unwrap-prod.md) - Avoiding unjustified unwraps
-- [err-expect-not-allow](./err-expect-not-allow.md) - Using lint expectations deliberately
-- [err-result-over-panic](./err-result-over-panic.md) - Choosing `Result` versus panic
+- [err-no-unwrap-prod](./err-no-unwrap-prod.md) - Avoid panic-style extraction
+- [err-expect-not-allow](./err-expect-not-allow.md) - Narrow lint expectations, not `Result::expect`
+- [err-result-over-panic](./err-result-over-panic.md) - Choosing `Result` over panic
 - [api-parse-dont-validate](./api-parse-dont-validate.md) - Type-driven validation
