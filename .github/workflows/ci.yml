@@ -44,7 +44,7 @@ jobs:
           working-directory: checks/fixtures/strict-ci-pass
           cargo-args: "--locked --all-targets"
 
-      - name: Forbidden expectation must fail
+      - name: Non-negotiable expectation must fail
         shell: bash
         env:
           RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-expect
