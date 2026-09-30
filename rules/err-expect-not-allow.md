@@ -1,112 +1,131 @@
 # err-expect-not-allow
 
-> Prefer narrow, reasoned `#[expect(...)]` for suppressible lints; never use expectations to waive correctness, safety, or panic policy
+> Prefer narrow, reasoned `#[expect(...)]` when a suppressible lint reliably fires; use a narrow reasoned `#[allow(...)]` only when lint activation is configuration-dependent and fulfillment semantics cannot work
 
 ## Why It Matters
 
-Rust's `expect` lint level records that a specific lint is supposed to fire. When the lint no longer fires, `unfulfilled_lint_expectations` reports the stale suppression.
+Rust's `expect` lint level records that a specific lint is supposed to fire. When the lint no longer fires, `unfulfilled_lint_expectations` reports the stale suppression. That makes `#[expect]` the best default for deliberate exceptions to suppressible lints.
 
-That makes `#[expect]` useful for narrow exceptions to noisy or context-dependent lints. It is not a general escape hatch: the strict gate rejects expectations for high-signal correctness/safety policy, and broad lint-group expectations hide too much. Compiler lint levels remain `deny` so proc-macro-generated code can use its own internal lint attributes.
+There is one important limit: rustc still parses expectations for Clippy lints even when Clippy is not running. A Clippy lint that legitimately fires only under some feature/target configurations can therefore make plain rustc report an unfulfilled expectation. Wrapping the expectation in `cfg(clippy)` is not a clean workaround because Clippy diagnoses that pattern as `unnecessary_clippy_cfg`.
 
-This rule concerns the **lint attribute** `#[expect(...)]`, not the panic-producing `Result::expect`/`Option::expect` methods.
+For those genuinely configuration-dependent cases, a **single-lint, reasoned `#[allow]`** is the stable mechanism. The rust-skills2 strict gate permits that narrow form while continuing to reject unreasoned allowances, lint groups, and high-risk correctness/safety/panic-policy suppressions.
 
-## Bad: Permanent Handwritten `allow`
+This rule concerns lint attributes, not the panic-producing `Result::expect` / `Option::expect` methods.
 
-```rust
-#[allow(clippy::too_many_lines)]
-fn generated_dispatch() {
-    // large mechanically generated-looking dispatch table
-}
+## First Choice: Fix the Code
 
-fn main() {}
-```
+Do not add a suppression merely because CI is strict. First check whether the code can be made clearer or more correct so the lint disappears naturally.
 
-The allowance remains silently even if the function later becomes short enough that no exception is needed.
-
-## Good: Expect One Specific Suppressible Lint
+## Preferred: Expect One Specific Suppressible Lint
 
 ```rust
 #[expect(
     clippy::too_many_lines,
     reason = "protocol dispatch table mirrors the wire specification"
 )]
-fn generated_dispatch() {
+fn protocol_dispatch() {
     // ...
 }
-
-fn main() {}
 ```
 
-If the function stops triggering `too_many_lines`, `unfulfilled_lint_expectations` tells us to remove the stale attribute.
+Use `#[expect]` when the lint should reliably fire in every configuration where the item is compiled. If the code later stops triggering the lint, CI tells us to remove the stale exception.
 
-## Make Stale Expectations Fail CI
+## Configuration-Dependent Exception: Reasoned Allow
+
+```rust
+#[allow(
+    clippy::struct_field_names,
+    reason = "public field names mirror the published wire schema"
+)]
+pub struct TupleAssigned {
+    pub tuple_id: String,
+    pub tuple_local: String,
+    pub tuple_remote: String,
+}
+```
+
+A reasoned `#[allow]` is appropriate when all of the following are true:
+
+- the code itself should not change merely to satisfy the lint;
+- the lint is in a suppressible category;
+- the exception is one concrete lint, not a lint group;
+- lint activation genuinely varies by feature, target, or other compile configuration, so `#[expect]` would become spuriously unfulfilled;
+- the reason states the durable API/schema/design constraint.
+
+Typical examples are established public API signatures and externally defined schema field names.
+
+## Why `cfg(clippy)` Is Not the Escape Hatch
+
+Avoid this pattern:
+
+```text
+#[cfg_attr(
+    clippy,
+    expect(
+        clippy::struct_field_names,
+        reason = "schema names"
+    )
+)]
+```
+
+Clippy itself reports Clippy-lint expectations hidden behind `cfg(clippy)` as `unnecessary_clippy_cfg`. If the lint is genuinely configuration-dependent, use the narrow reasoned `#[allow]` form instead.
+
+## Keep Stale Expectations Fatal
 
 ```toml
 [lints.rust]
 unfulfilled_lint_expectations = "deny"
 ```
 
-The rust-skills2 strict gate rejects handwritten attempts to lower or expect this lint, so stale-expectation checking remains mandatory without breaking proc-macro-generated code.
+Do not suppress `unfulfilled_lint_expectations` to make a conditional Clippy expectation compile. That defeats the main value of `#[expect]`.
 
-## Do Not Expect Whole Groups
+## Do Not Suppress Whole Groups
 
 Avoid broad attributes such as:
 
 ```text
 #[expect(clippy::pedantic)]
-#[expect(clippy::correctness)]
-#[expect(warnings)]
+#[allow(clippy::correctness, reason = "...")]
+#[allow(warnings, reason = "...")]
 ```
 
-A group can gain new members as the toolchain changes, silently widening the exception. Name the one concrete lint whose tradeoff was reviewed.
+A group can gain new members as the toolchain changes and silently widen the exception. Name one concrete lint whose tradeoff was reviewed.
 
-The reusable strict gate rejects group-level expectations in handwritten source.
+The reusable strict gate rejects group-level handwritten suppressions.
 
-## Do Not Expect High-Signal Categories
+## Do Not Suppress High-Signal Categories
 
-Correctness, suspicious, and performance diagnostics should be fixed rather than locally waived during normal AI development. The reusable gate discovers current group membership from nightly Clippy and rejects handwritten expectations for members of those categories.
+Correctness, suspicious, and performance diagnostics should normally be fixed rather than waived. The reusable gate discovers current Clippy group membership and rejects handwritten suppressions for members of those categories, except explicitly policy-approved measured cases such as the existing `large_enum_variant` performance exception.
 
-Concrete non-negotiable lints such as `unwrap_used`, `expect_used`, explicit `panic`, undocumented unsafe blocks, and lock guards held across `await` are deny-level in Clippy and explicitly blocked from handwritten `#[expect]` by the source-policy precheck.
+Concrete non-negotiable lints such as `unwrap_used`, `expect_used`, explicit `panic`, undocumented unsafe blocks, and lock guards held across `await` remain blocked from both `#[expect]` and `#[allow]`.
 
-## Generated Code Is the Main `allow` Exception
+## Generated Code
 
-Generated source sometimes needs unconditional lint permissions because different targets or generator versions emit different shapes. A generator may emit a reasoned crate/module-level `allow` for style-only lints.
-
-Handwritten source should not copy that pattern. The reusable strict gate source-checks workspace Rust files and rejects handwritten `#[allow(...)]` attributes while leaving build/proc-macro output outside the source tree alone.
-
-## Scope and Fulfillment Matter
-
-An expectation is fulfilled only by a lint emission suppressed by that expectation. Keep it immediately next to the deliberate lint site and explain the design constraint, not the lint name.
-
-Good reasons describe facts such as:
-
-- framework trait shape requires an otherwise-unused async boundary;
-- a generated protocol table must stay contiguous for auditability;
-- a proc-macro expansion currently triggers a documented false positive.
-
-Bad reasons merely say “Clippy complains” or “needed for CI.”
+Generated source may still need broader unconditional lint control because target or generator versions can emit different shapes. Keep generated-code lint boundaries explicit and machine-verifiable rather than copying generated-code suppression patterns into handwritten source.
 
 ## Migration Pattern
 
-When replacing a handwritten `allow`:
+When reviewing an existing handwritten suppression:
 
 ```text
-1. Check whether the code can be improved so no suppression is needed.
+1. Fix the code if the lint points to a real improvement.
 2. Identify the one concrete lint that remains unavoidable.
-3. Verify that the lint is not part of a non-suppressible policy category.
-4. Move the attribute to the smallest practical item.
-5. Replace allow with #[expect(lint, reason = "...")].
-6. Keep unfulfilled_lint_expectations fatal in CI.
+3. Verify that the lint is not in a non-suppressible policy category.
+4. Keep the attribute at the smallest practical item.
+5. Use #[expect(lint, reason = "...")] when the lint reliably fires.
+6. If fulfillment varies legitimately by compile configuration, use
+   #[allow(lint, reason = "...")] instead.
+7. Keep unfulfilled_lint_expectations fatal.
 ```
 
 ## Practical Guidance
 
-- Fix the code before reaching for any suppression.
-- Never expect a lint group.
-- Never expect correctness/suspicious/perf policy lints.
-- Keep `#[expect]` narrow and reasoned for the remaining suppressible lints.
-- Reserve `#[allow]` for generated code that cannot use fulfillment semantics.
-- For rules that must not be locally waived, keep compiler lint levels at `deny` and let the strict source-policy precheck reject handwritten lowering/suppression attributes.
+- Fix before suppressing.
+- Never suppress a lint group.
+- Never suppress correctness/suspicious/high-risk safety or panic policy lints.
+- Prefer `#[expect]` because stale exceptions self-report.
+- Use reasoned `#[allow]` only for narrow configuration-dependent exceptions where `#[expect]` cannot have stable fulfillment semantics.
+- A reason should describe the API, schema, compatibility, or measured design constraint—not “Clippy complains” or “needed for CI.”
 
 ## See Also
 
