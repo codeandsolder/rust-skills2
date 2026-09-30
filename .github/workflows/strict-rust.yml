@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: "--locked --workspace --all-targets"
+      apt-packages:
+        description: Space-separated Ubuntu packages required to compile the selected workspace targets.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -24,6 +29,16 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+
+      - name: Install native build dependencies
+        if: ${{ inputs.apt-packages != '' }}
+        env:
+          PACKAGES: ${{ inputs.apt-packages }}
+        shell: bash
+        run: |
+          sudo apt-get update
+          read -r -a packages <<< "$PACKAGES"
+          sudo apt-get install -y -- "${packages[@]}"
 
       - name: Install latest nightly Rust tools
         uses: dtolnay/rust-toolchain@nightly
