@@ -125,9 +125,10 @@ LINT_ARGS=(
     -Dclippy::missing_safety_doc
     -Dclippy::await_holding_lock
 
-    # Handwritten #[allow] and high-risk #[expect] are rejected by the source
-    # policy pass. Generated code may still manage lint levels internally.
-    -Dclippy::allow_attributes
+    # Handwritten suppressions are validated by the source-policy pass:
+    # reasoned, single-lint #[allow] is permitted only for suppressible lints,
+    # while broad/high-risk suppressions stay blocked. Keep unreasoned allow
+    # attributes fatal, including outside handwritten source.
     -Dclippy::allow_attributes_without_reason
 )
 

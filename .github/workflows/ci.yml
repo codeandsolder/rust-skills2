@@ -178,7 +178,13 @@ jobs:
           fi
           echo "strict gate correctly rejected a multi-lint expectation"
 
-      - name: Handwritten allow must fail
+      - name: Specific reasoned allow may preserve external API/schema
+        uses: ./.github/actions/rust-strict
+        with:
+          working-directory: checks/fixtures/strict-ci-reasoned-allow
+          cargo-args: "--locked --all-targets"
+
+      - name: Unreasoned handwritten allow must fail
         shell: bash
         env:
           RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-allow
@@ -187,10 +193,10 @@ jobs:
         run: |
           set -euo pipefail
           if bash scripts/strict_clippy.sh; then
-            echo "strict gate unexpectedly accepted #[allow(...)]" >&2
+            echo "strict gate unexpectedly accepted unreasoned #[allow(...)]" >&2
             exit 1
           fi
-          echo "strict gate correctly rejected #[allow(...)]"
+          echo "strict gate correctly rejected unreasoned #[allow(...)]"
 
       - name: Handwritten warn must fail
         shell: bash

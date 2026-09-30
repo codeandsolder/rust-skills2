@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject broad or high-risk lint suppressions in handwritten Rust source.
+"""Validate handwritten Rust lint suppressions against the strict policy.
 
 The compiler is the primary policy mechanism. This checker makes selected lints
 unsuppressible in handwritten source without using command-line `forbid`,
@@ -23,14 +23,14 @@ BLOCKED_CLIPPY_GROUPS = {
     "clippy::suspicious",
     "clippy::perf",
 }
-ALLOWED_PERF_EXPECT_LINTS = {
+ALLOWED_PERF_SUPPRESSION_LINTS = {
     # `large_enum_variant` is deliberately heuristic: boxing can regress hot
     # variants through allocation and pointer chasing. The project rule requires
     # measurement rather than mechanical boxing, so keep a narrow, reasoned
     # expectation available while all other perf-group suppressions stay blocked.
     "clippy::large_enum_variant",
 }
-BLOCKED_EXPECT_LINTS = {
+BLOCKED_SUPPRESSION_LINTS = {
     "clippy::allow_attributes",
     "clippy::allow_attributes_without_reason",
     "clippy::await_holding_lock",
@@ -467,7 +467,7 @@ def main() -> int:
     group_names, groups = clippy_groups()
     blocked_members = set().union(*(groups[group] for group in BLOCKED_CLIPPY_GROUPS))
 
-    expectation_count = 0
+    suppression_count = 0
     packages = workspace_packages()
     roots = [Path(str(package["manifest_path"])).resolve().parent for package in packages]
     boundaries = generated_lint_boundaries(packages)
@@ -486,30 +486,30 @@ def main() -> int:
             line = text.count("\n", 0, offset) + 1
             location = f"{path}:{line}"
 
-            if kind in {"allow", "warn"}:
+            if kind == "warn":
                 violations.append(
-                    f"{location}: #[{kind}(...)] is forbidden in handwritten source; "
-                    "it can lower the strict command-line lint level"
+                    f"{location}: #[warn(...)] is forbidden in handwritten source; "
+                    "it can lower the strict command-line lint level without suppressing a finding"
                 )
                 continue
 
-            expectation_count += 1
+            suppression_count += 1
             if len(lints) != 1:
                 violations.append(
-                    f"{location}: #[expect] must name exactly one lint; found {len(lints)}"
+                    f"{location}: #[{kind}] must name exactly one lint; found {len(lints)}"
                 )
             if not has_reason:
                 violations.append(
-                    f'{location}: #[expect] must include reason = "..."'
+                    f'{location}: #[{kind}] must include reason = "..."'
                 )
 
             for lint in lints:
                 if lint in group_names:
                     violations.append(
-                        f"{location}: expectation of lint group {lint} is forbidden; "
-                        "expect one specific suppressible lint instead"
+                        f"{location}: {kind} of lint group {lint} is forbidden; "
+                        "name one specific suppressible lint instead"
                     )
-                elif lint in blocked_members and lint not in ALLOWED_PERF_EXPECT_LINTS:
+                elif lint in blocked_members and lint not in ALLOWED_PERF_SUPPRESSION_LINTS:
                     owner = next(
                         group
                         for group in BLOCKED_CLIPPY_GROUPS
@@ -517,11 +517,11 @@ def main() -> int:
                     )
                     violations.append(
                         f"{location}: {lint} belongs to {owner} on this nightly; "
-                        "correctness/suspicious/perf expectations are forbidden"
+                        "correctness/suspicious/perf suppressions are forbidden"
                     )
-                elif lint in BLOCKED_EXPECT_LINTS:
+                elif lint in BLOCKED_SUPPRESSION_LINTS:
                     violations.append(
-                        f"{location}: expectation of {lint} would weaken suppression policy"
+                        f"{location}: suppressing {lint} would weaken suppression policy"
                     )
 
     if violations:
@@ -533,7 +533,7 @@ def main() -> int:
     print(
         f"rust-skills2: source lint suppression policy OK "
         f"({len(files)} Rust files, {len(boundaries)} generated lint boundaries, "
-        f"{expectation_count} expectation attributes)"
+        f"{suppression_count} suppression attributes)"
     )
     return 0
 
