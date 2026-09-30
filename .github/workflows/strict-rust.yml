@@ -35,7 +35,10 @@ jobs:
         with:
           workspaces: ${{ inputs.working-directory }}
           shared-key: rust-skills2-nightly-strict
-          cache-on-failure: true
+          # Pull requests may restore the default-branch cache, but do not
+          # persist branch-scoped copies. Renovate fan-out otherwise duplicates
+          # ~550 MiB of target state per PR in every caller repository.
+          save-if: ${{ github.event_name != 'pull_request' }}
 
       - name: rust-skills2 strict gate
         uses: codeandsolder/rust-skills2/.github/actions/rust-strict@main
