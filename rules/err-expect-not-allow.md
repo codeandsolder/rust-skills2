@@ -58,7 +58,7 @@ Typical examples are established public API signatures and externally defined sc
 
 Avoid this pattern:
 
-```rust
+```text
 #[cfg_attr(
     clippy,
     expect(
