@@ -107,7 +107,7 @@ Reference these guidelines when:
 - [`err-custom-type`](rules/err-custom-type.md) - Define domain error types when callers benefit from knowing what failed
 - [`err-clippy-unwrap-types`](rules/err-clippy-unwrap-types.md) - Do not use Clippy's `allow-unwrap-types` to punch type-wide holes in a strict no-unwrap/no-expect policy
 - [`err-diagnostic-do-not-recommend`](rules/err-diagnostic-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` on trait impls whose appearance in diagnostics would mislead users
-- [`err-expect-not-allow`](rules/err-expect-not-allow.md) - Prefer narrow, reasoned `#[expect(...)]` for suppressible lints; never use expectations to waive correctness, safety, or panic policy
+- [`err-expect-not-allow`](rules/err-expect-not-allow.md) - Prefer narrow reasoned `#[expect(...)]`; use reasoned `#[allow(...)]` only for configuration-dependent suppressible lints where fulfillment semantics cannot work
 - [`err-no-std-error`](rules/err-no-std-error.md) - Use `core::error::Error` for genuine `no_std` error types; current `thiserror` supports this on Rust 1.81+
 - [`err-try-block-experimental`](rules/err-try-block-experimental.md) - `try {}` blocks remain nightly-only; prefer stable `Result`/`Option` contexts unless the scoped expression is worth the nightly dependency
 
