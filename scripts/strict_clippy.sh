@@ -165,6 +165,13 @@ if [[ "$ALLOW_TEST_PANICS" == "true" ]] && printf '%s\n' "${CARGO_ARGS[@]}" | gr
 
     TEST_LINT_ARGS=("${LINT_ARGS[@]}")
     TEST_LINT_ARGS+=(
+        # Production targets already passed the uncompromised policy above.
+        # In tests/benches, keep correctness/suspicious/perf fatal but do not
+        # spend CI effort on style/documentation/ergonomic churn.
+        -Aclippy::style
+        -Aclippy::complexity
+        -Aclippy::pedantic
+        -Aclippy::nursery
         -Aclippy::unwrap_used
         -Aclippy::expect_used
         -Aclippy::panic

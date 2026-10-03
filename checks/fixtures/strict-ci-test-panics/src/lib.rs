@@ -11,6 +11,7 @@ mod tests {
     fn panic_style_test_assertions_are_allowed_by_opt_in() {
         assert_eq!(maybe_identity(7).unwrap(), 7);
         let parsed = "11".parse::<usize>().expect("literal integer parses");
-        assert_eq!(parsed, 11);
+        const EXPECTED: usize = 11;
+        assert_eq!(parsed, EXPECTED);
     }
 }
