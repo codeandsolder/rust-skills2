@@ -35,7 +35,9 @@ all-targets pass with test/benchmark-only non-correctness policy relaxed:
 the `style`, `complexity`, `pedantic`, and `nursery` groups plus
 `unwrap_used`, `expect_used`, `panic`, `panic_in_result_fn`,
 `missing_panics_doc`, and `assertions_on_constants`. The `correctness`,
-`suspicious`, and `perf` groups remain fatal even in tests. Production
+`suspicious`, and `perf` groups remain fatal even in tests; the gate reasserts
+those groups and hard safety/debug lints after the test-only allows because
+command-line lint ordering is significant. Production
 targets therefore still pass the uncompromised policy. Source-level suppression
 rules remain unchanged.
 

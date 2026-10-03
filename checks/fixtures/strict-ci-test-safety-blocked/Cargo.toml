@@ -1,0 +1,5 @@
+[package]
+name = "strict-ci-test-safety-blocked"
+version = "0.1.0"
+edition = "2024"
+publish = false
