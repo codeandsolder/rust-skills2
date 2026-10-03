@@ -18,6 +18,25 @@ cargo +nightly fmt --all --check
 cargo +nightly clippy --locked --workspace --all-targets -- <strict policy>
 ```
 
+Projects that deliberately use panic-style test assertions can opt in to a
+split pass:
+
+```yaml
+jobs:
+  rust-skills2:
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
+    with:
+      allow-test-panics: true
+```
+
+With the default `--all-targets` selector, `allow-test-panics` first runs
+the full policy against library, binary, and example targets. It then runs the
+all-targets pass with only test/benchmark ergonomics relaxed:
+`unwrap_used`, `expect_used`, `panic`, `panic_in_result_fn`,
+`missing_panics_doc`, and `assertions_on_constants`. Production targets must
+therefore still pass the uncompromised policy. Source-level suppression rules
+remain unchanged.
+
 For a Rust workspace below the repository root:
 
 ```yaml
@@ -48,8 +67,9 @@ jobs:
 
 The gate always runs the latest nightly rustfmt and Clippy so formatting drift and new diagnostics are surfaced
 early. It deliberately supplies its own strict `clippy.toml`, so a repository
-cannot weaken the shared gate with settings such as allowing `.unwrap()` or
-`.expect()` in tests or const evaluation.
+cannot weaken the shared gate with repository-local settings. Test panic
+ergonomics are available only through the explicit reusable-workflow opt-in
+described above; const evaluation and production targets remain strict.
 
 The policy pass clears both `RUSTC_WRAPPER` and `RUSTC_WORKSPACE_WRAPPER`. The rust-skills2 example/fixture verifier does the same for all Cargo invocations. Clippy reads its configuration during
 compiler execution, so distributing clippy-driver to a worker that cannot see

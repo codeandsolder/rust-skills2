@@ -48,6 +48,28 @@ jobs:
           working-directory: checks/fixtures/strict-ci-pass
           cargo-args: "--locked --all-targets"
 
+      - name: Test panic ergonomics may be enabled without weakening production
+        uses: ./.github/actions/rust-strict
+        with:
+          working-directory: checks/fixtures/strict-ci-test-panics
+          cargo-args: "--locked --all-targets"
+          allow-test-panics: "true"
+
+      - name: Test panic opt-in still rejects production expect
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-result-expect
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ALLOW_TEST_PANICS: "true"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "test-panic opt-in unexpectedly relaxed production expect" >&2
+            exit 1
+          fi
+          echo "test-panic opt-in preserved strict production policy"
+
       - name: Reasoned large-enum performance tradeoff may stay inline
         uses: ./.github/actions/rust-strict
         with:
