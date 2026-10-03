@@ -10,6 +10,10 @@ inputs:
     description: Space-separated Cargo selector arguments (package/features/target/target-kind/lock behavior).
     required: false
     default: "--locked --workspace --all-targets"
+  allow-test-panics:
+    description: Keep production targets strict, but relax panic-style lints for test and benchmark targets.
+    required: false
+    default: "false"
   install-toolchain:
     description: Install latest nightly Clippy and rustfmt before running. Set false when the caller already installed them.
     required: false
@@ -44,5 +48,6 @@ runs:
       env:
         RUST_SKILLS2_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         RUST_SKILLS2_CARGO_ARGS: ${{ inputs.cargo-args }}
+        RUST_SKILLS2_ALLOW_TEST_PANICS: ${{ inputs.allow-test-panics }}
       run: |
         bash "$GITHUB_ACTION_PATH/../../../scripts/strict_clippy.sh"

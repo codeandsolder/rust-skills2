@@ -30,6 +30,14 @@ if [[ ! -f Cargo.toml ]]; then
 fi
 
 read -r -a CARGO_ARGS <<< "${RUST_SKILLS2_CARGO_ARGS:---locked --workspace --all-targets}"
+ALLOW_TEST_PANICS="${RUST_SKILLS2_ALLOW_TEST_PANICS:-false}"
+case "$ALLOW_TEST_PANICS" in
+    true|false) ;;
+    *)
+        echo "rust-skills2: RUST_SKILLS2_ALLOW_TEST_PANICS must be true or false" >&2
+        exit 2
+        ;;
+esac
 
 # cargo-args is deliberately a selector surface, not an arbitrary Cargo CLI.
 # Fail closed so current or future options cannot mutate the checkout, exit
@@ -132,10 +140,39 @@ LINT_ARGS=(
     -Dclippy::allow_attributes_without_reason
 )
 
-printf 'rust-skills2: cargo +nightly clippy'
-printf ' %q' "${CARGO_ARGS[@]}"
-printf ' --'
-printf ' %q' "${LINT_ARGS[@]}"
-printf '\n'
+run_clippy() {
+    local -n cargo_args_ref=$1
+    local -n lint_args_ref=$2
+    printf 'rust-skills2: cargo +nightly clippy'
+    printf ' %q' "${cargo_args_ref[@]}"
+    printf ' --'
+    printf ' %q' "${lint_args_ref[@]}"
+    printf '\n'
+    cargo +nightly clippy "${cargo_args_ref[@]}" -- "${lint_args_ref[@]}"
+}
 
-cargo +nightly clippy "${CARGO_ARGS[@]}" -- "${LINT_ARGS[@]}"
+if [[ "$ALLOW_TEST_PANICS" == "true" ]] && printf '%s\n' "${CARGO_ARGS[@]}" | grep -qx -- '--all-targets'; then
+    # Prove production targets against the full policy before running the
+    # all-targets pass with test-only panic ergonomics relaxed.
+    PRODUCTION_CARGO_ARGS=()
+    for arg in "${CARGO_ARGS[@]}"; do
+        if [[ "$arg" != "--all-targets" ]]; then
+            PRODUCTION_CARGO_ARGS+=("$arg")
+        fi
+    done
+    PRODUCTION_CARGO_ARGS+=(--lib --bins --examples)
+    run_clippy PRODUCTION_CARGO_ARGS LINT_ARGS
+
+    TEST_LINT_ARGS=("${LINT_ARGS[@]}")
+    TEST_LINT_ARGS+=(
+        -Aclippy::unwrap_used
+        -Aclippy::expect_used
+        -Aclippy::panic
+        -Aclippy::panic_in_result_fn
+        -Aclippy::missing_panics_doc
+        -Aclippy::assertions_on_constants
+    )
+    run_clippy CARGO_ARGS TEST_LINT_ARGS
+else
+    run_clippy CARGO_ARGS LINT_ARGS
+fi
