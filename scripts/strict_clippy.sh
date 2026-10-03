@@ -178,6 +178,23 @@ if [[ "$ALLOW_TEST_PANICS" == "true" ]] && printf '%s\n' "${CARGO_ARGS[@]}" | gr
         -Aclippy::panic_in_result_fn
         -Aclippy::missing_panics_doc
         -Aclippy::assertions_on_constants
+        # Test-only documentation/meta policy. Production has already passed
+        # the uncompromised gate, and source expectations are validated before
+        # Clippy runs.
+        -Aunfulfilled_lint_expectations
+        -Aclippy::undocumented_unsafe_blocks
+        -Aclippy::missing_safety_doc
+
+        # Group-level allows above are later on the command line and can lower
+        # an earlier category deny. Reassert correctness-relevant categories
+        # and deliberate incomplete/debug constructs after them.
+        -Dclippy::correctness
+        -Dclippy::suspicious
+        -Dclippy::perf
+        -Dclippy::todo
+        -Dclippy::unimplemented
+        -Dclippy::dbg_macro
+        -Dclippy::await_holding_lock
     )
     run_clippy CARGO_ARGS TEST_LINT_ARGS
 else
