@@ -31,11 +31,13 @@ jobs:
 
 With the default `--all-targets` selector, `allow-test-panics` first runs
 the full policy against library, binary, and example targets. It then runs the
-all-targets pass with only test/benchmark ergonomics relaxed:
+all-targets pass with test/benchmark-only non-correctness policy relaxed:
+the `style`, `complexity`, `pedantic`, and `nursery` groups plus
 `unwrap_used`, `expect_used`, `panic`, `panic_in_result_fn`,
-`missing_panics_doc`, and `assertions_on_constants`. Production targets must
-therefore still pass the uncompromised policy. Source-level suppression rules
-remain unchanged.
+`missing_panics_doc`, and `assertions_on_constants`. The `correctness`,
+`suspicious`, and `perf` groups remain fatal even in tests. Production
+targets therefore still pass the uncompromised policy. Source-level suppression
+rules remain unchanged.
 
 For a Rust workspace below the repository root:
 
