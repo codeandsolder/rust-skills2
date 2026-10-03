@@ -70,6 +70,21 @@ jobs:
           fi
           echo "test-panic opt-in preserved strict production policy"
 
+      - name: Test panic opt-in still rejects correctness violations
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-test-correctness-blocked
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ALLOW_TEST_PANICS: "true"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "test-panic opt-in unexpectedly relaxed clippy::correctness" >&2
+            exit 1
+          fi
+          echo "test-panic opt-in preserved test correctness policy"
+
       - name: Reasoned large-enum performance tradeoff may stay inline
         uses: ./.github/actions/rust-strict
         with:

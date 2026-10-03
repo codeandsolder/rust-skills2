@@ -34,10 +34,14 @@ the full policy against library, binary, and example targets. It then runs the
 all-targets pass with test/benchmark-only non-correctness policy relaxed:
 the `style`, `complexity`, `pedantic`, and `nursery` groups plus
 `unwrap_used`, `expect_used`, `panic`, `panic_in_result_fn`,
-`missing_panics_doc`, and `assertions_on_constants`. The `correctness`,
-`suspicious`, and `perf` groups remain fatal even in tests. Production
-targets therefore still pass the uncompromised policy. Source-level suppression
-rules remain unchanged.
+`missing_panics_doc`, `assertions_on_constants`, test-only unsafe/safety-doc
+annotation lints, and `unfulfilled_lint_expectations` (production expectations
+can legitimately be inactive in a test compilation). The `correctness`,
+`suspicious`, and `perf` groups remain fatal even in tests, as do `todo`,
+`unimplemented`, `dbg_macro`, and `await_holding_lock`; the gate reasserts them
+after the test-only allows because command-line lint ordering is significant.
+Production targets therefore still pass the uncompromised policy. Source-level
+suppression rules remain unchanged.
 
 For a Rust workspace below the repository root:
 
