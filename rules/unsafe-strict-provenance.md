@@ -79,6 +79,70 @@ let _ = restored;
 
 A tagged pointer must be untagged before dereferencing, and the resulting address must still be within the range permitted by the retained provenance and satisfy the usual alignment/validity requirements.
 
+
+## Rust 1.99+: Prefer Raw Layout APIs When You Only Have a Raw Pointer
+
+Rust 1.99 stabilizes `size_of_val_raw`, `align_of_val_raw`, and
+`Layout::for_value_raw`. They let unsafe code query layout from a raw pointer,
+including a pointer to a dynamically sized value, without first manufacturing
+a reference merely to call the reference-based layout APIs.
+
+```rust
+use core::alloc::Layout;
+use core::mem::{align_of_val_raw, size_of_val_raw};
+
+unsafe fn inspect_layout<T: ?Sized>(ptr: *const T) -> (usize, usize, Layout) {
+    // SAFETY: the caller guarantees ptr has metadata valid for these raw
+    // layout queries, as required by each API.
+    unsafe {
+        (
+            size_of_val_raw(ptr),
+            align_of_val_raw(ptr),
+            Layout::for_value_raw(ptr),
+        )
+    }
+}
+```
+
+These functions are still `unsafe`: for a DST, the pointer metadata must be
+valid enough for the layout computation even when the pointee memory is not
+dereferenced. Use them to avoid creating an unnecessary reference, not to turn
+an arbitrary bit-pattern pointer into a valid Rust object.
+
+Rust 1.99 also adds the allow-by-default `raw_borrows_via_references` lint.
+It detects cases where code creates a reference only for it to decay
+immediately to a raw pointer. That is a useful review signal in unsafe-heavy
+code: prefer a direct raw borrow when a reference is not part of the intended
+invariant.
+
+## Rust 1.99+: Raw Ownership Handoffs Should Not Round-Trip Through `leak`
+
+Do not use `Box::leak` as a temporary route to a raw pointer and later
+reconstruct ownership. The Rust 1.99 documentation explicitly recommends
+against that “unleak” pattern because it interacts poorly with current and
+future optimizer/allocator assumptions.
+
+When ownership must leave `Box` temporarily, use the ownership-preserving raw
+APIs instead:
+
+```rust
+use core::ptr::NonNull;
+
+fn round_trip(value: Box<u32>) -> Box<u32> {
+    let ptr: NonNull<u32> = Box::into_non_null(value);
+
+    // ... hand ptr through an API that preserves the allocation ownership ...
+
+    // SAFETY: ptr came from Box::into_non_null, still denotes that same live
+    // allocation, and no other owner will free it.
+    unsafe { Box::from_non_null(ptr) }
+}
+```
+
+Use `Box::leak` only when intentionally giving up automatic destruction for
+the required lifetime. The same “do not leak and later un-leak” guidance
+applies to other standard-library leak helpers.
+
 ## Key Points
 
 - `addr()` gets the address without exposing provenance.
@@ -86,7 +150,7 @@ A tagged pointer must be untagged before dereferencing, and the resulting addres
 - `ptr as usize` is equivalent to `expose_provenance()`; it is not the same operation as `addr()`.
 - `addr as *const T` is equivalent to `with_exposed_provenance(addr)`, whose chosen provenance is intentionally not precisely specified.
 - Use `without_provenance` for addresses that genuinely have no Rust allocation from which to obtain provenance, such as some MMIO/sentinel-address patterns. Dereferencing still requires the platform and Rust memory-model requirements to permit the access.
-- Prefer `&raw const` / `&raw mut` when you need a raw pointer without first creating a reference.
+- Prefer `&raw const` / `&raw mut` when you need a raw pointer without first creating a reference; Rust 1.99's `raw_borrows_via_references` lint can help find indirect raw borrows.
 - Strict Provenance APIs stabilized in Rust 1.84; raw borrow operators stabilized earlier and are the native syntax for raw borrows.
 
 ## See Also
