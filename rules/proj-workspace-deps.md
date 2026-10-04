@@ -289,24 +289,43 @@ members = ["crates/*"]
 resolver.feature-unification = "package"
 ```
 
-### `default-features = false` with Workspace Dependencies (cargo#12162)
+### Rust 1.99+: Member `default-features` Overrides Are Effective on Edition 2024
 
-`default-features = false` does not compose with `{dep}.workspace = true` as expected. Workaround: specify the exact feature set in the workspace definition:
+Cargo 1.99 changes a long-standing workspace-inheritance limitation for Edition
+2024 packages. A member can now turn off default features for an inherited
+dependency even when the workspace declaration left them enabled:
 
 ```toml
-# ❌ default-features = false on workspace dep has no effect
+# Root Cargo.toml
 [workspace.dependencies]
-tokio = "1.32"
+serde = { version = "1.0", features = ["derive"] }
 
-# crate-a/Cargo.toml
+# crate-a/Cargo.toml (Edition 2024)
 [dependencies]
-tokio = { workspace = true, default-features = false, features = ["rt"] }
-
-# ✅ Workaround: define the dep with minimal features in workspace
-[workspace.dependencies]
-tokio-minimal = { package = "tokio", version = "1.32", default-features = false }
-tokio-full = { package = "tokio", version = "1.32", features = ["full"] }
+serde = { workspace = true, default-features = false }
 ```
+
+On Cargo 1.85 through 1.98 this member-level `default-features = false` was
+ignored with a warning. On Cargo 1.99+ it is honored for Edition 2024 or later.
+That makes a toolchain upgrade capable of changing the dependency feature set
+without changing the manifest.
+
+Migration rule:
+
+- search workspace members for inherited dependencies that also specify
+  `default-features = false`;
+- decide whether the old ignored behavior or the now-effective override is the
+  intended contract;
+- run the relevant feature matrix on Cargo 1.99 before merging the toolchain
+  bump;
+- keep feature assumptions explicit when a crate's correctness depends on a
+  dependency's default feature.
+
+On earlier editions the override remains ignored with a warning. If the
+workspace must support Cargo before 1.99, keep the dependency's
+`default-features` policy in the workspace declaration or use deliberately
+separate workspace dependency aliases when members truly need different base
+feature sets.
 
 ## See Also
 
