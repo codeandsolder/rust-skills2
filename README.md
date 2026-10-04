@@ -40,7 +40,7 @@ lint boundary via package metadata; the generated file still runs through strict
 Clippy. See [docs/strict-ci.md](./docs/strict-ci.md) for the policy and
 customization points.
 
-## How to use it
+Migrating an existing codebase across recent stable releases? See the structured [Rust 1.88 → 1.99 migration guide](./docs/migration-rust-1.88-to-1.99.md).\n\n## How to use it
 
 After installing, just ask your agent:
 
