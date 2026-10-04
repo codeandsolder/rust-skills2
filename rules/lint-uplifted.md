@@ -1,14 +1,14 @@
 # lint-uplifted
 
-> Track clippy lints uplifted into rustc (Rust 1.86-1.96)
+> Track Clippy lints uplifted into rustc and adjacent compiler lint changes (Rust 1.86-1.99)
 
 **Rule**: `lint-uplifted`
 
 ## Why It Matters
 
-Clippy lints are increasingly being uplifted into the Rust compiler (`rustc`). Uplifted lints run on every `rustc` invocation without needing clippy, give better diagnostics, and are enabled by default or opt-in via `[lints.rust]`. Tracking these uplifts prevents configuring a lint as a clippy lint when it is now built into the compiler.
+Clippy lints are increasingly being uplifted into the Rust compiler (`rustc`), while newer rustc releases also add adjacent diagnostics that matter to the same safety and correctness policy. Uplifted lints run on every `rustc` invocation without needing Clippy. Track both the uplifts and the nearby compiler-lint changes so configuration stays in `[lints.rust]` when rustc owns the diagnostic.
 
-## Uplifted Lints Since Rust 1.86
+## Compiler Lint Changes Since Rust 1.86
 
 | Lint | Uplifted In | Default Level | Notes |
 |------|-------------|---------------|-------|
@@ -22,6 +22,9 @@ Clippy lints are increasingly being uplifted into the Rust compiler (`rustc`). U
 | `function_casts_as_integer` | 1.93 | `warn` | Casting function pointers to integer types |
 | `unused_visibilities` | 1.94 | `warn` | Visibility modifiers that have no effect |
 | `uninhabited_static` | 1.96 | `deny` | `static` or `const` of uninhabited types |
+| `invalid_runtime_symbol_definitions` | 1.98 | `deny` | Invalid definitions of compiler/runtime symbols; expanded to POSIX symbols in 1.99 |
+| `suspicious_runtime_symbol_definitions` | 1.98 | `warn` | Suspicious runtime symbol definitions; POSIX coverage expands in 1.99 |
+| `c_void_returns` | 1.98 | `warn` | Flags `core::ffi::c_void` used as a Rust return type |
 
 ## Bad
 
@@ -46,8 +49,36 @@ dangling_pointers_from_locals = "warn"
 const_item_interior_mutations = "warn"
 function_casts_as_integer    = "warn"
 unused_visibilities          = "warn"
-uninhabited_static           = "deny"
+uninhabited_static           = "deny"\ninvalid_runtime_symbol_definitions = "deny"\nsuspicious_runtime_symbol_definitions = "warn"\nc_void_returns                 = "warn"
 ```
+
+
+## Rust 1.99 Review Signals
+
+Rust 1.99 adds or strengthens several compiler diagnostics that are worth
+checking during a toolchain migration even though they are not all Clippy
+uplifts:
+
+- `raw_borrows_via_references` is allow-by-default and can expose raw-pointer
+  code that creates a temporary reference only to immediately decay it to a
+  raw pointer;
+- `unreachable_cfg_select_predicates` now participates in the `unused` lint
+  group, so stale or shadowed `cfg_select!` arms can start warning;
+- `unconditional_panic` now recognizes zero-sized `chunks`/`windows`
+  calls;
+- `no_mangle_generic_items` is now a hard error rather than a future
+  compatibility diagnostic;
+- runtime-symbol checking now covers POSIX names such as `open`, `read`,
+  `write`, `close`, allocation functions, and `exit`; declarations/definitions
+  using those symbol names must match the canonical ABI exactly (for example,
+  POSIX `open` is variadic);
+- legacy integral modules such as `std::i32::MAX` are fully deprecated; use
+  primitive associated constants such as `i32::MAX`.
+
+Do not blanket-allow a newly surfaced diagnostic just to complete the compiler
+upgrade. First decide whether it reveals stale configuration, an invalid FFI
+boundary, or a raw-pointer pattern whose intended invariant should be stated
+more directly.
 
 ## Migration Strategy
 
@@ -83,7 +114,7 @@ dangling_pointers_from_locals = "warn"
 const_item_interior_mutations = "warn"
 function_casts_as_integer     = "warn"
 unused_visibilities           = "warn"
-uninhabited_static            = "deny"
+uninhabited_static            = "deny"\ninvalid_runtime_symbol_definitions = "deny"\nsuspicious_runtime_symbol_definitions = "warn"\nc_void_returns                 = "warn"
 ```
 
 ## See Also
@@ -93,6 +124,6 @@ uninhabited_static            = "deny"
 - [Rust 1.91.0 release notes](https://releases.rs/docs/1.91.0/) — `integer_to_ptr_transmutes`, `dangling_pointers_from_locals`
 - [Rust 1.93.0 release notes](https://releases.rs/docs/1.93.0/) — `const_item_interior_mutations`, `function_casts_as_integer`
 - [Rust 1.94.0 release notes](https://releases.rs/docs/1.94.0/) — `unused_visibilities`
-- [Rust 1.96.0 release notes](https://releases.rs/docs/1.96.0/) — `uninhabited_static`
+- [Rust 1.96.0 release notes](https://releases.rs/docs/1.96.0/) — `uninhabited_static`\n- [Rust 1.98.0 release notes](https://blog.rust-lang.org/2026/08/20/Rust-1.98.0/) — runtime-symbol and `c_void_returns` lints\n- [Rust 1.99.0 release notes](https://blog.rust-lang.org/2026/10/01/Rust-1.99.0/) — raw-borrow, cfg-select, panic, and compatibility diagnostics
 - [lint-deny-correctness](./lint-deny-correctness.md) — Correctness lint configuration
 - [lint-lints-table](./lint-lints-table.md) — Lint configuration via `[lints]` table

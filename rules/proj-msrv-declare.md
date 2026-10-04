@@ -12,7 +12,7 @@ But **MSRV and the toolchain used for day-to-day development are different polic
 
 - `rust-version = "1.94"` as the compatibility promise;
 - an explicit CI lane on the latest 1.94 patch release (for example 1.94.1);
-- `rust-toolchain.toml` pinned to the patched current stable compiler used for normal development and shipping (for example 1.98.1 while Rust 1.98 is current).
+- `rust-toolchain.toml` pinned to the patched current stable compiler used for normal development and shipping (for example 1.99.0 while Rust 1.99 is current).
 
 ## Bad
 
@@ -51,7 +51,7 @@ resolver = "3"
 ```toml
 # rust-toolchain.toml — normal development/build toolchain
 [toolchain]
-channel = "1.98.1"
+channel = "1.99.0"
 components = ["rustfmt", "clippy"]
 ```
 
@@ -70,9 +70,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: rustup toolchain install 1.98.1 --profile minimal --component clippy
-      - run: cargo +1.98.1 clippy --locked --workspace --all-targets -- -D warnings
-      - run: cargo +1.98.1 test --locked --workspace
+      - run: rustup toolchain install 1.99.0 --profile minimal --component clippy
+      - run: cargo +1.99.0 clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo +1.99.0 test --locked --workspace
 ```
 
 Point releases normally do not raise the language/library MSRV: they are bug-fix releases in the same stable line. Testing the latest patch release for the declared minor line gets those fixes without changing the compatibility promise.

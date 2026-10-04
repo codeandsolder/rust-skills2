@@ -48,7 +48,7 @@ struct FileDescriptor(c_int);
 
 unsafe extern "C" {
     // Raw-pointer validity is a caller precondition, so this remains unsafe.
-    fn open(path: *const c_char, flags: c_int) -> c_int;
+    fn open(path: *const c_char, flags: c_int, ...) -> c_int;
     fn close(fd: c_int) -> c_int;
 }
 
