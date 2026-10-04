@@ -449,7 +449,7 @@ Reference these guidelines when:
 - [`lint-dylint-custom`](rules/lint-dylint-custom.md) - Use Dylint for project-specific custom lints without forking clippy
 - [`lint-edition-2024`](rules/lint-edition-2024.md) - Use the `rust_2024_compatibility` lint group and `cargo fix --edition` to audit edition-sensitive code before switching to Rust 2024
 - [`lint-lints-table`](rules/lint-lints-table.md) - Use the `[lints]` table in `Cargo.toml` for canonical lint configuration (Rust 1.74+)
-- [`lint-uplifted`](rules/lint-uplifted.md) - Track clippy lints uplifted into rustc (Rust 1.86-1.96)
+- [`lint-uplifted`](rules/lint-uplifted.md) - Track Clippy lints uplifted into rustc and adjacent compiler lint changes (Rust 1.86-1.99)
 
 ### 26. Anti-patterns (REFERENCE)
 
