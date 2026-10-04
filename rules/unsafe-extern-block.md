@@ -64,6 +64,39 @@ fn copy_slice(dst: &mut [u8], src: &[u8]) {
 }
 ```
 
+
+## Rust 1.99+: Defining C-Variadic Functions
+
+Rust 1.99 stabilizes definitions of C-ABI variadic functions for the `"C"`
+and `"C-unwind"` ABIs. A variadic definition must itself be `unsafe`; the
+`...` parameter is a `core::ffi::VaList<'_>`, and reading each argument with
+`next_arg::<T>()` is unsafe because the caller determines the actual number
+and types of arguments.
+
+```rust
+unsafe extern "C" fn first_i32(mut args: ...) -> i32 {
+    // SAFETY: this function's caller contract requires at least one variadic
+    // argument whose promoted C type is compatible with i32.
+    unsafe { args.next_arg::<i32>() }
+}
+```
+
+Do not treat `VaList` as a dynamically typed argument list. The callee must
+have an external contract that determines which argument is next and which
+`VaArgSafe` type may be read. A count, format string, tag, or foreign ABI
+contract usually supplies that information.
+
+Keep these boundaries explicit:
+
+- only supported C-family variadic ABIs may be used for ordinary variadic
+  definitions;
+- the definition must be `unsafe`, even if its body happens not to read every
+  argument;
+- every `next_arg` read must match the caller's actual argument after C
+  variadic promotions and Rust's documented compatibility rules;
+- target support is not universal, so cross-target FFI crates must test their
+  supported architecture matrix.
+
 ## Migration from 2021
 
 | 2021 | 2024 |
