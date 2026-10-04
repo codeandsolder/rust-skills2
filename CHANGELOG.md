@@ -12,7 +12,7 @@ semantic versioning for the rule set.
   rejecting handwritten lint-level downgrades and non-negotiable expectations.
 
 ### Changed
-- **Modernized through Rust 1.98.1 (2024 edition).** Updated throughout for the
+- **Modernized through Rust 1.99.0 (2024 edition).** Updated throughout for the
   Rust 2024 edition and current patched stable toolchain. Coverage includes RPIT
   lifetime capture rules, `unsafe extern` blocks, `#[unsafe(no_mangle)]`, let
   chains and Rust 1.95 `if let` match guards, `cfg_select!` (1.95),
@@ -22,6 +22,17 @@ semantic versioning for the rule set.
   (1.94), `<[T]>::as_chunks` (1.88), trait object upcasting (1.86),
   `#[diagnostic::do_not_recommend]` (1.85), `cargo publish --workspace` (1.90),
   Tokio 1.52+ APIs, and async-std's discontinuation (March 2025).
+- Added Rust 1.99 guidance for stable C-variadic definitions and `VaList`,
+  raw-pointer layout queries (`size_of_val_raw`, `align_of_val_raw`,
+  `Layout::for_value_raw`), direct raw-borrow review via
+  `raw_borrows_via_references`, and ownership handoff via
+  `Box::into_non_null` / `Box::from_non_null` instead of leak→unleak.
+- Corrected workspace dependency guidance for Cargo 1.99: Edition 2024 members
+  can now make inherited `default-features = false` effective, which can
+  change the resolved feature set on a toolchain-only upgrade.
+- Added a structured Rust 1.88 → 1.99 migration guide covering compiler/Cargo
+  behavior changes, target-specific checks, high-value APIs, and a staged
+  upgrade procedure that keeps compiler and dependency changes separate.
 - Added Rust 1.98 guidance for `core::fmt::NumBuffer` + primitive integer
   `format_into` in measured hot paths, `f32`/`f64::algebraic_*` as an explicit
   relaxed/reassociated arithmetic contract, and `str::substr_range` /
