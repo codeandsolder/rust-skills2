@@ -92,7 +92,7 @@ fn first_word(s: &str) -> Option<&str> {
 | **Ownership & Borrowing** | 16 | When to borrow vs clone, Arc/Rc, lifetimes, `Cell::update`, `core::range::Range` Copy, Edition 2024 RPIT capture, `LazyLock`/`LazyCell` (1.80+) |
 | **Error Handling** | 17 | thiserror 2.0 for libs (with `no_std`), anyhow for apps, `core::error::Error`, `#[diagnostic::do_not_recommend]`, `#[expect]` over `#[allow]` |
 | **Memory** | 22 | SmallVec, arenas, avoiding allocations, `mem::take`, drop order, `Arc<str>`, `EcoString`, `SlotMap`, `Box::new_uninit` |
-| **Unsafe Code** | 8 | `SAFETY:` comments, Miri, `MaybeUninit`, 2024-edition `unsafe extern` blocks, `#[unsafe(no_mangle)]`, strict provenance APIs (`ptr.addr()`, `ptr.map_addr()`, `&raw const`/`&raw mut`) |
+| **Unsafe Code** | 8 | `SAFETY:` comments, Miri, `MaybeUninit`, 2024-edition `unsafe extern` blocks, Rust 1.99 C-variadic definitions and raw layout queries, `#[unsafe(no_mangle)]`, strict provenance APIs (`ptr.addr()`, `ptr.map_addr()`, `&raw const`/`&raw mut`) |
 | **API Design** | 20 | Builder pattern (`bon`), newtypes (`nutype`), sealed traits, `FromIterator`, `#[diagnostic::do_not_recommend]` |
 | **Async** | 21 | Tokio patterns, channels, async fn in traits, cancel safety, `RuntimeMetrics`, `JoinSet` + `CancellationToken` |
 | **Concurrency** | 4 | rayon, scoped threads, atomic ordering, thread-locals |
