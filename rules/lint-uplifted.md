@@ -6,9 +6,9 @@
 
 ## Why It Matters
 
-Clippy lints are increasingly being uplifted into the Rust compiler (`rustc`). Uplifted lints run on every `rustc` invocation without needing clippy, give better diagnostics, and are enabled by default or opt-in via `[lints.rust]`. Tracking these uplifts prevents configuring a lint as a clippy lint when it is now built into the compiler.
+Clippy lints are increasingly being uplifted into the Rust compiler (`rustc`), while newer rustc releases also add adjacent diagnostics that matter to the same safety and correctness policy. Uplifted lints run on every `rustc` invocation without needing Clippy. Track both the uplifts and the nearby compiler-lint changes so configuration stays in `[lints.rust]` when rustc owns the diagnostic.
 
-## Uplifted Lints Since Rust 1.86
+## Compiler Lint Changes Since Rust 1.86
 
 | Lint | Uplifted In | Default Level | Notes |
 |------|-------------|---------------|-------|
@@ -120,6 +120,6 @@ uninhabited_static            = "deny"\ninvalid_runtime_symbol_definitions = "de
 - [Rust 1.91.0 release notes](https://releases.rs/docs/1.91.0/) — `integer_to_ptr_transmutes`, `dangling_pointers_from_locals`
 - [Rust 1.93.0 release notes](https://releases.rs/docs/1.93.0/) — `const_item_interior_mutations`, `function_casts_as_integer`
 - [Rust 1.94.0 release notes](https://releases.rs/docs/1.94.0/) — `unused_visibilities`
-- [Rust 1.96.0 release notes](https://releases.rs/docs/1.96.0/) — `uninhabited_static`
+- [Rust 1.96.0 release notes](https://releases.rs/docs/1.96.0/) — `uninhabited_static`\n- [Rust 1.98.0 release notes](https://blog.rust-lang.org/2026/08/20/Rust-1.98.0/) — runtime-symbol and `c_void_returns` lints\n- [Rust 1.99.0 release notes](https://blog.rust-lang.org/2026/10/01/Rust-1.99.0/) — raw-borrow, cfg-select, panic, and compatibility diagnostics
 - [lint-deny-correctness](./lint-deny-correctness.md) — Correctness lint configuration
 - [lint-lints-table](./lint-lints-table.md) — Lint configuration via `[lints]` table
