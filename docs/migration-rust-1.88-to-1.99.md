@@ -202,7 +202,7 @@ Release: <https://blog.rust-lang.org/2026/01/22/Rust-1.93.0/>
 
 ## Rust 1.94
 
-### Required review: TOML 1.1 creates a development-MS​​RV distinction
+### Required review: TOML 1.1 creates a development-MSRV distinction
 
 Cargo 1.94 accepts TOML 1.1 syntax in manifests and Cargo configuration. A
 repository that starts using TOML-1.1-only syntax now requires Cargo 1.94+ to
