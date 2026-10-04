@@ -68,6 +68,10 @@ uplifts:
   calls;
 - `no_mangle_generic_items` is now a hard error rather than a future
   compatibility diagnostic;
+- runtime-symbol checking now covers POSIX names such as `open`, `read`,
+  `write`, `close`, allocation functions, and `exit`; declarations/definitions
+  using those symbol names must match the canonical ABI exactly (for example,
+  POSIX `open` is variadic);
 - legacy integral modules such as `std::i32::MAX` are fully deprecated; use
   primitive associated constants such as `i32::MAX`.
 
