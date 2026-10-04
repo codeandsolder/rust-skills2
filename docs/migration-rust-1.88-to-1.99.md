@@ -434,7 +434,7 @@ Rust 1.99 also:
 
 - makes `no_mangle_generic_items` a hard error;
 - fully deprecates legacy integral modules such as `std::i32::MAX`;
-- extends runtime-symbol diagnostics to POSIX symbols;
+- extends runtime-symbol diagnostics to POSIX symbols, including ABI checking of imports/definitions such as POSIX `open` (whose canonical signature is variadic);
 - adds `unreachable_cfg_select_predicates` to the `unused` lint group;
 - extends `unconditional_panic` to zero-size `chunks` / `windows` calls;
 - can surface semicolon-in-expression warnings originating from macros in other
