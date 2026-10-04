@@ -1,6 +1,6 @@
 # lint-uplifted
 
-> Track clippy lints uplifted into rustc (Rust 1.86-1.96)
+> Track Clippy lints uplifted into rustc and adjacent compiler lint changes (Rust 1.86-1.99)
 
 **Rule**: `lint-uplifted`
 
@@ -22,6 +22,9 @@ Clippy lints are increasingly being uplifted into the Rust compiler (`rustc`). U
 | `function_casts_as_integer` | 1.93 | `warn` | Casting function pointers to integer types |
 | `unused_visibilities` | 1.94 | `warn` | Visibility modifiers that have no effect |
 | `uninhabited_static` | 1.96 | `deny` | `static` or `const` of uninhabited types |
+| `invalid_runtime_symbol_definitions` | 1.98 | `deny` | Invalid definitions of compiler/runtime symbols; expanded to POSIX symbols in 1.99 |
+| `suspicious_runtime_symbol_definitions` | 1.98 | `warn` | Suspicious runtime symbol definitions; POSIX coverage expands in 1.99 |
+| `c_void_returns` | 1.98 | `warn` | Flags `core::ffi::c_void` used as a Rust return type |
 
 ## Bad
 
@@ -46,8 +49,32 @@ dangling_pointers_from_locals = "warn"
 const_item_interior_mutations = "warn"
 function_casts_as_integer    = "warn"
 unused_visibilities          = "warn"
-uninhabited_static           = "deny"
+uninhabited_static           = "deny"\ninvalid_runtime_symbol_definitions = "deny"\nsuspicious_runtime_symbol_definitions = "warn"\nc_void_returns                 = "warn"
 ```
+
+
+## Rust 1.99 Review Signals
+
+Rust 1.99 adds or strengthens several compiler diagnostics that are worth
+checking during a toolchain migration even though they are not all Clippy
+uplifts:
+
+- `raw_borrows_via_references` is allow-by-default and can expose raw-pointer
+  code that creates a temporary reference only to immediately decay it to a
+  raw pointer;
+- `unreachable_cfg_select_predicates` now participates in the `unused` lint
+  group, so stale or shadowed `cfg_select!` arms can start warning;
+- `unconditional_panic` now recognizes zero-sized `chunks`/`windows`
+  calls;
+- `no_mangle_generic_items` is now a hard error rather than a future
+  compatibility diagnostic;
+- legacy integral modules such as `std::i32::MAX` are fully deprecated; use
+  primitive associated constants such as `i32::MAX`.
+
+Do not blanket-allow a newly surfaced diagnostic just to complete the compiler
+upgrade. First decide whether it reveals stale configuration, an invalid FFI
+boundary, or a raw-pointer pattern whose intended invariant should be stated
+more directly.
 
 ## Migration Strategy
 
@@ -83,7 +110,7 @@ dangling_pointers_from_locals = "warn"
 const_item_interior_mutations = "warn"
 function_casts_as_integer     = "warn"
 unused_visibilities           = "warn"
-uninhabited_static            = "deny"
+uninhabited_static            = "deny"\ninvalid_runtime_symbol_definitions = "deny"\nsuspicious_runtime_symbol_definitions = "warn"\nc_void_returns                 = "warn"
 ```
 
 ## See Also
