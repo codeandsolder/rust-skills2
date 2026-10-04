@@ -22,8 +22,8 @@ jobs:
         with:
           version: latest-known
           enable-cache: false
-      # Toolchain/target are pinned by checks/rust-toolchain.toml (Rust 1.98.1).
-      - uses: dtolnay/rust-toolchain@1.98.1
+      # Toolchain/target are pinned by checks/rust-toolchain.toml (Rust 1.99.0).
+      - uses: dtolnay/rust-toolchain@1.99.0
         with:
           targets: x86_64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
