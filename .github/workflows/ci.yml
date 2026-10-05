@@ -55,6 +55,13 @@ jobs:
           cargo-args: "--locked --all-targets"
           allow-test-panics: "true"
 
+      - name: Test panic ergonomics work for a binary-only crate
+        uses: ./.github/actions/rust-strict
+        with:
+          working-directory: checks/fixtures/strict-ci-bin-test-panics
+          cargo-args: "--locked --all-targets"
+          allow-test-panics: "true"
+
       - name: Test panic opt-in still rejects production expect
         shell: bash
         env:

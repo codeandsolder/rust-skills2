@@ -160,8 +160,17 @@ if [[ "$ALLOW_TEST_PANICS" == "true" ]] && printf '%s\n' "${CARGO_ARGS[@]}" | gr
             PRODUCTION_CARGO_ARGS+=("$arg")
         fi
     done
-    PRODUCTION_CARGO_ARGS+=(--lib --bins --examples)
+    # With no target-kind selector, Cargo checks the selected packages' actual
+    # default production targets (libraries and/or binaries). Do not append
+    # --lib/--bins here: either flag is an error when that target kind does not
+    # exist, which made the opt-in unusable for binary-only crates.
     run_clippy PRODUCTION_CARGO_ARGS LINT_ARGS
+
+    # Examples are not part of Cargo's default target set, so prove them
+    # separately under the full production policy. Cargo treats --examples as
+    # a successful no-op when the selected packages have no example targets.
+    EXAMPLE_CARGO_ARGS=("${PRODUCTION_CARGO_ARGS[@]}" --examples)
+    run_clippy EXAMPLE_CARGO_ARGS LINT_ARGS
 
     TEST_LINT_ARGS=("${LINT_ARGS[@]}")
     TEST_LINT_ARGS+=(
