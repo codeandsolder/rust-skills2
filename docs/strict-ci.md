@@ -30,8 +30,11 @@ jobs:
 ```
 
 With the default `--all-targets` selector, `allow-test-panics` first runs
-the full policy against library, binary, and example targets. It then runs the
-all-targets pass with test/benchmark-only non-correctness policy relaxed:
+the full policy against the selected workspace/packages' actual default production
+targets (library and/or binaries), then against examples. This works for
+library-only, binary-only, and mixed crates without inventing target kinds that
+do not exist. It then runs the all-targets pass with test/benchmark-only
+non-correctness policy relaxed:
 the `style`, `complexity`, `pedantic`, and `nursery` groups plus
 `unwrap_used`, `expect_used`, `panic`, `panic_in_result_fn`,
 `missing_panics_doc`, `assertions_on_constants`, test-only unsafe/safety-doc
