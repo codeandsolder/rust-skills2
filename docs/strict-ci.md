@@ -80,11 +80,20 @@ cannot weaken the shared gate with repository-local settings. Test panic
 ergonomics are available only through the explicit reusable-workflow opt-in
 described above; const evaluation and production targets remain strict.
 
-The policy pass clears both `RUSTC_WRAPPER` and `RUSTC_WORKSPACE_WRAPPER`. The rust-skills2 example/fixture verifier does the same for all Cargo invocations. Clippy reads its configuration during
-compiler execution, so distributing clippy-driver to a worker that cannot see
-the action checkout can make the policy fail or diverge. The reusable gate
-therefore runs Clippy locally and relies on the normal target cache instead of
-distributed compiler execution.
+The policy pass clears both `RUSTC_WRAPPER` and `RUSTC_WORKSPACE_WRAPPER` by default. The rust-skills2 example/fixture verifier does the same for all Cargo invocations. Clippy reads its configuration during compiler execution, so distributing clippy-driver to a worker that cannot see the action checkout can make the policy fail or diverge.
+
+Trusted self-hosted runners may preserve a deterministic local compiler wrapper explicitly. `preserve-rustc-wrapper: true` opts in; `rustc-wrapper` may provide the wrapper path, and `sccache-server-port` may select an already-running sccache daemon. A local-only sccache daemon is suitable because it preserves compile caching while keeping clippy-driver in the runner's filesystem namespace. These wrapper inputs are rejected unless preservation is explicitly enabled.
+
+```yaml
+jobs:
+  rust-skills2:
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
+    with:
+      runner: '["self-hosted","Linux","X64","local-ci"]'
+      preserve-rustc-wrapper: true
+      rustc-wrapper: /usr/local/libexec/sccache-client
+      sccache-server-port: "4228"
+```
 
 All compiler and Clippy lints are passed at `deny`, not `forbid`.
 External derive/proc macros legitimately inject internal lint allowances;
