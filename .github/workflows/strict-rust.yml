@@ -28,6 +28,11 @@ on:
         required: false
         type: boolean
         default: false
+      preserve-rustc-wrapper:
+        description: Preserve an explicitly configured local/deterministic RUSTC_WRAPPER instead of clearing compiler wrappers.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -71,6 +76,7 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
           cargo-args: ${{ inputs.cargo-args }}
           allow-test-panics: ${{ inputs.allow-test-panics }}
+          preserve-rustc-wrapper: ${{ inputs.preserve-rustc-wrapper }}
           install-toolchain: "false"
 
       - name: Show Cargo future-incompatibility report

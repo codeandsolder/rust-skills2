@@ -14,6 +14,10 @@ inputs:
     description: Keep production targets strict, but relax panic-style lints for test and benchmark targets.
     required: false
     default: "false"
+  preserve-rustc-wrapper:
+    description: Preserve a caller-provided local/deterministic RUSTC_WRAPPER. Fails if requested without a wrapper.
+    required: false
+    default: "false"
   install-toolchain:
     description: Install latest nightly Clippy and rustfmt before running. Set false when the caller already installed them.
     required: false
@@ -49,5 +53,6 @@ runs:
         RUST_SKILLS2_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         RUST_SKILLS2_CARGO_ARGS: ${{ inputs.cargo-args }}
         RUST_SKILLS2_ALLOW_TEST_PANICS: ${{ inputs.allow-test-panics }}
+        RUST_SKILLS2_PRESERVE_RUSTC_WRAPPER: ${{ inputs.preserve-rustc-wrapper }}
       run: |
         bash "$GITHUB_ACTION_PATH/../../../scripts/strict_clippy.sh"
