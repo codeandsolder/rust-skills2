@@ -11,11 +11,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET="x86_64-unknown-linux-gnu"
 UV="${UV:-uv}"
 
-# Rule validation must be reproducible even when the developer's Cargo config
-# points at a distributed compiler wrapper whose worker cannot see this
-# generated-example tree.
-export RUSTC_WRAPPER=
-export RUSTC_WORKSPACE_WRAPPER=
+# Rule validation clears compiler wrappers by default because a distributed worker
+# cannot see the generated-example tree. Trusted same-namespace wrappers may be
+# preserved explicitly (the self-hosted CI path uses local-only sccache).
+if [[ "${RUST_SKILLS2_PRESERVE_RUSTC_WRAPPER:-false}" == "true" ]]; then
+    [[ -n "${RUSTC_WRAPPER:-}" ]] || { echo "preserve wrapper requested but RUSTC_WRAPPER is empty" >&2; exit 2; }
+else
+    export RUSTC_WRAPPER=
+    export RUSTC_WORKSPACE_WRAPPER=
+fi
 
 run_python() {
     "$UV" run --no-project python "$@"

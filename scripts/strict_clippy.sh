@@ -91,12 +91,28 @@ uv run --no-project python "$SOURCE_POLICY_SCRIPT"
 export CLIPPY_CONF_DIR="$ACTION_DIR"
 export CARGO_BUILD_WARNINGS=deny
 
-# Clippy reads policy files at compiler execution time. A distributed RUSTC_WRAPPER
-# can execute clippy-driver on a worker that cannot see the action checkout, making
-# CLIPPY_CONF_DIR either fail or silently diverge. Keep the policy pass local and
-# deterministic. Target caches still make repeated CI runs cheap.
-export RUSTC_WRAPPER=
-export RUSTC_WORKSPACE_WRAPPER=
+# Clippy reads policy files at compiler execution time. A distributed compiler
+# wrapper can execute clippy-driver on a worker that cannot see the action checkout.
+# Clear wrappers by default. Trusted self-hosted callers may explicitly preserve a
+# wrapper when they guarantee it executes locally in this filesystem namespace.
+PRESERVE_RUSTC_WRAPPER="${RUST_SKILLS2_PRESERVE_RUSTC_WRAPPER:-false}"
+case "$PRESERVE_RUSTC_WRAPPER" in
+    true)
+        if [[ -z "${RUSTC_WRAPPER:-}" ]]; then
+            echo "rust-skills2: preserve-rustc-wrapper requested but RUSTC_WRAPPER is empty" >&2
+            exit 2
+        fi
+        echo "rust-skills2: preserving local compiler wrapper: $RUSTC_WRAPPER"
+        ;;
+    false)
+        export RUSTC_WRAPPER=
+        export RUSTC_WORKSPACE_WRAPPER=
+        ;;
+    *)
+        echo "rust-skills2: RUST_SKILLS2_PRESERVE_RUSTC_WRAPPER must be true or false" >&2
+        exit 2
+        ;;
+esac
 
 # Everything is deny-level at compiler/Clippy level. Proc macros legitimately
 # inject internal allow attributes, so command-line forbid is not composable
