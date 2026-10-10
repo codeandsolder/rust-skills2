@@ -18,6 +18,14 @@ inputs:
     description: Preserve a caller-provided local/deterministic RUSTC_WRAPPER. Fails if requested without a wrapper.
     required: false
     default: "false"
+  rustc-wrapper:
+    description: Optional explicit RUSTC_WRAPPER path used when preserve-rustc-wrapper is true.
+    required: false
+    default: ""
+  sccache-server-port:
+    description: Optional existing sccache daemon port used when preserve-rustc-wrapper is true.
+    required: false
+    default: ""
   install-toolchain:
     description: Install latest nightly Clippy and rustfmt before running. Set false when the caller already installed them.
     required: false
@@ -54,5 +62,7 @@ runs:
         RUST_SKILLS2_CARGO_ARGS: ${{ inputs.cargo-args }}
         RUST_SKILLS2_ALLOW_TEST_PANICS: ${{ inputs.allow-test-panics }}
         RUST_SKILLS2_PRESERVE_RUSTC_WRAPPER: ${{ inputs.preserve-rustc-wrapper }}
+        RUST_SKILLS2_RUSTC_WRAPPER: ${{ inputs.rustc-wrapper }}
+        RUST_SKILLS2_SCCACHE_SERVER_PORT: ${{ inputs.sccache-server-port }}
       run: |
         bash "$GITHUB_ACTION_PATH/../../../scripts/strict_clippy.sh"

@@ -98,13 +98,35 @@ export CARGO_BUILD_WARNINGS=deny
 PRESERVE_RUSTC_WRAPPER="${RUST_SKILLS2_PRESERVE_RUSTC_WRAPPER:-false}"
 case "$PRESERVE_RUSTC_WRAPPER" in
     true)
+        if [[ -n "${RUST_SKILLS2_RUSTC_WRAPPER:-}" ]]; then
+            export RUSTC_WRAPPER="$RUST_SKILLS2_RUSTC_WRAPPER"
+        fi
         if [[ -z "${RUSTC_WRAPPER:-}" ]]; then
             echo "rust-skills2: preserve-rustc-wrapper requested but RUSTC_WRAPPER is empty" >&2
             exit 2
         fi
+        if [[ -n "${RUST_SKILLS2_SCCACHE_SERVER_PORT:-}" ]]; then
+            case "$RUST_SKILLS2_SCCACHE_SERVER_PORT" in
+                *[!0-9]*|'')
+                    echo "rust-skills2: invalid sccache server port: $RUST_SKILLS2_SCCACHE_SERVER_PORT" >&2
+                    exit 2
+                    ;;
+            esac
+            if (( RUST_SKILLS2_SCCACHE_SERVER_PORT < 1 || RUST_SKILLS2_SCCACHE_SERVER_PORT > 65535 )); then
+                echo "rust-skills2: sccache server port out of range: $RUST_SKILLS2_SCCACHE_SERVER_PORT" >&2
+                exit 2
+            fi
+            export SCCACHE_SERVER_PORT="$RUST_SKILLS2_SCCACHE_SERVER_PORT"
+            export SCCACHE_START_SERVER=0
+        fi
         echo "rust-skills2: preserving local compiler wrapper: $RUSTC_WRAPPER"
+        [[ -z "${SCCACHE_SERVER_PORT:-}" ]] || echo "rust-skills2: using existing sccache daemon on port $SCCACHE_SERVER_PORT"
         ;;
     false)
+        if [[ -n "${RUST_SKILLS2_RUSTC_WRAPPER:-}" || -n "${RUST_SKILLS2_SCCACHE_SERVER_PORT:-}" ]]; then
+            echo "rust-skills2: rustc-wrapper/sccache-server-port require preserve-rustc-wrapper=true" >&2
+            exit 2
+        fi
         export RUSTC_WRAPPER=
         export RUSTC_WORKSPACE_WRAPPER=
         ;;

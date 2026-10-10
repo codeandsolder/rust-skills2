@@ -33,6 +33,16 @@ on:
         required: false
         type: boolean
         default: false
+      rustc-wrapper:
+        description: Optional explicit RUSTC_WRAPPER path used when preserve-rustc-wrapper is true.
+        required: false
+        type: string
+        default: ""
+      sccache-server-port:
+        description: Optional existing sccache daemon port used when preserve-rustc-wrapper is true.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -77,6 +87,8 @@ jobs:
           cargo-args: ${{ inputs.cargo-args }}
           allow-test-panics: ${{ inputs.allow-test-panics }}
           preserve-rustc-wrapper: ${{ inputs.preserve-rustc-wrapper }}
+          rustc-wrapper: ${{ inputs.rustc-wrapper }}
+          sccache-server-port: ${{ inputs.sccache-server-port }}
           install-toolchain: "false"
 
       - name: Show Cargo future-incompatibility report
