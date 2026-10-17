@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="${RUST_SKILLS_ROOT:?RUST_SKILLS_ROOT is required}"
 TARGET="${RUST_SKILLS_TARGET:?RUST_SKILLS_TARGET is required}"
 MANIFEST="$ROOT/checks/fixtures/proc-macro-contracts/Cargo.toml"
-TARGET_DIR="$ROOT/checks/target/proc-macro-contracts"
+TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/checks/target}/proc-macro-contracts"
 
 CARGO_TARGET_DIR="$TARGET_DIR" cargo check \
     --manifest-path "$MANIFEST" \

@@ -20,7 +20,7 @@ import pathlib
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
-manifest = json.loads((HERE / "manifest.json").read_text())
+manifest = {}
 
 RES_CODES = {"E0432", "E0433", "E0412", "E0425", "E0405", "E0531", "E0422",
              "E0423", "E0573", "E0463", "E0583"}
@@ -63,23 +63,50 @@ def token(d):
 
 def parse(path):
     errors = collections.defaultdict(list)
+    compiled = set()
+    finished = []
     with open(path) as fh:
-        for raw in fh:
+        for line, raw in enumerate(fh, 1):
             raw = raw.strip()
             if not raw.startswith("{"):
                 continue
             try:
                 rec = json.loads(raw)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                raise SystemExit(f"invalid Cargo JSON at line {line}: {exc}") from exc
+            if rec.get("reason") == "build-finished":
+                finished.append(rec.get("success"))
+                continue
+            target = rec.get("target") or {}
+            name = target.get("name")
+            is_example = (
+                name in manifest
+                and "example" in target.get("kind", [])
+                and pathlib.Path(target.get("src_path", "")).resolve()
+                == (HERE / "examples" / f"{name}.rs").resolve()
+            )
+            if rec.get("reason") == "compiler-artifact" and is_example:
+                compiled.add(name)
                 continue
             if rec.get("reason") != "compiler-message":
                 continue
             msg = rec.get("message", {})
             if msg.get("level") != "error":
                 continue
-            tgt = (rec.get("target") or {}).get("name")
-            if tgt:
-                errors[tgt].append(msg)
+            if not is_example:
+                raise SystemExit(f"error outside generated examples: {name}: {msg.get('message')}")
+            errors[name].append(msg)
+    if len(finished) != 1 or not isinstance(finished[0], bool):
+        raise SystemExit("Cargo output must contain exactly one valid build-finished record")
+    missing = {
+        name for name, info in manifest.items() if info.get("generated", True)
+    } - compiled - errors.keys()
+    if missing:
+        raise SystemExit("Cargo did not check generated examples: " + ", ".join(sorted(missing)))
+    if finished[0] is False and not errors:
+        raise SystemExit("Cargo failed without any generated-example error diagnostics; inspect check.err")
+    if finished[0] is True and errors:
+        raise SystemExit("Cargo reported success despite error diagnostics")
     return errors
 
 
@@ -199,6 +226,8 @@ def collect(errors):
 
 
 def main():
+    global manifest
+    manifest = json.loads((HERE / "manifest.json").read_text())
     args = sys.argv[1:]
     path = next((a for a in args if not a.startswith("--")), "check.json")
     errors = parse(path)

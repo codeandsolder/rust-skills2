@@ -11,12 +11,16 @@ bash checks/check.sh
 ```
 
 The command runs structural/link/index checks, regression-tests the expectation
-extractor, extracts examples, compiles them with the pinned Rust 1.98 toolchain,
-and enforces both explicit expectations and the remaining legacy baseline.
+extractor, extracts examples, compiles them with the pinned Rust 1.99 toolchain,
+and enforces both explicit expectations and the remaining legacy baseline. It also
+runs fixture contracts and runtime regressions for the recommended cancellation
+example (partial reads, frame contents, EOF, and a closed message channel).
+Set `CARGO_TARGET_DIR` to keep all ordinary and fixture build outputs in a chosen
+disposable directory; compiler-wrapper preservation follows `check.sh`.
 
 ## Example expectations
 
-A Rust block under a heading beginning with `Good` defaults to **`compile`**.
+A Rust block under a heading beginning with `Good` or `Bad` defaults to **`compile`**.
 Other existing sections keep the legacy classifier during migration.
 
 Override an example by placing a hidden marker immediately above the fence:
@@ -35,6 +39,7 @@ Supported expectations:
 - `compile_fail` — must fail to compile.
 - `ignore` — not compiled; an explicit `rust-check` marker requires a reason.
 - `nightly(feature_name)` — not checked by the stable harness; records the required feature.
+- `fixture(name)` — checked by `fixtures/<name>/verify.sh` instead of the ordinary example harness.
 
 Examples:
 
@@ -70,6 +75,17 @@ The Cargo harness itself is Edition 2024. Native rustdoc edition selectors are
 not currently separate Cargo compilation modes; use explicit metadata when an
 example genuinely requires a different harness environment rather than assuming
 the fence changes this package's edition.
+
+## Compiler evidence
+
+The analyzer requires a complete Cargo JSON stream with one `build-finished`
+record. Every generated example must have either a matching `compiler-artifact`
+(including fresh/cache-hit artifacts) or an error diagnostic for that example's
+source path. Warnings alone do not prove compilation. Missing examples, malformed
+JSON, and errors in dependencies or build scripts fail validation instead of
+being mistaken for successful examples. Cargo may exit unsuccessfully because
+the corpus intentionally includes compile-fail examples; inspect `check.err` for
+infrastructure failures before changing example expectations or debt files.
 
 ## Two debt files, two meanings
 
@@ -108,10 +124,10 @@ stale legacy debt; the generated diff should be treated as code-review material.
 
 ## Notes
 
-- The harness is pinned by `checks/rust-toolchain.toml` to Rust 1.98.1.
+- The harness is pinned by `checks/rust-toolchain.toml` to Rust 1.99.0.
 - Generated `examples/`, `check.json`, `check.err`, and `manifest.json` are ignored.
-- `gen.py` still auto-skips legacy `Bad`, placeholder, proc-macro, ellipsis, and
-  nightly snippets outside `Good`; new/edited rules should prefer explicit metadata.
+- `gen.py` still auto-skips legacy placeholder, proc-macro, ellipsis, and
+  nightly snippets outside strict sections; new/edited rules should prefer explicit metadata.
 - `test_gen_metadata.py` creates a temporary rule file, verifies native fence
   parsing, removes it, and restores the generated manifest/examples before the
   real corpus compile begins.
