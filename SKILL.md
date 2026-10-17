@@ -6,7 +6,7 @@ description: >
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
   matching, macros, closures, observability, testing, and common anti-patterns.
-  Modernized for Rust 1.98 (2024 edition). Invoke with /rust-skills.
+  Modernized for Rust 1.99 (2024 edition). Invoke with /rust-skills.
 license: MIT
 metadata:
   author: leonardomso
@@ -18,12 +18,12 @@ metadata:
     - The Rustonomicon
     - ripgrep, tokio, serde, polars, axum, cargo codebases
     - This Week in Rust 2024-2026
-    - blog.rust-lang.org release posts 1.85-1.98
+    - blog.rust-lang.org release posts 1.85-1.99
 ---
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 325 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.98 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 325 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.99 (2024 edition).
 
 ## When to Apply
 
@@ -494,12 +494,13 @@ Then benchmark the relevant tradeoff before adding settings such as `lto = "thin
 
 ## How to Use
 
-This skill provides rule identifiers for quick reference. When generating or reviewing Rust code:
+Use the index to select relevant rules, then read their files before changing code; summaries omit conditions and tradeoffs.
 
-1. **Check relevant category** based on task type
-2. **Apply rules** with matching prefix
-3. **Prioritize** CRITICAL > HIGH > MEDIUM > LOW
-4. **Read rule files** in `rules/` for detailed examples
+1. **Establish the contract.** Read repository instructions, manifests, toolchain pins, CI, and the affected callers/tests. Identify input limits, error semantics, supported targets/features, and any actual compatibility requirements. Do not invent a compatibility obligation or raise an MSRV accidentally.
+2. **Trace behavior before style.** Follow affected data and ownership across boundaries. Check empty, boundary, malformed, overflow, partial-I/O, cancellation, shutdown, and concurrent paths where relevant. For unsafe code, state the safety invariant and check every safe entry point that can invalidate it.
+3. **Choose applicable rules.** Read the categories below plus cross-cutting error, numeric, testing, and unsafe rules as needed. Treat priority as review order, not permission to ignore lower-priority correctness issues. Apply conditional advice only when its preconditions hold; do not box, clone, add locks, or generalize APIs just to match an example.
+4. **Make the change and prove the behavior.** Add focused regression tests for concrete failure modes. Run the repository's format, lint, and test commands under its configured compiler/cache setup. Check relevant feature/target combinations; an all-features pass does not prove no-default-features or mutually exclusive configurations. Measure representative workloads before claiming a performance improvement.
+5. **Report evidence and limits.** Give actionable findings with location, triggering conditions, and consequence. Distinguish fixed defects, measured improvements, and unverified hypotheses. Report which checks actually ran and any blocked checks; compiling examples or passing Clippy does not establish runtime correctness or unsafe-code soundness.
 
 ### Rule Application by Task
 

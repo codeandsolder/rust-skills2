@@ -31,6 +31,10 @@ jobs:
           workspaces: checks
       # The exact same command contributors run locally.
       - name: Run checks
+        env:
+          # Exercise the relative-path contract permanently: check.sh must
+          # normalize this before it changes cwd or dispatches fixture builds.
+          CARGO_TARGET_DIR: checks/target
         run: bash checks/check.sh
       - name: Validate packed skill
         run: uv run --no-project python scripts/package_skill.py

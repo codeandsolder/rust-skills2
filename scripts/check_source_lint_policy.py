@@ -323,7 +323,6 @@ def rust_files(roots: list[Path]) -> list[Path]:
 
 def mask_noncode(text: str) -> str:
     """Mask comments and string literals while preserving length/newlines."""
-    chars = list(text)
     masked = list(text)
     length = len(text)
     i = 0
@@ -356,6 +355,19 @@ def mask_noncode(text: str) -> str:
                 else:
                     i += 1
             blank(start, i)
+            continue
+
+        # A quote character such as '\"' must not start a string that swallows
+        # subsequent attributes. Require a complete character token so lifetimes
+        # and labels ('a, 'static, 'outer:) remain code.
+        char_literal = re.match(
+            r"(?:b)?'(?:[^'\\\n\r\t]|\\(?:[nrt\\0'\"]|x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f_]+\}))'",
+            text[i:],
+        )
+        if char_literal is not None:
+            end = i + char_literal.end()
+            blank(i, end)
+            i = end
             continue
 
         raw = re.match(r"(?:b|c)?r(#+)?\"", text[i:])

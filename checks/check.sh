@@ -10,6 +10,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET="x86_64-unknown-linux-gnu"
 UV="${UV:-uv}"
+export PYTHONDONTWRITEBYTECODE=1
+
+# Cargo resolves an environment-provided relative target directory from each
+# process's current working directory. This script deliberately changes cwd,
+# and fixture runners execute from the repository root, so normalize once at
+# the caller boundary to keep every build under the same target tree.
+if [[ -n "${CARGO_TARGET_DIR:-}" && "$CARGO_TARGET_DIR" != /* ]]; then
+    export CARGO_TARGET_DIR="$(pwd -P)/$CARGO_TARGET_DIR"
+fi
 
 # Rule validation clears compiler wrappers by default because a distributed worker
 # cannot see the generated-example tree. Trusted same-namespace wrappers may be
@@ -35,6 +44,10 @@ run_python "$ROOT/checks/test_gen_metadata.py"
 echo "==> maintenance renderer regression tests"
 run_python "$ROOT/checks/test_maintenance_renderer.py"
 
+echo "==> compiler evidence and source-policy regression tests"
+run_python "$ROOT/checks/test_analyze.py"
+run_python "$ROOT/checks/test_source_lint_policy.py"
+
 echo "==> generating example files from rules"
 cd "$ROOT/checks"
 run_python gen.py
@@ -51,5 +64,8 @@ run_python analyze.py check.json \
 
 echo "==> fixture-backed contracts"
 run_python run_fixture_contracts.py "$TARGET"
+
+echo "==> cancellation example runtime contracts"
+run_python test_async_cancel_safety.py
 
 echo "All checks passed."
