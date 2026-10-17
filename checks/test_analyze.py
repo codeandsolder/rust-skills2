@@ -37,12 +37,15 @@ class CargoEvidenceTests(unittest.TestCase):
             self.assertEqual(self.parse([self.artifact(fresh), self.done()]), {})
 
     def test_expected_compile_failure_has_evidence(self):
-        self.assertIn("sample", self.parse([self.error(), self.done(False)]))
+        error = self.error()
+        parsed = self.parse([error, self.done(False)])
+        self.assertEqual(parsed["sample"], [error["message"]])
 
     def test_no_evidence_and_truncation_fail(self):
         for records in ([], [self.done()], [self.artifact()], [self.artifact(), self.done(), self.done()]):
-            with self.subTest(records=records), self.assertRaises(SystemExit):
+            with self.subTest(records=records), self.assertRaises(SystemExit) as raised:
                 self.parse(records)
+            self.assertNotEqual(raised.exception.code, 0)
 
     def test_warnings_are_not_success(self):
         warning = self.error()
@@ -71,8 +74,9 @@ class CargoEvidenceTests(unittest.TestCase):
 
     def test_inconsistent_completion_fails(self):
         for records in ([self.artifact(), self.done(False)], [self.error(), self.done()]):
-            with self.subTest(records=records), self.assertRaises(SystemExit):
+            with self.subTest(records=records), self.assertRaises(SystemExit) as raised:
                 self.parse(records)
+            self.assertNotEqual(raised.exception.code, 0)
 
     def test_malformed_json_fails(self):
         with tempfile.TemporaryDirectory() as tmp:

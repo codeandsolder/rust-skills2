@@ -16,7 +16,9 @@ and enforces both explicit expectations and the remaining legacy baseline. It al
 runs fixture contracts and runtime regressions for the recommended cancellation
 example (partial reads, frame contents, EOF, and a closed message channel).
 Set `CARGO_TARGET_DIR` to keep all ordinary and fixture build outputs in a chosen
-disposable directory; compiler-wrapper preservation follows `check.sh`.
+disposable directory. Relative values are resolved once against the directory
+from which `check.sh` is invoked, before the harness changes working directory;
+compiler-wrapper preservation follows `check.sh`.
 
 ## Example expectations
 
@@ -126,8 +128,9 @@ stale legacy debt; the generated diff should be treated as code-review material.
 
 - The harness is pinned by `checks/rust-toolchain.toml` to Rust 1.99.0.
 - Generated `examples/`, `check.json`, `check.err`, and `manifest.json` are ignored.
-- `gen.py` still auto-skips legacy placeholder, proc-macro, ellipsis, and
-  nightly snippets outside strict sections; new/edited rules should prefer explicit metadata.
+- Outside strict `Good`/`Bad` sections, `gen.py` keeps legacy examples as
+  `auto` except `#![feature(...)]` snippets, which remain nightly-only. Special
+  environments and non-default expectations should use explicit metadata.
 - `test_gen_metadata.py` creates a temporary rule file, verifies native fence
   parsing, removes it, and restores the generated manifest/examples before the
   real corpus compile begins.
