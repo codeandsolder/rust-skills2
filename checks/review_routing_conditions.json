@@ -1,0 +1,1306 @@
+{
+  "source": "experimental semantic activation predicates drafted from rule summaries, neutralized, and audited for false-negative routing bias",
+  "source_summary_sha256": "0d14141461f359027a1052a57af4fb120aafe95e360dbc75aa702123943d38fd",
+  "rules": [
+    {
+      "id": "anti-arc-mutex-everything",
+      "when": "The change introduces shared mutable state and selects ownership or synchronization primitives for its access pattern."
+    },
+    {
+      "id": "anti-block-on-async",
+      "when": "The change invokes blocking runtime entry from code executing within an asynchronous context."
+    },
+    {
+      "id": "anti-blocking-async-drop",
+      "when": "The change defines Drop behavior for an async-capable type that interacts with asynchronous completion."
+    },
+    {
+      "id": "anti-clone-excessive",
+      "when": "The change adds cloning to satisfy ownership across a call or data-flow boundary."
+    },
+    {
+      "id": "anti-collect-intermediate",
+      "when": "The change materializes an iterator pipeline into an intermediate collection before consuming its results."
+    },
+    {
+      "id": "anti-deref-overuse",
+      "when": "The change adds or modifies a Deref implementation on a type."
+    },
+    {
+      "id": "anti-empty-catch",
+      "when": "The change adds an error-handling path that discards or suppresses an error."
+    },
+    {
+      "id": "anti-expect-lazy",
+      "when": "The change uses expect() to handle a fallible operation or encode an invariant."
+    },
+    {
+      "id": "anti-format-hot-path",
+      "when": "The change adds formatting work in a performance-sensitive path, whether or not that path has been measured."
+    },
+    {
+      "id": "anti-index-over-iter",
+      "when": "The change traverses a sequence using indices rather than iterating over its elements."
+    },
+    {
+      "id": "anti-lock-across-await",
+      "when": "The change alters synchronization or lock lifetimes around async suspension points."
+    },
+    {
+      "id": "anti-over-abstraction",
+      "when": "The change introduces or generalizes generics or traits around a reusable abstraction boundary."
+    },
+    {
+      "id": "anti-panic-expected",
+      "when": "The change uses panics to represent runtime failures in an API or execution path."
+    },
+    {
+      "id": "anti-premature-optimize",
+      "when": "The change introduces or modifies a performance optimization or performance-sensitive design choice."
+    },
+    {
+      "id": "anti-session-fixation",
+      "when": "The change alters session handling during authentication or privilege-level transitions."
+    },
+    {
+      "id": "anti-string-for-str",
+      "when": "The change adds or modifies a function parameter that accepts a borrowed string."
+    },
+    {
+      "id": "anti-stringly-typed",
+      "when": "The change uses strings to represent a domain value, state, or identifier."
+    },
+    {
+      "id": "anti-type-erasure",
+      "when": "The change chooses between static dispatch and dyn Trait for an abstraction's implementation set."
+    },
+    {
+      "id": "anti-unsafe-send-sync",
+      "when": "The change adds an unsafe Send or Sync implementation to a type."
+    },
+    {
+      "id": "anti-unwrap-abuse",
+      "when": "The change uses unwrap() or expect() in a path that handles fallible operations or invariants."
+    },
+    {
+      "id": "anti-vec-for-slice",
+      "when": "The change adds or modifies an API parameter using Vec, &Vec, or a slice."
+    },
+    {
+      "id": "api-bon-builder",
+      "when": "The change adds complex construction for a struct or function and considers a typestate builder."
+    },
+    {
+      "id": "api-builder-must-use",
+      "when": "The change adds consuming builder methods that return a builder value."
+    },
+    {
+      "id": "api-builder-pattern",
+      "when": "The change adds construction involving multiple optional settings, validation, or staged configuration."
+    },
+    {
+      "id": "api-common-traits",
+      "when": "The change adds or modifies a public type's standard trait implementations."
+    },
+    {
+      "id": "api-default-impl",
+      "when": "The change adds a Default implementation or changes construction or default behavior for a reusable type."
+    },
+    {
+      "id": "api-do-not-recommend",
+      "when": "The change adds a legal trait implementation that can appear in caller-facing diagnostics."
+    },
+    {
+      "id": "api-extension-trait",
+      "when": "The change defines a local API involving method-call syntax on an external type."
+    },
+    {
+      "id": "api-from-not-into",
+      "when": "The change defines an owned conversion between source and destination types or an Into bound."
+    },
+    {
+      "id": "api-impl-asref",
+      "when": "The change adds or modifies a function that accepts borrowed inputs from multiple caller-side types."
+    },
+    {
+      "id": "api-impl-fromiterator",
+      "when": "The change adds or modifies a collection type's iteration and extension interfaces."
+    },
+    {
+      "id": "api-impl-into",
+      "when": "The change adds an API that takes ownership of a value convertible into its parameter type."
+    },
+    {
+      "id": "api-must-use",
+      "when": "The change adds a return value whose result may be discarded by callers."
+    },
+    {
+      "id": "api-newtype-safety",
+      "when": "The change defines types for values with identical representations but distinct domain meanings."
+    },
+    {
+      "id": "api-non-exhaustive",
+      "when": "The change adds or modifies a public struct, enum, or enum variant."
+    },
+    {
+      "id": "api-nutype-validated",
+      "when": "The change defines a public newtype with input sanitization, validation, or invariant-preserving trait implementations."
+    },
+    {
+      "id": "api-operator-overload",
+      "when": "The change adds an operator implementation for a public or internal type."
+    },
+    {
+      "id": "api-parse-dont-validate",
+      "when": "The change handles weakly typed input or validation at an application or system boundary."
+    },
+    {
+      "id": "api-sealed-trait",
+      "when": "The change defines a public trait with downstream use or implementation boundaries."
+    },
+    {
+      "id": "api-serde-optional",
+      "when": "The change configures serde as a dependency or feature in a general-purpose library."
+    },
+    {
+      "id": "api-typestate",
+      "when": "The change adds or modifies an API with staged operations or state-dependent behavior."
+    },
+    {
+      "id": "async-async-fn-bounds",
+      "when": "The change adds a higher-order async API with callback bounds returning futures."
+    },
+    {
+      "id": "async-blocking-detection",
+      "when": "The change adds instrumentation or metrics for async worker stalls or blocking-pool activity."
+    },
+    {
+      "id": "async-bounded-channel",
+      "when": "The change selects a channel for asynchronous message delivery and backlog management."
+    },
+    {
+      "id": "async-broadcast-pubsub",
+      "when": "The change implements bounded event fan-out to active subscribers."
+    },
+    {
+      "id": "async-cancel-safety",
+      "when": "The change places futures in tokio::select! branches or alters their cancellation behavior."
+    },
+    {
+      "id": "async-cancellation-token",
+      "when": "The change manages asynchronous tasks that receive cooperative cancellation."
+    },
+    {
+      "id": "async-clone-before-await",
+      "when": "The change clones or moves values around an await point or task lifetime boundary."
+    },
+    {
+      "id": "async-fn-in-trait",
+      "when": "The change adds an async trait method and defines its dispatch or future-returning interface."
+    },
+    {
+      "id": "async-join-parallel",
+      "when": "The change awaits a fixed set of independent futures concurrently."
+    },
+    {
+      "id": "async-joinset-structured",
+      "when": "The change spawns a dynamic collection of Tokio tasks and manages their completion or lifecycle."
+    },
+    {
+      "id": "async-mpsc-queue",
+      "when": "The change adds an async single-consumer message queue with Tokio-aware waiting or backpressure."
+    },
+    {
+      "id": "async-no-lock-await",
+      "when": "The change holds or releases a blocking lock around an awaited section."
+    },
+    {
+      "id": "async-oneshot-response",
+      "when": "The change sends a single value between one sender and one receiver."
+    },
+    {
+      "id": "async-runtime-metrics",
+      "when": "The change adds Tokio scheduler telemetry or runtime metrics."
+    },
+    {
+      "id": "async-select-racing",
+      "when": "The change waits on multiple asynchronous events using racing futures."
+    },
+    {
+      "id": "async-spawn-blocking",
+      "when": "The change performs blocking synchronous or CPU-heavy work from asynchronous code."
+    },
+    {
+      "id": "async-structured-concurrency",
+      "when": "The change manages multiple asynchronous tasks and their cancellation and completion lifecycles."
+    },
+    {
+      "id": "async-tokio-fs",
+      "when": "The change performs filesystem operations from asynchronous code, including operations on special files."
+    },
+    {
+      "id": "async-tokio-runtime",
+      "when": "The change configures a Tokio runtime's flavor, settings, or execution behavior."
+    },
+    {
+      "id": "async-try-join",
+      "when": "The change awaits a fixed set of fallible futures concurrently with error propagation."
+    },
+    {
+      "id": "async-watch-latest",
+      "when": "The change distributes updates where receivers consume current state or event history."
+    },
+    {
+      "id": "closure-async-closures",
+      "when": "The change defines an async callback that borrows closure captures or appears in a higher-order API."
+    },
+    {
+      "id": "closure-disjoint-capture",
+      "when": "The change adds a closure with captured values in an Edition 2021 or later crate."
+    },
+    {
+      "id": "closure-fn-trait-bounds",
+      "when": "The change adds or modifies a callback bound using Fn, FnMut, or FnOnce."
+    },
+    {
+      "id": "closure-impl-fn-return",
+      "when": "The change returns a closure from a function or API."
+    },
+    {
+      "id": "closure-move-capture",
+      "when": "The change adds a closure that may outlive its defining scope or captures owned values."
+    },
+    {
+      "id": "closure-static-vs-dyn",
+      "when": "The change selects generic or dynamic dispatch for a callback parameter or stored callback."
+    },
+    {
+      "id": "coll-binaryheap",
+      "when": "The change implements priority ordering or repeated extraction of the maximum element."
+    },
+    {
+      "id": "coll-map-choice",
+      "when": "The change selects or modifies a map based on ordering, range access, or insertion order."
+    },
+    {
+      "id": "coll-seq-choice",
+      "when": "The change selects or modifies a sequence collection for indexed, queue, or deque access."
+    },
+    {
+      "id": "coll-set-membership",
+      "when": "The change implements repeated membership checks or deduplication over a collection."
+    },
+    {
+      "id": "conc-atomic-ordering",
+      "when": "The change adds or modifies atomic operations and their memory orderings."
+    },
+    {
+      "id": "conc-rayon-par-iter",
+      "when": "The change performs CPU-bound work over independent data elements."
+    },
+    {
+      "id": "conc-scoped-threads",
+      "when": "The change starts threads that access data borrowed from the current stack frame."
+    },
+    {
+      "id": "conc-thread-local",
+      "when": "The change defines mutable state with per-thread access semantics."
+    },
+    {
+      "id": "const-block",
+      "when": "The change adds compile-time evaluation or assertions in an expression context."
+    },
+    {
+      "id": "const-fn",
+      "when": "The change defines a function whose operations or callers involve compile-time evaluation."
+    },
+    {
+      "id": "const-generics",
+      "when": "The change parameterizes a type or function using a value such as an array length."
+    },
+    {
+      "id": "const-vs-static",
+      "when": "The change declares a compile-time value that may be inlined or addressed as one instance."
+    },
+    {
+      "id": "conv-asmut-mutable",
+      "when": "The change adds a function accepting mutable borrowed inputs through a concrete reference or generic view."
+    },
+    {
+      "id": "conv-fromstr-parsing",
+      "when": "The change defines conversion from string input into a type."
+    },
+    {
+      "id": "conv-tryfrom-fallible",
+      "when": "The change defines a conversion that can fail between source and destination types."
+    },
+    {
+      "id": "doc-all-public",
+      "when": "The change adds or modifies public API items."
+    },
+    {
+      "id": "doc-cargo-metadata",
+      "when": "The change configures package metadata for a crate intended for publication."
+    },
+    {
+      "id": "doc-cfg-patterns",
+      "when": "The change documents platform or feature availability alongside conditional compilation."
+    },
+    {
+      "id": "doc-crate-readme",
+      "when": "The change maintains README content and crate-level documentation."
+    },
+    {
+      "id": "doc-errors-section",
+      "when": "The change adds or modifies a function with meaningful failure conditions."
+    },
+    {
+      "id": "doc-examples-section",
+      "when": "The change documents an API whose usage can be illustrated with an example."
+    },
+    {
+      "id": "doc-hidden-public",
+      "when": "The change adds a public item that remains callable but is hidden from generated documentation."
+    },
+    {
+      "id": "doc-hidden-setup",
+      "when": "The change adds doctests containing setup code and behavior-relevant examples."
+    },
+    {
+      "id": "doc-include-str",
+      "when": "The change includes an external text file in generated item documentation."
+    },
+    {
+      "id": "doc-intra-links",
+      "when": "The change documents relationships among Rust items using rustdoc links."
+    },
+    {
+      "id": "doc-link-types",
+      "when": "The change documents related public types or operations in the same API."
+    },
+    {
+      "id": "doc-module-inner",
+      "when": "The change adds or modifies a crate or module without overview documentation."
+    },
+    {
+      "id": "doc-panics-section",
+      "when": "The change adds or modifies a function with a path that can panic."
+    },
+    {
+      "id": "doc-question-mark",
+      "when": "The change adds a doctest demonstrating an operation that can return an error."
+    },
+    {
+      "id": "doc-safety-section",
+      "when": "The change adds unsafe operations or unsafe functions with caller obligations or local invariants."
+    },
+    {
+      "id": "doc-test-edition-2024",
+      "when": "The change adds or maintains doctests in an Edition 2024 crate with includes or merged examples."
+    },
+    {
+      "id": "err-anyhow-app",
+      "when": "The change defines error handling at an application boundary where context and reporting are exposed."
+    },
+    {
+      "id": "err-clippy-unwrap-types",
+      "when": "The change modifies Clippy configuration for allow-unwrap-types or a no-unwrap policy."
+    },
+    {
+      "id": "err-context-chain",
+      "when": "The change propagates an error across an abstraction boundary."
+    },
+    {
+      "id": "err-custom-type",
+      "when": "The change defines or propagates errors whose distinctions are visible to callers."
+    },
+    {
+      "id": "err-diagnostic-do-not-recommend",
+      "when": "The change adds a trait implementation that can appear in user-facing diagnostics."
+    },
+    {
+      "id": "err-doc-errors",
+      "when": "The change documents a function that returns meaningful Err conditions."
+    },
+    {
+      "id": "err-expect-bugs-only",
+      "when": "The change uses expect() to represent an invariant or a process-level termination path."
+    },
+    {
+      "id": "err-expect-not-allow",
+      "when": "The change adds a lint suppression using expect or allow attributes."
+    },
+    {
+      "id": "err-from-impl",
+      "when": "The change converts a source error into a target error through an unconditional conversion."
+    },
+    {
+      "id": "err-lowercase-msg",
+      "when": "The change adds or modifies an error type's user-visible Display message."
+    },
+    {
+      "id": "err-no-std-error",
+      "when": "The change defines an error type in a no_std crate."
+    },
+    {
+      "id": "err-no-unwrap-prod",
+      "when": "The change adds unwrap() or expect() to a production execution path."
+    },
+    {
+      "id": "err-question-mark",
+      "when": "The change handles a fallible operation within a function that propagates errors."
+    },
+    {
+      "id": "err-result-over-panic",
+      "when": "The change represents a fallible operation with a panic or a Result return type."
+    },
+    {
+      "id": "err-source-chain",
+      "when": "The change defines or transforms errors that have underlying causes."
+    },
+    {
+      "id": "err-thiserror-lib",
+      "when": "The change defines typed errors in a library crate."
+    },
+    {
+      "id": "err-try-block-experimental",
+      "when": "The change uses try blocks or changes stable Result or Option propagation."
+    },
+    {
+      "id": "lint-cargo-metadata",
+      "when": "The change configures lints for a crate intended for publication."
+    },
+    {
+      "id": "lint-cargo-unused-features",
+      "when": "The change declares or modifies Cargo feature flags in a manifest."
+    },
+    {
+      "id": "lint-cfg-check",
+      "when": "The change adds or modifies cfg conditions, declared cfg names, or feature gates."
+    },
+    {
+      "id": "lint-clippy-nursery-selected",
+      "when": "The change configures Clippy nursery lints or updates the project's Rust toolchain."
+    },
+    {
+      "id": "lint-deny-correctness",
+      "when": "The change configures compiler or Clippy correctness lint levels."
+    },
+    {
+      "id": "lint-dylint-custom",
+      "when": "The change adds project-specific linting beyond the built-in compiler and Clippy sets."
+    },
+    {
+      "id": "lint-edition-2024",
+      "when": "The change plans or performs a migration to the Rust 2024 edition."
+    },
+    {
+      "id": "lint-lints-table",
+      "when": "The change adds or modifies lint configuration in Cargo manifests."
+    },
+    {
+      "id": "lint-missing-docs",
+      "when": "The change configures linting for documentation on public items."
+    },
+    {
+      "id": "lint-pedantic-selective",
+      "when": "The change configures Clippy pedantic lint selection."
+    },
+    {
+      "id": "lint-rustfmt-check",
+      "when": "The change adds or modifies CI checks for Rust formatting."
+    },
+    {
+      "id": "lint-unsafe-doc",
+      "when": "The change adds or modifies an unsafe operation or an unsafe function."
+    },
+    {
+      "id": "lint-uplifted",
+      "when": "The change updates the Rust toolchain or compiler lint configuration across versions."
+    },
+    {
+      "id": "lint-warn-complexity",
+      "when": "The change configures lints for expression or operation complexity."
+    },
+    {
+      "id": "lint-warn-perf",
+      "when": "The change configures lints for established performance patterns."
+    },
+    {
+      "id": "lint-warn-style",
+      "when": "The change configures style lints or how their suggestions are handled."
+    },
+    {
+      "id": "lint-warn-suspicious",
+      "when": "The change configures lints for suspicious code patterns."
+    },
+    {
+      "id": "lint-workspace-lints",
+      "when": "The change configures lint enforcement across multiple workspace crates."
+    },
+    {
+      "id": "macro-export-crate-path",
+      "when": "The change adds or modifies a macro_rules! definition or its visibility in a crate."
+    },
+    {
+      "id": "macro-fragment-specifiers",
+      "when": "The change adds or modifies macro_rules! patterns that capture macro input."
+    },
+    {
+      "id": "macro-prefer-functions",
+      "when": "The change introduces a macro to express reusable behavior or code generation."
+    },
+    {
+      "id": "macro-private-helpers",
+      "when": "The change adds support items required at call sites by an exported macro."
+    },
+    {
+      "id": "macro-proc-error-spans",
+      "when": "The change adds or modifies procedural-macro handling of invalid input."
+    },
+    {
+      "id": "macro-proc-syn-quote",
+      "when": "The change adds or modifies procedural-macro parsing or code generation."
+    },
+    {
+      "id": "macro-proc-two-crate",
+      "when": "The change adds a procedural macro to a crate that also provides a regular library facade."
+    },
+    {
+      "id": "macro-rules-hygiene",
+      "when": "The change adds or modifies macro_rules! definitions that reference paths from the defining crate."
+    },
+    {
+      "id": "mem-arc-str",
+      "when": "The change stores immutable strings behind Arc for cross-thread shared ownership."
+    },
+    {
+      "id": "mem-arena-allocator",
+      "when": "The change allocates many values that share a lifetime and are released as a group."
+    },
+    {
+      "id": "mem-arrayvec",
+      "when": "The change defines a collection with a fixed compile-time capacity."
+    },
+    {
+      "id": "mem-assert-type-size",
+      "when": "The change adds or modifies a type-size assertion or changes a type with ABI or memory-budget constraints."
+    },
+    {
+      "id": "mem-avoid-format",
+      "when": "The change creates a temporary String with format! before passing text to another destination."
+    },
+    {
+      "id": "mem-box-large-variant",
+      "when": "The change defines an enum with a variant substantially larger than its other variants."
+    },
+    {
+      "id": "mem-box-new-uninit",
+      "when": "The change allocates heap memory for deferred or in-place initialization of a value."
+    },
+    {
+      "id": "mem-boxed-slice",
+      "when": "The change stores owned heap data of fixed length in a collection."
+    },
+    {
+      "id": "mem-clone-from",
+      "when": "The change repeatedly replaces an existing value of a concrete type."
+    },
+    {
+      "id": "mem-compact-string",
+      "when": "The change selects or modifies string storage in code with memory-use or allocation concerns."
+    },
+    {
+      "id": "mem-drop-order",
+      "when": "The change defines values with resource dependencies affected by destruction order."
+    },
+    {
+      "id": "mem-ecow-clone-heavy",
+      "when": "The change clones immutable or copy-on-write strings repeatedly."
+    },
+    {
+      "id": "mem-hotpath-profile",
+      "when": "The change proposes a memory optimization or changes memory-sensitive data handling."
+    },
+    {
+      "id": "mem-reuse-collections",
+      "when": "The change repeatedly builds or replaces temporary collections."
+    },
+    {
+      "id": "mem-slotmap-arena",
+      "when": "The change stores values addressed by stable keys or requires generation-checked identifiers."
+    },
+    {
+      "id": "mem-smaller-integers",
+      "when": "The change selects integer widths for stored values in a memory-sensitive data structure."
+    },
+    {
+      "id": "mem-smallvec",
+      "when": "The change uses a collection whose typical size is small but can grow."
+    },
+    {
+      "id": "mem-take-replace",
+      "when": "The change moves a value out of a mutable reference while preserving a replacement value."
+    },
+    {
+      "id": "mem-thinvec",
+      "when": "The change selects a collection representation where the handle's pointer size matters."
+    },
+    {
+      "id": "mem-with-capacity",
+      "when": "The change builds a collection with a known or estimated final size."
+    },
+    {
+      "id": "mem-write-over-format",
+      "when": "The change formats output into an owned String before writing it to another destination."
+    },
+    {
+      "id": "mem-zero-copy",
+      "when": "The change passes or stores data that could be represented as borrowed slices or Bytes."
+    },
+    {
+      "id": "name-acronym-word",
+      "when": "The change adds or renames a type-level name containing an acronym."
+    },
+    {
+      "id": "name-as-free",
+      "when": "The change adds or renames a method for a borrowed conversion."
+    },
+    {
+      "id": "name-consts-screaming",
+      "when": "The change adds or renames a constant or static item."
+    },
+    {
+      "id": "name-crate-no-rs",
+      "when": "The change adds or renames a crate or package."
+    },
+    {
+      "id": "name-feature",
+      "when": "The change adds or renames a Cargo feature."
+    },
+    {
+      "id": "name-funcs-snake",
+      "when": "The change adds or renames a function, method, variable, or module."
+    },
+    {
+      "id": "name-into-ownership",
+      "when": "The change adds or renames a conversion method that consumes an owned value."
+    },
+    {
+      "id": "name-is-has-bool",
+      "when": "The change adds or renames a method returning a boolean predicate."
+    },
+    {
+      "id": "name-iter-convention",
+      "when": "The change adds or renames collection traversal methods or iteration interfaces."
+    },
+    {
+      "id": "name-iter-method",
+      "when": "The change defines a collection-like type with iteration support."
+    },
+    {
+      "id": "name-iter-type-match",
+      "when": "The change adds or renames a public iterator type produced by a method or function."
+    },
+    {
+      "id": "name-lifetime-short",
+      "when": "The change adds or renames lifetime parameters in public or internal APIs."
+    },
+    {
+      "id": "name-no-get-prefix",
+      "when": "The change adds or renames a method that returns a named value."
+    },
+    {
+      "id": "name-to-expensive",
+      "when": "The change adds or renames a conversion method that borrows its receiver and performs work."
+    },
+    {
+      "id": "name-type-param-single",
+      "when": "The change adds or renames generic type parameters."
+    },
+    {
+      "id": "name-types-camel",
+      "when": "The change adds or renames a type-level item such as a struct, enum, trait, or alias."
+    },
+    {
+      "id": "name-variants-camel",
+      "when": "The change adds or renames an enum variant."
+    },
+    {
+      "id": "name-word-order",
+      "when": "The change adds or renames a compound identifier."
+    },
+    {
+      "id": "num-cast-try-from",
+      "when": "The change converts between numeric types with an as cast or conversion trait."
+    },
+    {
+      "id": "num-float-compare",
+      "when": "The change compares or orders floating-point values."
+    },
+    {
+      "id": "num-nonzero",
+      "when": "The change defines or uses a numeric value whose domain excludes zero."
+    },
+    {
+      "id": "num-overflow-explicit",
+      "when": "The change adds integer arithmetic with values that can exceed the type's range."
+    },
+    {
+      "id": "num-saturating-clamp",
+      "when": "The change bounds numeric values or applies arithmetic at a limit."
+    },
+    {
+      "id": "obs-error-chain",
+      "when": "The change logs or reports an error that may have underlying causes."
+    },
+    {
+      "id": "obs-instrument-spans",
+      "when": "The change adds async tasks or request handling with tracing instrumentation."
+    },
+    {
+      "id": "obs-levels-filter",
+      "when": "The change adds or modifies diagnostic log levels or filtering configuration."
+    },
+    {
+      "id": "obs-library-facade",
+      "when": "The change adds observability setup or emission behavior to a reusable library."
+    },
+    {
+      "id": "obs-no-sensitive-data",
+      "when": "The change logs or records values that may contain secrets or personally identifying information."
+    },
+    {
+      "id": "obs-structured-fields",
+      "when": "The change emits diagnostic messages containing contextual values."
+    },
+    {
+      "id": "obs-tracing-over-log",
+      "when": "The change adds diagnostics using println!, log macros, or tracing instrumentation."
+    },
+    {
+      "id": "opt-bounds-check",
+      "when": "The change modifies indexing or bounds handling in a hot loop."
+    },
+    {
+      "id": "opt-cache-friendly",
+      "when": "The change selects data layout or access patterns for performance-sensitive workloads."
+    },
+    {
+      "id": "opt-codegen-units",
+      "when": "The change modifies release-profile settings for code generation or optimization."
+    },
+    {
+      "id": "opt-cold-path",
+      "when": "The change adds or modifies a branch or error path that may affect inlining or branch layout."
+    },
+    {
+      "id": "opt-cold-unlikely",
+      "when": "The change adds a cold-path annotation or cold-path hint."
+    },
+    {
+      "id": "opt-inline-always-rare",
+      "when": "The change adds or modifies an inline(always) annotation."
+    },
+    {
+      "id": "opt-inline-never-cold",
+      "when": "The change adds inlining or cold-path annotations to performance-sensitive code."
+    },
+    {
+      "id": "opt-inline-small",
+      "when": "The change adds or modifies a small non-generic public function's inlining behavior."
+    },
+    {
+      "id": "opt-likely-hint",
+      "when": "The change adds or evaluates branch hints using stable Rust compiler APIs."
+    },
+    {
+      "id": "opt-lto-release",
+      "when": "The change modifies release build configuration for link-time optimization."
+    },
+    {
+      "id": "opt-pgo-profile",
+      "when": "The change configures performance-guided build behavior for a deployment workload."
+    },
+    {
+      "id": "opt-select-unpredictable",
+      "when": "The change expresses a conditional value selection in performance-sensitive code."
+    },
+    {
+      "id": "opt-simd-portable",
+      "when": "The change adds or modifies vectorized computation or explicit SIMD dispatch."
+    },
+    {
+      "id": "opt-target-cpu",
+      "when": "The change configures target CPU features or runtime dispatch for deployment builds."
+    },
+    {
+      "id": "own-arc-shared",
+      "when": "The change adds shared ownership that may cross thread boundaries."
+    },
+    {
+      "id": "own-borrow-over-clone",
+      "when": "The change passes a cloned owned value to a callee that accesses it temporarily."
+    },
+    {
+      "id": "own-cell-update",
+      "when": "The change updates a Copy value through single-threaded interior mutability."
+    },
+    {
+      "id": "own-clone-explicit",
+      "when": "The change duplicates a non-Copy value through Clone."
+    },
+    {
+      "id": "own-copy-small",
+      "when": "The change defines a small, simple value type with copy semantics."
+    },
+    {
+      "id": "own-cow-conditional",
+      "when": "The change defines an API that can return borrowed data or owned data."
+    },
+    {
+      "id": "own-cow-rpit-edition2024",
+      "when": "The change uses Edition 2024 return-position impl Trait with borrowed values or Cow."
+    },
+    {
+      "id": "own-lazy-init",
+      "when": "The change adds lazy initialization for static, local, or thread-local values."
+    },
+    {
+      "id": "own-lifetime-elision",
+      "when": "The change adds lifetime annotations to borrowed APIs or uses return-position impl Trait."
+    },
+    {
+      "id": "own-move-large",
+      "when": "The change transfers large values across function, storage, or ownership boundaries."
+    },
+    {
+      "id": "own-mutex-interior",
+      "when": "The change selects or modifies a Mutex for synchronous or asynchronous execution."
+    },
+    {
+      "id": "own-range-copy",
+      "when": "The change selects a range type for ownership, copying, iteration, or API interoperability."
+    },
+    {
+      "id": "own-rc-single-thread",
+      "when": "The change adds shared ownership confined to a single thread."
+    },
+    {
+      "id": "own-refcell-interior",
+      "when": "The change adds runtime-checked interior mutability for shared thread-local access."
+    },
+    {
+      "id": "own-rwlock-readers",
+      "when": "The change selects or modifies a lock for shared read and write access."
+    },
+    {
+      "id": "own-slice-over-vec",
+      "when": "The change adds an API that accepts owned or borrowed collection and path data."
+    },
+    {
+      "id": "pat-at-bindings",
+      "when": "The change matches a value while also binding the whole value for use."
+    },
+    {
+      "id": "pat-exhaustive-enum",
+      "when": "The change matches an owned enum with a catch-all arm."
+    },
+    {
+      "id": "pat-if-let-chains",
+      "when": "The change combines pattern bindings with conditions in branching or looping code."
+    },
+    {
+      "id": "pat-let-else",
+      "when": "The change extracts a value through a pattern and exits on non-matching cases."
+    },
+    {
+      "id": "pat-matches-macro",
+      "when": "The change tests whether a value matches a pattern and produces a boolean."
+    },
+    {
+      "id": "perf-ahash",
+      "when": "The change selects a hasher for a map used with untrusted or trusted keys."
+    },
+    {
+      "id": "perf-array-windows",
+      "when": "The change processes fixed-size windows or chunks of slice elements."
+    },
+    {
+      "id": "perf-atomic-update",
+      "when": "The change adds a compare-and-update loop for an atomic value."
+    },
+    {
+      "id": "perf-black-box-bench",
+      "when": "The change adds or modifies a benchmark whose work may be optimized by the compiler."
+    },
+    {
+      "id": "perf-chain-avoid",
+      "when": "The change composes iterator chains or changes the structure of an iterator traversal."
+    },
+    {
+      "id": "perf-collect-into",
+      "when": "The change repeatedly fills an existing destination collection from an iterator."
+    },
+    {
+      "id": "perf-collect-once",
+      "when": "The change materializes an iterator pipeline into an owned collection."
+    },
+    {
+      "id": "perf-copy-range",
+      "when": "The change adopts Copy range values in an API or iteration path."
+    },
+    {
+      "id": "perf-drain-reuse",
+      "when": "The change removes owned elements from a collection while retaining its allocation."
+    },
+    {
+      "id": "perf-entry-api",
+      "when": "The change looks up a map key to handle both occupied and vacant cases."
+    },
+    {
+      "id": "perf-extend-batch",
+      "when": "The change adds multiple elements to a collection or reserves capacity for a batch."
+    },
+    {
+      "id": "perf-extract-if",
+      "when": "The change removes matching elements from a collection and returns their ownership."
+    },
+    {
+      "id": "perf-hint-apis",
+      "when": "The change applies compiler hint APIs to performance-sensitive code."
+    },
+    {
+      "id": "perf-io-buffering",
+      "when": "The change performs many small operations through Read or Write interfaces."
+    },
+    {
+      "id": "perf-iter-lazy",
+      "when": "The change collects an iterator pipeline that could also stream or short-circuit."
+    },
+    {
+      "id": "perf-iter-over-index",
+      "when": "The change traverses values using indexing or direct iteration."
+    },
+    {
+      "id": "perf-profile-first",
+      "when": "The change chooses or evaluates a performance optimization or performance-sensitive design choice."
+    },
+    {
+      "id": "perf-release-profile",
+      "when": "The change modifies release-profile settings for performance."
+    },
+    {
+      "id": "proj-bin-dir",
+      "when": "The change adds additional binary targets to a Cargo package."
+    },
+    {
+      "id": "proj-build-rs-minimal",
+      "when": "The change adds or modifies a build script's inputs, outputs, or execution behavior."
+    },
+    {
+      "id": "proj-feature-additive",
+      "when": "The change adds or modifies Cargo features that may be unified across dependencies."
+    },
+    {
+      "id": "proj-flat-small",
+      "when": "The change organizes files and modules in a small project."
+    },
+    {
+      "id": "proj-lib-main-split",
+      "when": "The change allocates application logic between a library target and binary entry points."
+    },
+    {
+      "id": "proj-lints-table",
+      "when": "The change centralizes or modifies lint configuration in a Cargo workspace."
+    },
+    {
+      "id": "proj-mod-by-feature",
+      "when": "The change organizes modules containing domain or feature-related code."
+    },
+    {
+      "id": "proj-mod-rs-dir",
+      "when": "The change chooses a multi-file Rust module layout."
+    },
+    {
+      "id": "proj-msrv-declare",
+      "when": "The change declares or tests the minimum supported Rust version for a crate."
+    },
+    {
+      "id": "proj-prelude-module",
+      "when": "The change adds a crate prelude or defines commonly imported public items."
+    },
+    {
+      "id": "proj-pub-crate-internal",
+      "when": "The change sets visibility for an item shared across modules within a crate."
+    },
+    {
+      "id": "proj-pub-super-parent",
+      "when": "The change sets visibility for an item declared in a child module and used by its parent."
+    },
+    {
+      "id": "proj-pub-use-reexport",
+      "when": "The change adds or modifies public re-exports and externally accessible paths."
+    },
+    {
+      "id": "proj-workspace-deps",
+      "when": "The change configures dependencies shared across multiple workspace crates."
+    },
+    {
+      "id": "proj-workspace-large",
+      "when": "The change organizes a large Rust project across packages or crates."
+    },
+    {
+      "id": "proj-workspace-metadata",
+      "when": "The change configures shared package metadata in a Cargo workspace."
+    },
+    {
+      "id": "proj-workspace-publish",
+      "when": "The change publishes multiple packages through a Cargo workspace."
+    },
+    {
+      "id": "serde-custom-with",
+      "when": "The change defines custom serialization or deserialization behavior for a field."
+    },
+    {
+      "id": "serde-default-compat",
+      "when": "The change adds, removes, or modifies fields in a serialized or deserialized data schema."
+    },
+    {
+      "id": "serde-deny-unknown-fields",
+      "when": "The change defines a deserializable struct's handling of unrecognized input fields."
+    },
+    {
+      "id": "serde-enum-representation",
+      "when": "The change defines or modifies an enum's serialized wire representation."
+    },
+    {
+      "id": "serde-flatten",
+      "when": "The change serializes nested structs or captures additional keys in a struct."
+    },
+    {
+      "id": "serde-rename-all",
+      "when": "The change defines serialized field names for an external naming convention."
+    },
+    {
+      "id": "serde-skip-empty",
+      "when": "The change defines serialization behavior for empty field values."
+    },
+    {
+      "id": "serde-try-from-validate",
+      "when": "The change adds or modifies deserialization, input validation, or conversion from deserialized data."
+    },
+    {
+      "id": "test-arrange-act-assert",
+      "when": "The change adds or restructures a test with setup, execution, and verification steps."
+    },
+    {
+      "id": "test-assert-matches",
+      "when": "The change adds an assertion that checks a value's pattern or variant."
+    },
+    {
+      "id": "test-cfg-test-module",
+      "when": "The change adds unit tests to a Rust module."
+    },
+    {
+      "id": "test-coverage-llvm-cov",
+      "when": "The change configures or modifies project code coverage measurement."
+    },
+    {
+      "id": "test-criterion-bench",
+      "when": "The change adds or selects a benchmark harness for performance measurement."
+    },
+    {
+      "id": "test-descriptive-names",
+      "when": "The change adds or renames tests."
+    },
+    {
+      "id": "test-doctest-examples",
+      "when": "The change adds or modifies examples in public API documentation."
+    },
+    {
+      "id": "test-fixture-raii",
+      "when": "The change manages resources or process state during test setup and cleanup."
+    },
+    {
+      "id": "test-fuzzing-minimal",
+      "when": "The change tests critical functions that accept structured or variable input."
+    },
+    {
+      "id": "test-insta-snapshot",
+      "when": "The change verifies generated or rendered output through approval or snapshot tests."
+    },
+    {
+      "id": "test-integration-dir",
+      "when": "The change adds tests that exercise a crate through its external API."
+    },
+    {
+      "id": "test-loom-concurrency",
+      "when": "The change adds or modifies lock-free or concurrent code."
+    },
+    {
+      "id": "test-mock-traits",
+      "when": "The change introduces or modifies an external dependency used by application or library logic."
+    },
+    {
+      "id": "test-mockall-mocking",
+      "when": "The change adds trait-based dependencies that tests may substitute."
+    },
+    {
+      "id": "test-nextest-workflow",
+      "when": "The change modifies test execution workflows or CI test partitioning."
+    },
+    {
+      "id": "test-proptest-properties",
+      "when": "The change defines behavior through invariants or properties across input ranges."
+    },
+    {
+      "id": "test-rstest-fixtures",
+      "when": "The change adds parameterized tests, reusable fixtures, or async test setup."
+    },
+    {
+      "id": "test-should-panic",
+      "when": "The change adds a test whose expected outcome is a panic."
+    },
+    {
+      "id": "test-snapshot-testing",
+      "when": "The change produces complex output intended for whole-output review."
+    },
+    {
+      "id": "test-tokio-async",
+      "when": "The change adds or modifies an asynchronous test using Tokio."
+    },
+    {
+      "id": "test-use-super",
+      "when": "The change adds a unit-test module that accesses its parent module's items."
+    },
+    {
+      "id": "trait-associated-type-vs-generic",
+      "when": "The change defines or modifies a trait's output type or generic input parameters."
+    },
+    {
+      "id": "trait-blanket-impl",
+      "when": "The change adds an implementation that applies to every type satisfying a trait bound."
+    },
+    {
+      "id": "trait-coherence-newtype",
+      "when": "The change implements a trait for a type and involves foreign trait or type definitions."
+    },
+    {
+      "id": "trait-default-methods",
+      "when": "The change defines a trait's required methods and default method implementations."
+    },
+    {
+      "id": "trait-dyn-vs-generic",
+      "when": "The change chooses static or dynamic dispatch for a trait-based API."
+    },
+    {
+      "id": "trait-object-safety",
+      "when": "The change modifies a trait used or intended for dyn Trait objects."
+    },
+    {
+      "id": "trait-upcasting",
+      "when": "The change defines dyn-compatible supertrait relationships or converts between trait objects."
+    },
+    {
+      "id": "type-deref-coercion",
+      "when": "The change adds a Deref or DerefMut implementation to a type."
+    },
+    {
+      "id": "type-derive-more-boilerplate",
+      "when": "The change adds mechanical trait implementations to a public or internal type."
+    },
+    {
+      "id": "type-display-vs-debug",
+      "when": "The change defines Display or Debug output for a type."
+    },
+    {
+      "id": "type-enum-states",
+      "when": "The change models a value with mutually exclusive states."
+    },
+    {
+      "id": "type-generic-bounds",
+      "when": "The change adds or modifies trait bounds on generic API items."
+    },
+    {
+      "id": "type-never-diverge",
+      "when": "The change defines a function or expression that does not return normally."
+    },
+    {
+      "id": "type-newtype-ids",
+      "when": "The change represents multiple semantic identifiers or values with shared primitive types."
+    },
+    {
+      "id": "type-newtype-repr-transparent",
+      "when": "The change adds repr(transparent) to a newtype or wrapper."
+    },
+    {
+      "id": "type-newtype-validated",
+      "when": "The change defines a durable domain invariant currently represented by primitive values."
+    },
+    {
+      "id": "type-no-stringly",
+      "when": "The change stores durable states or identifiers as strings or domain types."
+    },
+    {
+      "id": "type-nonzero-intrinsics",
+      "when": "The change uses NonZero types in operations that produce or transform numeric values."
+    },
+    {
+      "id": "type-numeric-fmt",
+      "when": "The change defines a numeric newtype with formatting or display interfaces."
+    },
+    {
+      "id": "type-nutype-validated",
+      "when": "The change defines a validated newtype and considers generated constructors or trait implementations."
+    },
+    {
+      "id": "type-option-nullable",
+      "when": "The change represents absence or failure information in a return value or field."
+    },
+    {
+      "id": "type-phantom-marker",
+      "when": "The change defines a type distinction that carries no runtime data."
+    },
+    {
+      "id": "type-repr-transparent",
+      "when": "The change defines a wrapper that depends on the wrapped field's layout or ABI."
+    },
+    {
+      "id": "type-result-fallible",
+      "when": "The change defines an operation with failure information useful to callers."
+    },
+    {
+      "id": "unsafe-extern-block",
+      "when": "The change declares foreign functions or static items in a Rust 2024 extern block."
+    },
+    {
+      "id": "unsafe-maybeuninit",
+      "when": "The change handles uninitialized memory or constructs values in uninitialized storage."
+    },
+    {
+      "id": "unsafe-minimize-scope",
+      "when": "The change adds or modifies an unsafe block containing operations and surrounding code."
+    },
+    {
+      "id": "unsafe-miri-ci",
+      "when": "The change adds unsafe code to a crate or modifies CI for a crate containing unsafe code."
+    },
+    {
+      "id": "unsafe-no-mangle-unsafe",
+      "when": "The change adds symbol or section attributes in a Rust 2024 crate."
+    },
+    {
+      "id": "unsafe-safety-comment",
+      "when": "The change adds or modifies an unsafe block or unsafe function."
+    },
+    {
+      "id": "unsafe-send-sync-manual",
+      "when": "The change manually implements Send or Sync for a type."
+    },
+    {
+      "id": "unsafe-strict-provenance",
+      "when": "The change performs pointer arithmetic, derives addresses, or converts between pointers and integers."
+    }
+  ]
+}

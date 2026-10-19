@@ -38,6 +38,7 @@ echo "==> structure, links, and index parity"
 run_python "$ROOT/checks/validate.py"
 run_python "$ROOT/checks/gen_index.py" --check
 run_python "$ROOT/checks/gen_review_skill.py" --check
+run_python "$ROOT/checks/gen_routed_review_skill.py" --check
 
 echo "==> verifier metadata regression tests"
 run_python "$ROOT/checks/test_gen_metadata.py"
