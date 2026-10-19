@@ -456,7 +456,8 @@ For a genuinely `no_std` dependency configuration on Rust 1.81+, disable that de
 
 A `try { ... }` block creates a local try-propagation context: `?` can short-circuit out of the block rather than out of the enclosing function. This is useful when a function itself should not return the same `Result` or `Option`, but one expression inside it naturally does.
 As of Rust 1.98, homogeneous try blocks are still unstable behind `#![feature(try_blocks)]` and are tracked by rust-lang/rust#154391. Do not confuse that feature with RFC 3058 / `try_trait_v2`: the public `Try` and `FromResidual` traits are a separate, still-unstable library API tracked by #84277.
-- Prefer: A Scoped Try Context
+- **Prefer on Stable:** If the enclosing function already has the desired try context, ordinary `?` is simpler and stable.
+- Prefer on Nightly: A Scoped Try Context
 - When Nightly Try Blocks May Be Worth It
 
 ## 3. Memory Optimization (CRITICAL)
@@ -1961,6 +1962,7 @@ Running validation after deserialization means you can construct an invalid valu
 `matches!(value, Pattern)` is the idiomatic way to ask whether a value matches a pattern when the result itself is a boolean. It avoids a `match` whose only purpose is returning `true` or `false`, and it supports alternation and guards.
 Use a normal `match` or `if let` when you need to extract a value for further work or perform different actions per branch.
 - Avoid: Boolean-Only `match`
+- **Prefer for `is_*` Helper Methods:** `matches!` pairs well with predicate methods when the method is genuinely just a pattern test:
 
 ### `pat-if-let-chains` — Use `if let` / `while let` chains to combine pattern bindings and conditions
 

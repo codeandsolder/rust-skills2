@@ -175,19 +175,36 @@ def clean_body(lines: list[str], rule_id: str) -> str:
         ):
             continue
 
-        # Good/Bad sections chiefly annotate removed examples. A descriptive
-        # heading still encodes a useful recommendation, so retain just that.
+        # Good/Bad sections chiefly annotate removed examples. Preserve qualifiers
+        # such as "on Stable" / "on Nightly": they can be part of the rule's
+        # applicability rather than mere teaching prose.
         if any(
             lowered.startswith(prefix) for prefix in EXAMPLE_SECTION_PREFIXES
         ):
-            if ":" in label:
-                kind, description = label.split(":", 1)
-                verb = (
-                    "Prefer"
-                    if kind.strip().lower().startswith("good")
-                    else "Avoid"
+            kind, separator, description = label.partition(":")
+            kind_lower = kind.strip().lower()
+            is_good = kind_lower.startswith("good")
+            stem = "Good" if is_good else "Bad"
+            qualifier = kind.strip()[len(stem) :].strip()
+            verb = "Prefer" if is_good else "Avoid"
+            qualified_verb = f"{verb} {qualifier}" if qualifier else verb
+
+            paragraphs = paragraph_blocks(body)
+            if separator:
+                rendered.append(f"- {qualified_verb}: {description.strip()}")
+            elif qualifier:
+                prose = next(
+                    (
+                        compact_inline(paragraph)
+                        for paragraph in paragraphs
+                        if not is_list_or_table(paragraph)
+                    ),
+                    None,
                 )
-                rendered.append(f"- {verb}: {description.strip()}")
+                if prose:
+                    rendered.append(f"- **{qualified_verb}:** {prose}")
+                else:
+                    rendered.append(f"- {qualified_verb}")
             continue
 
         paragraphs = paragraph_blocks(body)
