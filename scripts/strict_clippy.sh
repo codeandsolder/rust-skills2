@@ -83,6 +83,12 @@ if [[ ! -f "$SOURCE_POLICY_SCRIPT" ]]; then
     exit 2
 fi
 
+WORKSPACE_POLICY_SCRIPT="$ACTION_DIR/../../../scripts/workspace_test_policy.py"
+if [[ ! -f "$WORKSPACE_POLICY_SCRIPT" ]]; then
+    echo "rust-skills2: workspace policy resolver missing at $WORKSPACE_POLICY_SCRIPT" >&2
+    exit 2
+fi
+
 uv run --no-project python "$SOURCE_POLICY_SCRIPT"
 
 # The reusable gate intentionally owns Clippy configuration. A project-local
@@ -189,61 +195,119 @@ run_clippy() {
     cargo +nightly clippy "${cargo_args_ref[@]}" -- "${lint_args_ref[@]}"
 }
 
-if [[ "$ALLOW_TEST_PANICS" == "true" ]] && printf '%s\n' "${CARGO_ARGS[@]}" | grep -qx -- '--all-targets'; then
-    # Prove production targets against the full policy before running the
-    # all-targets pass with test-only panic ergonomics relaxed.
-    PRODUCTION_CARGO_ARGS=()
+has_cargo_arg() {
+    local needle=$1
+    local arg
     for arg in "${CARGO_ARGS[@]}"; do
-        if [[ "$arg" != "--all-targets" ]]; then
-            PRODUCTION_CARGO_ARGS+=("$arg")
+        if [[ "$arg" == "$needle" ]]; then
+            return 0
         fi
     done
-    # With no target-kind selector, Cargo checks the selected packages' actual
-    # default production targets (libraries and/or binaries). Do not append
-    # --lib/--bins here: either flag is an error when that target kind does not
-    # exist, which made the opt-in unusable for binary-only crates.
-    run_clippy PRODUCTION_CARGO_ARGS LINT_ARGS
+    return 1
+}
 
-    # Examples are not part of Cargo's default target set, so prove them
-    # separately under the full production policy. Cargo treats --examples as
-    # a successful no-op when the selected packages have no example targets.
-    EXAMPLE_CARGO_ARGS=("${PRODUCTION_CARGO_ARGS[@]}" --examples)
-    run_clippy EXAMPLE_CARGO_ARGS LINT_ARGS
-
-    TEST_LINT_ARGS=("${LINT_ARGS[@]}")
-    TEST_LINT_ARGS+=(
-        # Production targets already passed the uncompromised policy above.
-        # In tests/benches, keep correctness/suspicious/perf fatal but do not
-        # spend CI effort on style/documentation/ergonomic churn.
-        -Aclippy::style
-        -Aclippy::complexity
-        -Aclippy::pedantic
-        -Aclippy::nursery
-        -Aclippy::unwrap_used
-        -Aclippy::expect_used
-        -Aclippy::panic
-        -Aclippy::panic_in_result_fn
-        -Aclippy::missing_panics_doc
-        -Aclippy::assertions_on_constants
-        # Test-only documentation/meta policy. Production has already passed
-        # the uncompromised gate, and source expectations are validated before
-        # Clippy runs.
-        -Aunfulfilled_lint_expectations
-        -Aclippy::undocumented_unsafe_blocks
-        -Aclippy::missing_safety_doc
-
-        # Group-level allows above are later on the command line and can lower
-        # an earlier category deny. Reassert correctness-relevant categories
-        # and deliberate incomplete/debug constructs after them.
-        -Dclippy::correctness
-        -Dclippy::suspicious
-        -Dclippy::perf
-        -Dclippy::todo
-        -Dclippy::unimplemented
-        -Dclippy::dbg_macro
-        -Dclippy::await_holding_lock
-    )
-    run_clippy CARGO_ARGS TEST_LINT_ARGS
-else
+if ! has_cargo_arg --all-targets; then
     run_clippy CARGO_ARGS LINT_ARGS
+    exit 0
 fi
+
+POLICY_ARGS=(--default-allow-test-panics "$ALLOW_TEST_PANICS")
+for arg in "${CARGO_ARGS[@]}"; do
+    POLICY_ARGS+=("--cargo-arg=$arg")
+done
+POLICY_OUTPUT="$(uv run --no-project python "$WORKSPACE_POLICY_SCRIPT" "${POLICY_ARGS[@]}")"
+
+STRICT_PACKAGES=()
+RELAXED_PACKAGES=()
+while IFS=$'\t' read -r policy package_spec; do
+    [[ -z "$policy" ]] && continue
+    case "$policy" in
+        strict) STRICT_PACKAGES+=("$package_spec") ;;
+        relaxed) RELAXED_PACKAGES+=("$package_spec") ;;
+        *)
+            echo "rust-skills2: invalid workspace policy row: $policy $package_spec" >&2
+            exit 2
+            ;;
+    esac
+done <<< "$POLICY_OUTPUT"
+
+if (( ${#STRICT_PACKAGES[@]} == 0 && ${#RELAXED_PACKAGES[@]} == 0 )); then
+    echo "rust-skills2: workspace policy resolver returned no selected packages" >&2
+    exit 2
+fi
+
+if (( ${#RELAXED_PACKAGES[@]} == 0 )); then
+    run_clippy CARGO_ARGS LINT_ARGS
+    exit 0
+fi
+
+PRODUCTION_CARGO_ARGS=()
+for arg in "${CARGO_ARGS[@]}"; do
+    if [[ "$arg" != "--all-targets" ]]; then
+        PRODUCTION_CARGO_ARGS+=("$arg")
+    fi
+done
+run_clippy PRODUCTION_CARGO_ARGS LINT_ARGS
+
+EXAMPLE_CARGO_ARGS=("${PRODUCTION_CARGO_ARGS[@]}" --examples)
+run_clippy EXAMPLE_CARGO_ARGS LINT_ARGS
+
+TEST_LINT_ARGS=("${LINT_ARGS[@]}")
+TEST_LINT_ARGS+=(
+    -Aclippy::style
+    -Aclippy::complexity
+    -Aclippy::pedantic
+    -Aclippy::nursery
+    -Aclippy::unwrap_used
+    -Aclippy::expect_used
+    -Aclippy::panic
+    -Aclippy::panic_in_result_fn
+    -Aclippy::missing_panics_doc
+    -Aclippy::assertions_on_constants
+    -Aunfulfilled_lint_expectations
+    -Aclippy::undocumented_unsafe_blocks
+    -Aclippy::missing_safety_doc
+    -Dclippy::correctness
+    -Dclippy::suspicious
+    -Dclippy::perf
+    -Dclippy::todo
+    -Dclippy::unimplemented
+    -Dclippy::dbg_macro
+    -Dclippy::await_holding_lock
+)
+
+if (( ${#STRICT_PACKAGES[@]} == 0 )); then
+    run_clippy CARGO_ARGS TEST_LINT_ARGS
+    exit 0
+fi
+
+GROUP_BASE_ARGS=()
+for ((i = 0; i < ${#CARGO_ARGS[@]}; i++)); do
+    arg="${CARGO_ARGS[$i]}"
+    case "$arg" in
+        --workspace|--all-targets|--lib|--bins|--examples|--tests|--benches)
+            ;;
+        -p|--package|--exclude|--bin|--example|--test|--bench)
+            ((i += 1))
+            ;;
+        --package=*|--exclude=*|--bin=*|--example=*|--test=*|--bench=*)
+            ;;
+        *)
+            GROUP_BASE_ARGS+=("$arg")
+            ;;
+    esac
+done
+
+STRICT_TEST_CARGO_ARGS=("${GROUP_BASE_ARGS[@]}")
+for package_spec in "${STRICT_PACKAGES[@]}"; do
+    STRICT_TEST_CARGO_ARGS+=(--package "$package_spec")
+done
+STRICT_TEST_CARGO_ARGS+=(--tests --benches)
+run_clippy STRICT_TEST_CARGO_ARGS LINT_ARGS
+
+RELAXED_TEST_CARGO_ARGS=("${GROUP_BASE_ARGS[@]}")
+for package_spec in "${RELAXED_PACKAGES[@]}"; do
+    RELAXED_TEST_CARGO_ARGS+=(--package "$package_spec")
+done
+RELAXED_TEST_CARGO_ARGS+=(--tests --benches)
+run_clippy RELAXED_TEST_CARGO_ARGS TEST_LINT_ARGS

@@ -24,7 +24,7 @@ on:
         type: string
         default: ""
       allow-test-panics:
-        description: Keep production targets strict, but allow panic/unwrap/expect ergonomics in tests and benches.
+        description: Default test/bench panic ergonomics for selected packages; package/workspace metadata may override it while production stays strict.
         required: false
         type: boolean
         default: false

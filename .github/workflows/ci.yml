@@ -66,6 +66,32 @@ jobs:
           cargo-args: "--locked --all-targets"
           allow-test-panics: "true"
 
+      - name: Workspace members inherit strict policy with package test override
+        uses: ./.github/actions/rust-strict
+        with:
+          working-directory: checks/fixtures/strict-ci-workspace-overrides
+          cargo-args: "--locked --workspace --all-targets"
+
+      - name: Workspace test default may be strengthened per package
+        uses: ./.github/actions/rust-strict
+        with:
+          working-directory: checks/fixtures/strict-ci-workspace-default-panics
+          cargo-args: "--locked --workspace --all-targets"
+
+      - name: Package test override does not relax sibling workspace members
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-workspace-overrides-blocked
+          RUST_SKILLS2_CARGO_ARGS: "--locked --workspace --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "package test override unexpectedly relaxed a strict sibling" >&2
+            exit 1
+          fi
+          echo "package test override stayed scoped to its workspace member"
+
       - name: Test panic opt-in still rejects production expect
         shell: bash
         env:

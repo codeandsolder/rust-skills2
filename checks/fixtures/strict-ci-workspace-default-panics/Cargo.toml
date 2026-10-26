@@ -1,0 +1,7 @@
+[workspace]
+members = ["strict-member", "legacy-member"]
+resolver = "3"
+
+[workspace.metadata.rust-skills2]
+allow-test-panics = true
+allow-test-panics-reason = "Inherited test suite; production remains strict"
