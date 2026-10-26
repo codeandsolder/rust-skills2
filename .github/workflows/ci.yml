@@ -46,6 +46,70 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Python action accepts strict CI-only Python
+        uses: ./.github/actions/python-strict
+        env:
+          RUST_SKILLS2_REPOSITORY_ROOT: ${{ github.workspace }}/checks/fixtures/strict-python-pass
+        with:
+          ban-python-outside-ci: "true"
+
+      - name: Python gate resolves locked project dependencies without polluting the checkout
+        shell: bash
+        env:
+          RUST_SKILLS2_REPOSITORY_ROOT: ${{ github.workspace }}/checks/fixtures/strict-python-project
+          RUST_SKILLS2_PYTHON_ACTION_DIR: ${{ github.workspace }}/.github/actions/python-strict
+          RUST_SKILLS2_BAN_PYTHON_OUTSIDE_CI: "true"
+        run: bash scripts/strict_python.sh
+
+      - name: Python location ban is off by default
+        shell: bash
+        env:
+          RUST_SKILLS2_REPOSITORY_ROOT: ${{ github.workspace }}/checks/fixtures/strict-python-outside-ci
+          RUST_SKILLS2_PYTHON_ACTION_DIR: ${{ github.workspace }}/.github/actions/python-strict
+        run: bash scripts/strict_python.sh
+
+      - name: Python location ban rejects non-CI Python when enabled
+        shell: bash
+        env:
+          RUST_SKILLS2_REPOSITORY_ROOT: ${{ github.workspace }}/checks/fixtures/strict-python-outside-ci
+          RUST_SKILLS2_PYTHON_ACTION_DIR: ${{ github.workspace }}/.github/actions/python-strict
+          RUST_SKILLS2_BAN_PYTHON_OUTSIDE_CI: "true"
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_python.sh; then
+            echo "Python location gate unexpectedly accepted non-CI Python" >&2
+            exit 1
+          fi
+          echo "Python location gate correctly rejected non-CI Python"
+
+      - name: Ruff violations fail the Python gate
+        shell: bash
+        env:
+          RUST_SKILLS2_REPOSITORY_ROOT: ${{ github.workspace }}/checks/fixtures/strict-python-blocked-ruff
+          RUST_SKILLS2_PYTHON_ACTION_DIR: ${{ github.workspace }}/.github/actions/python-strict
+          RUST_SKILLS2_BAN_PYTHON_OUTSIDE_CI: "true"
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_python.sh; then
+            echo "Python gate unexpectedly accepted a Ruff violation" >&2
+            exit 1
+          fi
+          echo "Python gate correctly rejected a Ruff violation"
+
+      - name: ty violations fail the Python gate
+        shell: bash
+        env:
+          RUST_SKILLS2_REPOSITORY_ROOT: ${{ github.workspace }}/checks/fixtures/strict-python-blocked-ty
+          RUST_SKILLS2_PYTHON_ACTION_DIR: ${{ github.workspace }}/.github/actions/python-strict
+          RUST_SKILLS2_BAN_PYTHON_OUTSIDE_CI: "true"
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_python.sh; then
+            echo "Python gate unexpectedly accepted a ty violation" >&2
+            exit 1
+          fi
+          echo "Python gate correctly rejected a ty violation"
+
       - name: Passing fixture
         uses: ./.github/actions/rust-strict
         with:

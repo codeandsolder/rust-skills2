@@ -1,0 +1,30 @@
+name: rust-skills2 strict Python gate
+description: Run the central Ruff + ty policy against every tracked Python file in the checkout.
+
+inputs:
+  ban-python-outside-ci:
+    description: Reject tracked Python files outside recognized CI-only directories.
+    required: false
+    default: "false"
+  python-ci-paths:
+    description: Additional repository-relative CI-only directory prefixes, one per line.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@v10.3.2
+      with:
+        version: latest-known
+        enable-cache: false
+
+    - name: Run rust-skills2 strict Python policy
+      shell: bash
+      env:
+        RUST_SKILLS2_BAN_PYTHON_OUTSIDE_CI: ${{ inputs.ban-python-outside-ci }}
+        RUST_SKILLS2_PYTHON_CI_PATHS: ${{ inputs.python-ci-paths }}
+        RUST_SKILLS2_PYTHON_ACTION_DIR: ${{ github.action_path }}
+      run: |
+        bash "$GITHUB_ACTION_PATH/../../../scripts/strict_python.sh"
