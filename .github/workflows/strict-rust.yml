@@ -1,4 +1,4 @@
-name: rust-skills2 strict Rust gate
+name: rust-skills2 strict CI gate
 
 on:
   workflow_call:
@@ -20,6 +20,16 @@ on:
         default: "--locked --workspace --all-targets"
       apt-packages:
         description: Space-separated Ubuntu packages required to compile the selected workspace targets.
+        required: false
+        type: string
+        default: ""
+      ban-python-outside-ci:
+        description: Reject tracked Python files outside CI-only paths. Ruff + ty remain mandatory regardless of this switch.
+        required: false
+        type: boolean
+        default: false
+      python-ci-paths:
+        description: Additional repository-relative CI-only directory prefixes, one per line, used only when ban-python-outside-ci is enabled.
         required: false
         type: string
         default: ""
@@ -49,11 +59,17 @@ permissions:
 
 jobs:
   strict-rust:
-    name: Strict nightly Rust policy
+    name: Strict Rust + Python policy
     runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+
+      - name: rust-skills2 strict Python gate
+        uses: codeandsolder/rust-skills2/.github/actions/python-strict@main
+        with:
+          ban-python-outside-ci: ${{ inputs.ban-python-outside-ci }}
+          python-ci-paths: ${{ inputs.python-ci-paths }}
 
       - name: Install native build dependencies
         if: ${{ inputs.apt-packages != '' }}

@@ -1,0 +1,19 @@
+# Central ty policy for the shared CI gate. Keep this deliberately stricter than
+# ty's defaults, but do not enable the rules that ty itself documents as having
+# a significant unavoidable false-positive rate.
+[rules]
+blanket-ignore-comment = "error"
+dynamic-function-decorator-return = "error"
+division-by-zero = "ignore"
+missing-type-argument = "error"
+possibly-missing-attribute = "ignore"
+possibly-missing-import = "ignore"
+possibly-unresolved-reference = "error"
+unsound-assignment = "error"
+unsound-return-statement = "error"
+unsound-yield = "error"
+unsupported-dynamic-base = "error"
+
+[analysis]
+strict-equality-semantics = true
+strict-generic-narrowing = true

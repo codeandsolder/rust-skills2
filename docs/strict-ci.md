@@ -1,7 +1,7 @@
-# Strict reusable Rust CI gate
+# Strict reusable CI gate
 
-The rust-skills2 CI gate turns the mechanically enforceable high-signal rules
-into one centrally maintained GitHub Actions check.
+The rust-skills2 CI gate turns the mechanically enforceable high-signal Rust
+and Python rules into one centrally maintained GitHub Actions check.
 
 ## One-line job import
 
@@ -209,6 +209,64 @@ turning routine extraction into a latent process abort.
 If a project truly requires deliberate abort semantics, that should be encoded
 as an explicit project-level design decision rather than hidden behind
 `.expect()`.
+
+## Mandatory Python policy
+
+The reusable workflow also checks every tracked `*.py`, `*.pyi`, and `*.pyw` file in the
+repository checkout. This is mandatory when Python exists; repositories without
+tracked Python are a no-op. The Python pass is repository-wide even when the Rust
+workspace lives below the repository root.
+
+Ruff runs in preview mode from `select = ALL`, with only rule families removed
+that are unsuitable as a universal gate: documentation/process policy,
+formatter-conflicting rules, high-noise security heuristics, broad complexity or
+refactor quotas, and strongly project-specific style rules. Repository
+per-file-ignore configuration is cleared and explicit files bypass exclude
+configuration. Narrow, code-specific `# noqa: RULE` exceptions remain possible;
+blanket suppressions are rejected by the enabled Ruff policy.
+
+The same files are checked by `ty`. The central configuration enables the
+soundness-oriented rules beyond ty's defaults (`missing-type-argument`, dynamic
+decorator return checking, unsound assignment/return/yield checking, strict
+generic narrowing and equality semantics, and blanket-ignore rejection) while
+leaving ty's explicitly high-false-positive experimental families disabled.
+Specific typed suppression comments remain available for genuine tool/modeling
+limitations. `ty` warnings are promoted to gate failures.
+
+For dependency resolution, each tracked Python file is assigned to its nearest
+ancestor `pyproject.toml`. Every distinct Python project is synced with `uv
+sync --locked --all-groups --all-extras --no-install-project` into a temporary
+environment, then `ty` checks that file group against the matching environment.
+Nested Python projects therefore work independently, the source project itself
+does not need to be built merely to type-check it, and no `.venv` is left in the
+checkout. A Python project must keep its uv lockfile current; the gate never
+rewrites dependency state. Standalone Python outside any `pyproject.toml` is
+still checked and can resolve first-party/stdlib imports, but undeclared external
+dependencies fail as unresolved imports rather than depending on runner state.
+
+Repositories that are intended to contain Python only as CI implementation can
+turn on the separate location gate:
+
+```yaml
+jobs:
+  rust-skills2:
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
+    with:
+      ban-python-outside-ci: true
+```
+
+The built-in CI-only prefixes are `.github/`, `.gitlab/`, `.circleci/`,
+`.buildkite/`, `.ci/`, `ci/`, `scripts/ci/`, and `tools/ci/`. Unusual layouts
+can add narrow repository-relative directory prefixes without weakening Ruff or
+ty:
+
+```yaml
+      python-ci-paths: |
+        maintenance/ci
+        packaging/ci
+```
+
+`ban-python-outside-ci` defaults to `false`; Ruff and ty do not.
 
 ## Scope
 
