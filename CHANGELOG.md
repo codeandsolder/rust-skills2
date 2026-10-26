@@ -4,6 +4,21 @@ All notable changes to this skill are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning for the rule set.
 
+## [2.1.0]
+
+### Added
+- Workspace-aware strict CI policy propagation: every selected Cargo workspace
+  member is covered automatically, with scoped package/workspace metadata
+  overrides for test/bench panic ergonomics. Production and examples remain
+  strict, mixed workspaces split strict and relaxed test passes, and every
+  metadata relaxation requires an explicit reason.
+
+### Changed
+- The shared strict gate now resolves effective per-package test policy through
+  `cargo metadata`, with precedence package metadata → workspace metadata →
+  reusable-workflow input. This removes the need for per-crate lint wiring while
+  keeping exceptions explicit and local.
+
 ## [2.0.0]
 
 ### Added
