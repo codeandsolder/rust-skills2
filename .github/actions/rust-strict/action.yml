@@ -11,7 +11,7 @@ inputs:
     required: false
     default: "--locked --workspace --all-targets"
   allow-test-panics:
-    description: Keep production targets strict, but relax panic-style lints for test and benchmark targets.
+    description: Default test/bench panic ergonomics for selected packages; package/workspace metadata may override it while production stays strict.
     required: false
     default: "false"
   preserve-rustc-wrapper:

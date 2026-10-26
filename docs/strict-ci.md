@@ -46,6 +46,38 @@ after the test-only allows because command-line lint ordering is significant.
 Production targets therefore still pass the uncompromised policy. Source-level
 suppression rules remain unchanged.
 
+For workspaces, that policy is automatically inherited by every selected member.
+New members need no lint stanza of their own: the gate discovers them with
+`cargo metadata` and applies the workspace default. A legacy or upstream-heavy
+member can opt into relaxed test/bench panic ergonomics without weakening
+production code or its siblings:
+
+```toml
+[package.metadata.rust-skills2]
+allow-test-panics = true
+allow-test-panics-reason = "Inherited upstream tests; production remains strict"
+```
+
+A workspace-wide repository default can also live in the virtual/root manifest:
+
+```toml
+[workspace.metadata.rust-skills2]
+allow-test-panics = true
+allow-test-panics-reason = "Large inherited test suite; migrate opportunistically"
+```
+
+Package metadata wins over the workspace default, so a member can strengthen a
+relaxed workspace back to strict with `allow-test-panics = false`. The reusable
+workflow input remains the fallback default for repositories that do not declare
+metadata. Any metadata change from strict to relaxed must include a non-empty
+reason; strengthening overrides need no reason.
+
+When a selected workspace mixes strict and relaxed members, the gate runs one
+fully strict production pass and a strict examples pass for the selected set,
+then groups test/bench Clippy runs by effective policy. The relaxed group allows
+only the existing test ergonomics set; `correctness`, `suspicious`, `perf`,
+`todo`, `unimplemented`, `dbg_macro`, and `await_holding_lock` remain fatal.
+
 For a Rust workspace below the repository root:
 
 ```yaml

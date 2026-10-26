@@ -1,0 +1,7 @@
+[package]
+name = "strict-member"
+version = "0.1.0"
+edition = "2024"
+
+[package.metadata.rust-skills2]
+allow-test-panics = false
