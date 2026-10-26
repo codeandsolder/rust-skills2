@@ -10,7 +10,7 @@ description: >
 license: MIT
 metadata:
   author: leonardomso
-  version: "2.0.0"
+  version: "2.1.0"
   sources:
     - Rust API Guidelines
     - Rust Performance Book
