@@ -63,10 +63,18 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout pinned rust-skills2 gate implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .rust-skills2-gate
+          persist-credentials: false
 
       - name: rust-skills2 strict Python gate
-        uses: codeandsolder/rust-skills2/.github/actions/python-strict@main
+        uses: ./.rust-skills2-gate/.github/actions/python-strict
         with:
           ban-python-outside-ci: ${{ inputs.ban-python-outside-ci }}
           python-ci-paths: ${{ inputs.python-ci-paths }}
@@ -82,12 +90,13 @@ jobs:
           sudo apt-get install -y -- "${packages[@]}"
 
       - name: Install latest nightly Rust tools
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
+          toolchain: nightly
           components: clippy,rustfmt
 
       - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: ${{ inputs.working-directory }}
           shared-key: rust-skills2-nightly-strict
@@ -97,7 +106,7 @@ jobs:
           save-if: ${{ github.event_name != 'pull_request' }}
 
       - name: rust-skills2 strict gate
-        uses: codeandsolder/rust-skills2/.github/actions/rust-strict@main
+        uses: ./.rust-skills2-gate/.github/actions/rust-strict
         with:
           working-directory: ${{ inputs.working-directory }}
           cargo-args: ${{ inputs.cargo-args }}

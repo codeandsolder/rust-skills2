@@ -47,6 +47,7 @@ run_python "$ROOT/checks/test_maintenance_renderer.py"
 echo "==> compiler evidence and source-policy regression tests"
 run_python "$ROOT/checks/test_analyze.py"
 run_python "$ROOT/checks/test_source_lint_policy.py"
+run_python "$ROOT/checks/test_action_pins.py"
 
 echo "==> generating example files from rules"
 cd "$ROOT/checks"
