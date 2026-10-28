@@ -31,6 +31,10 @@ required = [
     "ref: ${{ job.workflow_sha }}",
     "uses: ./.rust-skills2-gate/.github/actions/python-strict",
     "uses: ./.rust-skills2-gate/.github/actions/rust-strict",
+    "sparse-checkout: |",
+    "      .github/actions",
+    "      scripts",
+    "sparse-checkout-cone-mode: true",
 ]
 for needle in required:
     if needle not in workflow:

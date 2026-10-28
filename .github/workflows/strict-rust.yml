@@ -64,6 +64,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Checkout pinned rust-skills2 gate implementation
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -72,6 +74,10 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: .rust-skills2-gate
           persist-credentials: false
+          sparse-checkout: |
+            .github/actions
+            scripts
+          sparse-checkout-cone-mode: true
 
       - name: rust-skills2 strict Python gate
         uses: ./.rust-skills2-gate/.github/actions/python-strict
