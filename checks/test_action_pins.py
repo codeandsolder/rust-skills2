@@ -11,6 +11,24 @@ GATE_FILES = [
 ]
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
+
+def indented_block_contains(text: str, header: str, expected_line: str) -> bool:
+    lines = text.splitlines()
+    header_indent = len(header) - len(header.lstrip())
+    for index, line in enumerate(lines):
+        if line != header:
+            continue
+        for candidate in lines[index + 1 :]:
+            if not candidate.strip():
+                continue
+            indent = len(candidate) - len(candidate.lstrip())
+            if indent <= header_indent:
+                break
+            if candidate == expected_line:
+                return True
+    return False
+
+
 for path in GATE_FILES:
     for lineno, line in enumerate(path.read_text().splitlines(), 1):
         match = re.search(r"\buses:\s*([^\s#]+)", line)
@@ -43,15 +61,17 @@ if "codeandsolder/rust-skills2/.github/actions/" in workflow:
     raise SystemExit("strict reusable workflow must not call rust-skills2 composite actions through a remote ref")
 
 python_action = (ROOT / ".github/actions/python-strict/action.yml").read_text()
-if re.search(
-    r'(?ms)^  ban-python-outside-ci:\n(?:    .*\n)*?    default: "true"$',
+if not indented_block_contains(
     python_action,
-) is None:
+    "  ban-python-outside-ci:",
+    '    default: "true"',
+):
     raise SystemExit("strict Python composite must reject non-CI Python by default")
-if re.search(
-    r"(?ms)^      ban-python-outside-ci:\n(?:        .*\n)*?        default: true$",
+if not indented_block_contains(
     workflow,
-) is None:
+    "      ban-python-outside-ci:",
+    "        default: true",
+):
     raise SystemExit("strict reusable workflow must reject non-CI Python by default")
 
 print(

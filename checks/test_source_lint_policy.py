@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Regression tests for Rust token masking at lint-policy boundaries."""
+import contextlib
+import io
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from check_source_lint_policy import lint_attributes, mask_noncode
+from check_source_lint_policy import lint_attributes, mask_noncode, run_text
 
 
 class RustTokenTests(unittest.TestCase):
@@ -37,6 +39,34 @@ fn example() {}
         self.assertEqual(masked.count("\n"), source.count("\n"))
         self.assertEqual([item[:3] for item in lint_attributes(source)],
                          [("expect", ["clippy::too_many_lines"], True)])
+
+
+class CommandCaptureTests(unittest.TestCase):
+    def test_success_keeps_stderr_out_of_structured_stdout(self):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            output = run_text([
+                sys.executable,
+                "-c",
+                "import sys; print('warning: fixture', file=sys.stderr); print('{\"ok\": true}')",
+            ])
+
+        self.assertEqual(output, '{"ok": true}\n')
+        self.assertEqual(stderr.getvalue(), "warning: fixture\n")
+
+    def test_failure_reports_both_streams(self):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr), self.assertRaisesRegex(SystemExit, "2"):
+            run_text([
+                sys.executable,
+                "-c",
+                "import sys; print('out'); print('err', file=sys.stderr); raise SystemExit(3)",
+            ])
+
+        diagnostics = stderr.getvalue()
+        self.assertIn("rust-skills2: command failed:", diagnostics)
+        self.assertIn("err\n", diagnostics)
+        self.assertIn("out\n", diagnostics)
 
 
 if __name__ == "__main__":
