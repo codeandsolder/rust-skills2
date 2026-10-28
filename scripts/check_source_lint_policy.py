@@ -64,13 +64,30 @@ def run_text(argv: list[str]) -> str:
         argv,
         check=False,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stderr=subprocess.PIPE,
         text=True,
     )
     if result.returncode != 0:
         print(f"rust-skills2: command failed: {' '.join(argv)}", file=sys.stderr)
-        print(result.stdout, file=sys.stderr)
+        if result.stderr:
+            print(
+                result.stderr,
+                end="" if result.stderr.endswith("\n") else "\n",
+                file=sys.stderr,
+            )
+        if result.stdout:
+            print(
+                result.stdout,
+                end="" if result.stdout.endswith("\n") else "\n",
+                file=sys.stderr,
+            )
         raise SystemExit(2)
+    if result.stderr:
+        print(
+            result.stderr,
+            end="" if result.stderr.endswith("\n") else "\n",
+            file=sys.stderr,
+        )
     return result.stdout
 
 
