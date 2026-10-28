@@ -46,6 +46,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Source-only lint policy action accepts generated-boundary fixture
+        uses: ./.github/actions/source-lint-policy
+        with:
+          working-directory: checks/fixtures/strict-ci-generated-boundary
+
       - name: Python action accepts strict CI-only Python
         uses: ./.github/actions/python-strict
         env:

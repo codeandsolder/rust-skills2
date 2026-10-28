@@ -1,0 +1,32 @@
+name: rust-skills2 source lint policy
+description: Validate handwritten Rust lint suppressions without running the full strict Clippy gate.
+
+inputs:
+  working-directory:
+    description: Rust workspace directory relative to the checkout root.
+    required: false
+    default: "."
+  install-toolchain:
+    description: Install latest nightly Clippy before checking source policy.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install latest nightly Rust tools
+      if: ${{ inputs.install-toolchain == 'true' }}
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: clippy
+
+    - name: Show nightly toolchain
+      shell: bash
+      run: |
+        rustc +nightly --version
+        clippy-driver +nightly --version
+
+    - name: Check source lint suppression policy
+      working-directory: ${{ inputs.working-directory }}
+      shell: bash
+      run: python3 "$GITHUB_ACTION_PATH/../../../scripts/check_source_lint_policy.py"
