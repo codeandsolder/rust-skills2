@@ -3,9 +3,9 @@ description: Run the central Ruff + ty policy against every tracked Python file 
 
 inputs:
   ban-python-outside-ci:
-    description: Reject tracked Python files outside recognized CI-only directories.
+    description: Reject tracked Python files outside recognized CI-only directories. Enabled by default.
     required: false
-    default: "false"
+    default: "true"
   python-ci-paths:
     description: Additional repository-relative CI-only directory prefixes, one per line.
     required: false
