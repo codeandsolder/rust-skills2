@@ -41,4 +41,20 @@ for needle in required:
         raise SystemExit(f"strict reusable workflow is missing immutable self-checkout contract: {needle}")
 if "codeandsolder/rust-skills2/.github/actions/" in workflow:
     raise SystemExit("strict reusable workflow must not call rust-skills2 composite actions through a remote ref")
-print("rust-skills2: strict gate action refs are immutable and self-checkout is pinned to job.workflow_sha")
+
+python_action = (ROOT / ".github/actions/python-strict/action.yml").read_text()
+if re.search(
+    r'(?ms)^  ban-python-outside-ci:\n(?:    .*\n)*?    default: "true"$',
+    python_action,
+) is None:
+    raise SystemExit("strict Python composite must reject non-CI Python by default")
+if re.search(
+    r"(?ms)^      ban-python-outside-ci:\n(?:        .*\n)*?        default: true$",
+    workflow,
+) is None:
+    raise SystemExit("strict reusable workflow must reject non-CI Python by default")
+
+print(
+    "rust-skills2: strict gate refs are immutable, self-checkout is pinned to "
+    "job.workflow_sha, and non-CI Python is denied by default"
+)

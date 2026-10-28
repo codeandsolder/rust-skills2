@@ -24,10 +24,10 @@ on:
         type: string
         default: ""
       ban-python-outside-ci:
-        description: Reject tracked Python files outside CI-only paths. Ruff + ty remain mandatory regardless of this switch.
+        description: Reject tracked Python files outside CI-only paths. Enabled by default; Ruff + ty remain mandatory for permitted CI Python.
         required: false
         type: boolean
-        default: false
+        default: true
       python-ci-paths:
         description: Additional repository-relative CI-only directory prefixes, one per line, used only when ban-python-outside-ci is enabled.
         required: false
