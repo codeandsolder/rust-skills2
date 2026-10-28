@@ -16,8 +16,9 @@ runs:
   steps:
     - name: Install latest nightly Rust tools
       if: ${{ inputs.install-toolchain == 'true' }}
-      uses: dtolnay/rust-toolchain@nightly
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
       with:
+        toolchain: nightly
         components: clippy
 
     - name: Show nightly toolchain
