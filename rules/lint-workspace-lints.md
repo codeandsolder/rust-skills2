@@ -167,7 +167,7 @@ For the shared policy, prefer the reusable workflow so adoption is one job:
 # .github/workflows/ci.yml
 jobs:
   strict-rust:
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
 ```
 
 Keep project-specific lanes beside it. For example, a library workspace can add

@@ -161,7 +161,7 @@ fn main() {
 }
 ```
 
-Prefer `#[expect]` for a targeted suppression that should become stale when the lint stops firing; use `#[allow]` when unconditional permission in the scope is the real policy.
+Use a narrow reasoned `#[expect]` for a reviewed suppressible diagnostic. Handwritten `#[allow]` is prohibited by the strict policy; if unconditional permission seems necessary, revisit the lint policy or move genuinely generated code behind an explicit generated boundary.
 
 ## Language Features Are Separate
 

@@ -178,9 +178,9 @@ LINT_ARGS=(
     -Dclippy::await_holding_lock
 
     # Handwritten suppressions are validated by the source-policy pass:
-    # reasoned, single-lint #[allow] is permitted only for suppressible lints,
-    # while broad/high-risk suppressions stay blocked. Keep unreasoned allow
-    # attributes fatal, including outside handwritten source.
+    # #[allow] is forbidden; narrow reasoned #[expect] is the only supported
+    # handwritten suppression form for policy-suppressible lints. Keep
+    # unreasoned allow attributes fatal in generated/macro-expanded code too.
     -Dclippy::allow_attributes_without_reason
 )
 

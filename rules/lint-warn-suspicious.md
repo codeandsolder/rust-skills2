@@ -119,19 +119,9 @@ function_casts_as_integer             = "warn"  # 1.93
 | `const_item_interior_mutations` | 1.93 | warn | Mutable reference to const item |
 | `function_casts_as_integer` | 1.93 | warn | Casting function pointer to integer |
 
-## When to Allow
+## Do Not Suppress Suspicious Lints
 
-Rarely. If you need to suppress, document why:
-
-```rust
-#[allow(clippy::suspicious_arithmetic_impl)]
-impl Mul for Matrix {
-    // Custom matrix multiplication using + for reduction step
-    fn mul(self, rhs: Self) -> Self::Output {
-        // ...
-    }
-}
-```
+Under the strict policy, members of `clippy::suspicious` are not suppressible with either `#[allow]` or `#[expect]`. Investigate the diagnostic and rewrite the implementation so the intended semantics are explicit. If a lint is demonstrably wrong for a general Rust pattern, fix or report the lint rather than creating a local permanent hole.
 
 ## See Also
 

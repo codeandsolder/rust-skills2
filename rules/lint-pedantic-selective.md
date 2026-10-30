@@ -2,148 +2,130 @@
 
 **Rule**: `lint-pedantic-selective`
 
-> Enable clippy::pedantic selectively
+> Enable `clippy::pedantic` as a baseline, review its findings individually, and use narrow reasoned `#[expect]` exceptions instead of disabling lints with `allow`
 
 ## Why It Matters
 
-The `clippy::pedantic` group contains opinionated lints that aren't universally applicable. Enabling it wholesale produces noise; selectively enabling useful pedantic lints improves code quality without false positives.
+The `clippy::pedantic` group contains many useful diagnostics plus some intentionally opinionated heuristics. Turning the whole group off loses signal; permanently allowing selected members in `Cargo.toml` also makes exceptions invisible at the source sites they affect.
+
+The strict project policy keeps the group enabled and treats exceptions as local, reviewable source annotations. A stale `#[expect]` fails through `unfulfilled_lint_expectations`, so exceptions disappear when the code or lint evolves.
 
 ## Priority System (Rust 1.74+)
 
-When enabling a whole group like `pedantic`, use the `priority` system so individual lints can override it:
+When enabling a whole group, use a negative priority so individually stricter lint levels can override it:
 
 ```toml
 [lints.clippy]
-# Lower priority for the group — individual lints (priority 0) override
 pedantic = { level = "warn", priority = -1 }
 
-# Override specific noisy pedantic lints (default priority 0, wins)
-missing_errors_doc = "allow"
-missing_panics_doc = "allow"
-module_name_repetitions = "allow"
+# Promote particularly useful members.
+doc_markdown = "deny"
+unused_self = "deny"
+wildcard_imports = "deny"
 ```
 
-Without `priority`, enabling the group and allowing individual lints may produce conflicting configurations.
+Do not use the priority system to set noisy members to `allow` under the strict policy. Keep them enabled and handle genuine exceptions at the smallest source site with a reasoned expectation.
 
 ## Bad
 
-```rust
-// Too noisy - will fight you constantly
-#![warn(clippy::pedantic)]
+```toml
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+
+# Permanent broad holes: forbidden by the strict gate.
+missing_errors_doc = "allow"
+too_many_lines = "allow"
+module_name_repetitions = "allow"
 ```
+
+Likewise, do not use crate- or module-wide `#[allow(clippy::pedantic)]`.
 
 ## Good
 
 ```toml
-# Cargo.toml - cherry-pick useful pedantic lints
 [lints.clippy]
-# Enable pedantic as baseline
-pedantic = "warn"
-
-# Disable noisy ones
-missing_errors_doc = "allow"      # Document errors separately
-missing_panics_doc = "allow"      # Document panics separately
-module_name_repetitions = "allow" # Allow Foo::FooError pattern
-too_many_lines = "allow"          # Function length varies
-must_use_candidate = "allow"      # Too many suggestions
+pedantic = { level = "warn", priority = -1 }
 ```
 
-## Recommended Pedantic Lints
-
-| Lint | Why Enable |
-|------|-----------|
-| `doc_markdown` | Catch unmarked code in docs |
-| `match_wildcard_for_single_variants` | Explicit variant matching |
-| `semicolon_if_nothing_returned` | Consistent semicolons |
-| `string_add_assign` | Use `+=` for string concatenation |
-| `unnested_or_patterns` | Simplify match patterns |
-| `unused_self` | Catch methods that should be functions |
-| `used_underscore_binding` | Warn on using `_var` |
-| `wildcard_imports` | Avoid glob imports |
-
-## Often Disabled
-
-| Lint | Why Disable |
-|------|-------------|
-| `missing_errors_doc` | Handle with `#[doc]` policy |
-| `missing_panics_doc` | Handle with `#[doc]` policy |
-| `module_name_repetitions` | Sometimes intentional |
-| `must_use_candidate` | Too aggressive |
-| `too_many_lines` | Arbitrary threshold |
-| `struct_excessive_bools` | Valid for config structs |
-
-## Rust 1.98: Pedantic Lints Can Surface Proc-Macro Expansions
-
-Rust/Clippy 1.98 added `clippy::unused_async_trait_impl` to the pedantic group. In handwritten trait implementations, an `async fn` with no `.await` is worth reviewing: a synchronous method, an immediately-ready future, or a different trait shape may express the contract better.
-
-The diagnostic can also originate entirely in a third-party derive/proc macro. In that case the source crate may have no way to rewrite the generated trait method. Do not respond by disabling `clippy::pedantic` for the whole crate or workspace.
-
-Use the narrowest practical suppression around the source item that invokes the macro, document why the generated code is outside your control, and prefer `#[expect(...)]` over `#[allow(...)]` when the exception is expected to disappear after a dependency upgrade. An expectation becomes stale when the lint stops firing, which turns the workaround into something CI can tell you to remove.
-
-If the macro invocation lives in a large out-of-line module and attaching the expectation directly to the derived item is impractical, a module-scoped expectation is a reasonable fallback, but it is broader: review that scope carefully so it does not hide new handwritten occurrences of the same lint.
-
-The same principle applies to other new pedantic lints exposed by a compiler upgrade: first determine whether the warning points to code you own or generated code, then make the exception no broader than the actual incompatibility.
-
-## Full Configuration
-
-```toml
-# Cargo.toml
-[lints.clippy]
-# Start with pedantic
-pedantic = "warn"
-
-# Keep these
-doc_markdown = "warn"
-match_wildcard_for_single_variants = "warn"
-semicolon_if_nothing_returned = "warn"
-unused_self = "warn"
-wildcard_imports = "warn"
-
-# Disable these
-missing_errors_doc = "allow"
-missing_panics_doc = "allow"
-module_name_repetitions = "allow"
-must_use_candidate = "allow"
-too_many_lines = "allow"
-similar_names = "allow"
-struct_excessive_bools = "allow"
-```
-
-## Alternative: Explicit Opt-in
-
-```toml
-# Only enable specific lints, not the group
-[lints.clippy]
-# From pedantic, only these:
-doc_markdown = "warn"
-semicolon_if_nothing_returned = "warn"
-unused_self = "warn"
-wildcard_imports = "warn"
-```
-
-## Module-Level Overrides
+Then review a concrete diagnostic. Fix it when the suggested design is better; otherwise keep the exception next to the code:
 
 ```rust
-// Allow specific lint for a module
-#![allow(clippy::module_name_repetitions)]
-
-// Or for specific items
-#[allow(clippy::too_many_arguments)]
-fn complex_function(/* many args */) { }
+#[expect(
+    clippy::too_many_lines,
+    reason = "parser state machine mirrors the protocol grammar and is easier to audit as one transition table"
+)]
+fn parse_frame() {
+    // ...
+}
 ```
 
-## Team Consensus
+## High-Value Pedantic Lints
 
-Pedantic lints are style choices. Agree as a team:
+| Lint | Why It Helps |
+|------|--------------|
+| `doc_markdown` | Catch unmarked code identifiers in docs |
+| `match_wildcard_for_single_variants` | Keep variant handling explicit |
+| `semicolon_if_nothing_returned` | Make statement intent consistent |
+| `string_add_assign` | Prefer the direct append operation |
+| `unnested_or_patterns` | Simplify match patterns |
+| `unused_self` | Catch methods that do not use their receiver |
+| `used_underscore_binding` | Catch bindings whose name implies “unused” but are used |
+| `wildcard_imports` | Avoid hidden namespace growth |
 
-1. Enable `pedantic` as baseline
-2. Run `cargo clippy` on codebase
-3. Discuss each warning category
-4. Disable ones that don't fit your style
-5. Document decisions in `clippy.toml`
+## Commonly Noisy Heuristics
+
+These are not a reason to disable the lints globally. They are frequent candidates for either a code improvement or a narrow expectation after review:
+
+| Lint | Typical tradeoff to review |
+|------|----------------------------|
+| `missing_errors_doc` | Internal/public API documentation boundary |
+| `missing_panics_doc` | Whether panic behavior is actually part of the contract |
+| `module_name_repetitions` | Public naming clarity versus repetition |
+| `must_use_candidate` | Whether ignoring the return value is genuinely suspicious |
+| `too_many_lines` | Cohesion versus arbitrary function-size threshold |
+| `struct_excessive_bools` | Explicit independent flags versus a richer state type |
+| `similar_names` | Domain terminology versus accidental confusion |
+
+## Proc-Macro Expansions
+
+New pedantic lints can surface diagnostics whose implementation originates in a third-party derive or proc macro. First determine whether the warning points to handwritten code or generated expansion.
+
+If a source item invoking the macro is the narrowest place that can own a suppressible diagnostic, attach one reasoned `#[expect]` there. If the diagnostic is entirely inside generated source, use an explicit generated-lint boundary rather than weakening handwritten policy.
+
+Do not disable `clippy::pedantic` for the crate or workspace just because one macro expansion is noisy.
+
+## Configuration-Dependent Cases
+
+If a lint is genuinely present only under one feature or target, put the expectation behind that **real** condition:
+
+```rust
+#[cfg_attr(
+    feature = "legacy-schema",
+    expect(
+        clippy::struct_field_names,
+        reason = "legacy-schema exposes externally fixed field names"
+    )
+)]
+pub struct TupleFields {
+    pub tuple_id: u64,
+    pub tuple_source: u64,
+}
+```
+
+Do not use `cfg(clippy)` as a generic escape hatch and do not fall back to `#[allow]`.
+
+## Team Policy
+
+1. Enable `pedantic` as a baseline.
+2. Run Clippy across the configurations CI claims to support.
+3. Fix diagnostics that improve the code.
+4. For a genuine heuristic tradeoff, use one reasoned `#[expect]` at the narrowest source site.
+5. Keep `unfulfilled_lint_expectations` fatal.
+6. Never use Cargo lint level `allow`, handwritten `#[allow]`, or `-A` / `--allow` to silence pedantic findings.
 
 ## See Also
 
 - [lint-warn-style](./lint-warn-style.md) - Style warnings
 - [lint-warn-complexity](./lint-warn-complexity.md) - Complexity warnings
 - [lint-deny-correctness](./lint-deny-correctness.md) - Correctness lints
+- [err-expect-not-allow](./err-expect-not-allow.md) - Exception policy

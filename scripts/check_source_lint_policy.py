@@ -13,10 +13,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
+import tomllib
+from operator import itemgetter
 from pathlib import Path
-
+from typing import TypedDict, cast
 
 BLOCKED_CLIPPY_GROUPS = {
     "clippy::correctness",
@@ -46,6 +49,25 @@ BLOCKED_SUPPRESSION_LINTS = {
     "unfulfilled_lint_expectations",
     "unsafe_op_in_unsafe_fn",
 }
+
+
+class CargoTarget(TypedDict, total=False):
+    src_path: str
+
+
+class CargoPackage(TypedDict):
+    id: str
+    manifest_path: str
+    metadata: object
+    targets: list[CargoTarget]
+
+
+class CargoMetadata(TypedDict):
+    workspace_members: list[str]
+    packages: list[CargoPackage]
+    workspace_root: str
+
+
 IGNORED_DIRS = {
     ".git",
     ".venv",
@@ -59,12 +81,82 @@ def normalize_lint(name: str) -> str:
     return name.strip().replace("-", "_")
 
 
+def rustflag_allow_tokens(value: str) -> list[str]:
+    # Return compiler lint-allow flags present in one rustflags value.
+    normalized = value.replace("\x1f", " ")
+    try:
+        tokens = shlex.split(normalized)
+    except ValueError:
+        tokens = normalized.split()
+
+    found: list[str] = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token in {"-A", "--allow"}:
+            target = tokens[index + 1] if index + 1 < len(tokens) else "<missing>"
+            found.append(f"{token} {target}")
+            index += 2
+            continue
+        if (token.startswith("-A") and len(token) > 2) or token.startswith("--allow="):
+            found.append(token)
+        index += 1
+    return found
+
+
+def lint_level(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        level = value.get("level")
+        return level if isinstance(level, str) else None
+    return None
+
+
+def manifest_allow_violations(metadata: CargoMetadata) -> list[str]:
+    # Reject Cargo lint configuration that turns a lint down to allow.
+    members = set(metadata["workspace_members"])
+    manifests = {
+        Path(str(package["manifest_path"])).resolve()
+        for package in metadata["packages"]
+        if isinstance(package, dict) and package.get("id") in members
+    }
+    manifests.add(Path(str(metadata["workspace_root"])).resolve() / "Cargo.toml")
+
+    violations: list[str] = []
+    for manifest in sorted(manifests):
+        try:
+            data = tomllib.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+            violations.append(f"{manifest}: cannot inspect Cargo lint policy: {error}")
+            continue
+
+        tables: list[tuple[str, object]] = [("lints", data.get("lints"))]
+        workspace = data.get("workspace")
+        if isinstance(workspace, dict):
+            tables.append(("workspace.lints", workspace.get("lints")))
+
+        for prefix, table in tables:
+            if not isinstance(table, dict):
+                continue
+            for tool, entries in table.items():
+                if tool == "workspace" or not isinstance(entries, dict):
+                    continue
+                for lint, value in entries.items():
+                    if lint_level(value) == "allow":
+                        violations.append(
+                            f"{manifest}: [{prefix}.{tool}] {lint} = allow is forbidden; "
+                            "keep the lint enabled and use a narrow reasoned #[expect(...)] "
+                            "at the source site"
+                        )
+    return violations
+
+
 def run_text(argv: list[str]) -> str:
     result = subprocess.run(
         argv,
         check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
     )
     if result.returncode != 0:
@@ -92,14 +184,15 @@ def run_text(argv: list[str]) -> str:
 
 
 def check_compiler_flag_policy() -> list[str]:
-    """Reject rustflags that can cap or force lint levels below the gate."""
+    # Reject compiler flags that can weaken or bypass the central lint policy.
     violations: list[str] = []
 
     for name, value in sorted(os.environ.items()):
-        is_rustflags = (
-            name in {"RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_RUSTFLAGS"}
-            or (name.startswith("CARGO_TARGET_") and name.endswith("_RUSTFLAGS"))
-        )
+        is_rustflags = name in {
+            "RUSTFLAGS",
+            "CARGO_ENCODED_RUSTFLAGS",
+            "CARGO_BUILD_RUSTFLAGS",
+        } or (name.startswith("CARGO_TARGET_") and name.endswith("_RUSTFLAGS"))
         if not is_rustflags:
             continue
         if "--cap-lints" in value or "--force-warn" in value:
@@ -107,16 +200,29 @@ def check_compiler_flag_policy() -> list[str]:
                 f"environment {name} contains a lint-level override "
                 f"(--cap-lints/--force-warn)"
             )
+        violations.extend(
+            f"environment {name} contains forbidden lint allow flag {flag}; "
+            "use a narrow reasoned #[expect(...)] in handwritten source instead"
+            for flag in rustflag_allow_tokens(value)
+        )
 
     config = run_text(["cargo", "+nightly", "-Z", "unstable-options", "config", "get"])
+    allow_flag = re.compile(
+        r"(?<![A-Za-z0-9_-])(?:-A(?:[A-Za-z0-9_:-]+)?|--allow(?:=[A-Za-z0-9_:-]+)?)(?![A-Za-z0-9_-])"
+    )
     for line in config.splitlines():
         if ".rustflags =" not in line and not line.startswith("build.rustflags ="):
             continue
+        key = line.split("=", 1)[0].strip()
         if "--cap-lints" in line or "--force-warn" in line:
-            key = line.split("=", 1)[0].strip()
             violations.append(
                 f"Cargo config {key} contains a lint-level override "
                 f"(--cap-lints/--force-warn)"
+            )
+        if allow_flag.search(line):
+            violations.append(
+                f"Cargo config {key} contains a forbidden -A/--allow lint override; "
+                "use a narrow reasoned #[expect(...)] in handwritten source instead"
             )
 
     return violations
@@ -232,21 +338,29 @@ def is_generated_include_wrapper(path: Path) -> bool:
 
     body = "".join(chars)
     body = re.sub(r"include!\s*\([^;]+\)\s*;", "", body, flags=re.DOTALL)
-    return body.strip() == ""
+    return not body.strip()
 
 
-def workspace_packages() -> list[dict[str, object]]:
-    metadata = json.loads(
-        run_text(["cargo", "+nightly", "metadata", "--no-deps", "--format-version", "1"])
+def cargo_metadata() -> CargoMetadata:
+    data = json.loads(
+        run_text(
+            ["cargo", "+nightly", "metadata", "--no-deps", "--format-version", "1"]
+        )
     )
+    if not isinstance(data, dict):
+        raise TypeError("cargo metadata did not return a JSON object")
+    return cast("CargoMetadata", data)
+
+
+def workspace_packages(metadata: CargoMetadata) -> list[CargoPackage]:
     members = set(metadata["workspace_members"])
     return sorted(
         (package for package in metadata["packages"] if package["id"] in members),
-        key=lambda package: package["manifest_path"],
+        key=itemgetter("manifest_path"),
     )
 
 
-def generated_lint_boundaries(packages: list[dict[str, object]]) -> set[Path]:
+def generated_lint_boundaries(packages: list[CargoPackage]) -> set[Path]:
     boundaries: set[Path] = set()
     violations: list[str] = []
 
@@ -263,7 +377,9 @@ def generated_lint_boundaries(packages: list[dict[str, object]]) -> set[Path]:
             continue
 
         declared = rust_skills2.get("generated-lint-boundaries", [])
-        if not isinstance(declared, list) or any(not isinstance(item, str) for item in declared):
+        if not isinstance(declared, list) or any(
+            not isinstance(item, str) for item in declared
+        ):
             violations.append(
                 f"{root / 'Cargo.toml'}: "
                 "package.metadata.rust-skills2.generated-lint-boundaries must be an array of paths"
@@ -276,7 +392,8 @@ def generated_lint_boundaries(packages: list[dict[str, object]]) -> set[Path]:
             if isinstance(target, dict) and target.get("src_path")
         }
 
-        for relative in declared:
+        declared_paths = [item for item in declared if isinstance(item, str)]
+        for relative in declared_paths:
             relative_path = Path(relative)
             if relative_path.is_absolute():
                 violations.append(
@@ -309,7 +426,9 @@ def generated_lint_boundaries(packages: list[dict[str, object]]) -> set[Path]:
                     f"target entrypoint: {relative}"
                 )
                 continue
-            if not has_generated_marker(candidate) and not is_generated_include_wrapper(candidate):
+            if not has_generated_marker(candidate) and not is_generated_include_wrapper(
+                candidate
+            ):
                 violations.append(
                     f"{root / 'Cargo.toml'}: generated lint boundary must either identify "
                     f"generated provenance near the top or be a pure include! wrapper around "
@@ -319,7 +438,9 @@ def generated_lint_boundaries(packages: list[dict[str, object]]) -> set[Path]:
             boundaries.add(candidate)
 
     if violations:
-        print("rust-skills2: invalid generated lint boundary metadata:", file=sys.stderr)
+        print(
+            "rust-skills2: invalid generated lint boundary metadata:", file=sys.stderr
+        )
         for violation in violations:
             print(f"  - {violation}", file=sys.stderr)
         raise SystemExit(1)
@@ -491,14 +612,19 @@ def lint_attributes(text: str) -> list[tuple[str, list[str], bool, int]]:
         found.extend(meta_lints(text, masked, open_bracket + 1, close_bracket))
     return found
 
+
 def main() -> int:
     violations = check_compiler_flag_policy()
     group_names, groups = clippy_groups()
     blocked_members = set().union(*(groups[group] for group in BLOCKED_CLIPPY_GROUPS))
 
     suppression_count = 0
-    packages = workspace_packages()
-    roots = [Path(str(package["manifest_path"])).resolve().parent for package in packages]
+    metadata = cargo_metadata()
+    violations.extend(manifest_allow_violations(metadata))
+    packages = workspace_packages(metadata)
+    roots = [
+        Path(str(package["manifest_path"])).resolve().parent for package in packages
+    ]
     boundaries = generated_lint_boundaries(packages)
     files = rust_files(roots)
 
@@ -523,14 +649,20 @@ def main() -> int:
                 continue
 
             suppression_count += 1
+            if kind == "allow":
+                violations.append(
+                    f"{location}: #[allow(...)] is forbidden in handwritten source; "
+                    'use #[expect(lint, reason = "...")] or cfg_attr(..., expect(...)) '
+                    "for configuration-scoped exceptions"
+                )
+                continue
+
             if len(lints) != 1:
                 violations.append(
                     f"{location}: #[{kind}] must name exactly one lint; found {len(lints)}"
                 )
             if not has_reason:
-                violations.append(
-                    f'{location}: #[{kind}] must include reason = "..."'
-                )
+                violations.append(f'{location}: #[{kind}] must include reason = "..."')
 
             for lint in lints:
                 if lint in group_names:
@@ -538,7 +670,10 @@ def main() -> int:
                         f"{location}: {kind} of lint group {lint} is forbidden; "
                         "name one specific suppressible lint instead"
                     )
-                elif lint in blocked_members and lint not in ALLOWED_PERF_SUPPRESSION_LINTS:
+                elif (
+                    lint in blocked_members
+                    and lint not in ALLOWED_PERF_SUPPRESSION_LINTS
+                ):
                     owner = next(
                         group
                         for group in BLOCKED_CLIPPY_GROUPS
@@ -554,7 +689,9 @@ def main() -> int:
                     )
 
     if violations:
-        print("rust-skills2: source lint suppression policy violations:", file=sys.stderr)
+        print(
+            "rust-skills2: source lint suppression policy violations:", file=sys.stderr
+        )
         for violation in violations:
             print(f"  - {violation}", file=sys.stderr)
         return 1

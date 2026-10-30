@@ -117,7 +117,7 @@ pub fn internal_adapter() -> io::Result<()> {
 fn main() {}
 ```
 
-`#[expect]` is not mechanically superior to `#[allow]`; use it when an unfulfilled expectation is useful maintenance feedback. A long-lived intentional policy exception may still be clearer with an appropriately reasoned lint configuration.
+Under the strict policy, a deliberate suppressible-lint exception uses a narrow reasoned `#[expect]`. Do not convert it into `#[allow]` or a manifest-level `allow`: stale expectations are useful maintenance feedback and are required to remain visible.
 
 ## What to Document
 

@@ -70,14 +70,19 @@ workspace = true
 clippy.pedantic = "allow"  # Error!
 ```
 
-The workaround is to use crate-level attributes in `lib.rs` or `main.rs`:
+Do not work around this with crate-level `#[allow]`. Keep the inherited baseline and use a narrow reasoned expectation where a specific suppressible lint has a reviewed exception:
 
 ```rust
-// src/lib.rs — override inherited workspace lints
-#![allow(clippy::pedantic)]
-#![allow(clippy::large_enum_variant)]
-#![allow(missing_docs)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "measured hot-path layout is faster inline than boxed"
+)]
+pub enum Message {
+    // ...
+}
 ```
+
+If a crate genuinely needs a different lint baseline, do not inherit `[workspace.lints]` for that crate; give it an explicit lint table containing the intended `warn`/`deny`/`forbid` levels, with no `allow` entries.
 
 Cargo issue [#13157](https://github.com/rust-lang/cargo/issues/13157) is still open as a feature request (status: `S-needs-design`).
 

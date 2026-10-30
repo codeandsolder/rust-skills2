@@ -142,14 +142,9 @@ Rust 1.97 stopped hiding output from successful linker invocations. Linker diagn
 
 Cargo's newer build-warning policy is a separate layer. As of Cargo 1.97/1.98, `CARGO_BUILD_WARNINGS=deny` can still cause a crate to fail when `linker_messages` produces a warning, despite `linker_messages` being excluded from rustc's `warnings` group. Treat that interaction as stricter and platform-sensitive rather than assuming the two warning mechanisms are equivalent.
 
-If a supported linker emits known harmless chatter and a cross-platform CI job uses `CARGO_BUILD_WARNINGS=deny`, investigate the message first. If it is genuinely unavoidable, allow the lint deliberately and document the platform reason:
+If a supported linker emits known harmless chatter and a cross-platform CI job uses `CARGO_BUILD_WARNINGS=deny`, investigate the message first. If it is genuinely unavoidable external-tool chatter, keep source lint policy unchanged and narrow the Cargo build-warning policy for that platform-specific job instead of setting `linker_messages = "allow"`.
 
-```toml
-[lints.rust]
-linker_messages = "allow"
-```
-
-Prefer fixing real linker warnings. Do not globally suppress `linker_messages` merely because a compiler upgrade exposed output that previous Rust versions hid.
+Prefer fixing real linker warnings. The strict policy does not use Cargo lint `allow`, handwritten `#[allow]`, or `-A`/`--allow` to hide linker diagnostics.
 
 ## Running Clippy
 

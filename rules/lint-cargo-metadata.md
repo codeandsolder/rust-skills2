@@ -134,22 +134,11 @@ Fix by updating dependencies or using `[patch]`:
 old-dep = { git = "...", branch = "syn-2" }
 ```
 
-## When to Disable
+## Internal / Unpublished Crates
 
-For internal/unpublished crates:
+Do not enable the whole `clippy::cargo` group merely to turn it back off with `allow`. For an internal crate, either omit that group when its publishing checks are irrelevant or enable the individual Cargo lints that still provide value.
 
-```toml
-[lints.clippy]
-cargo = "allow"  # Not publishing, metadata not needed
-```
-
-Or selectively:
-
-```toml
-[lints.clippy]
-cargo = "warn"
-multiple_crate_versions = "allow"  # Acceptable in this project
-```
+When an enabled Cargo lint has a genuine source-local exception, use a narrow reasoned `#[expect]` where the diagnostic is owned. Do not set Cargo lint levels to `allow`.
 
 ## See Also
 

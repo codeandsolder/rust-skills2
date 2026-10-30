@@ -183,7 +183,7 @@ edition.workspace = true
 workspace = true  # Inherit all workspace lints
 ```
 
-> **Limitation**: It is a hard error to mix `lints.workspace = true` with per-crate overrides in the same `[lints]` table (cargo#13157). Use `#![allow(...)]` attributes in `lib.rs`/`main.rs` to override per crate.
+> **Limitation**: It is a hard error to mix `lints.workspace = true` with per-crate overrides in the same `[lints]` table (cargo#13157). Keep inherited lints enabled and use a narrow reasoned `#[expect(...)]` at a reviewed source site; if a crate genuinely needs a different baseline, give that crate its own explicit non-`allow` lint table instead of punching a crate-wide hole.
 
 ## `resolver = "3"` (Edition 2024 Default)
 
