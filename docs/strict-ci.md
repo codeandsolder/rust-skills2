@@ -8,8 +8,10 @@ and Python rules into one centrally maintained GitHub Actions check.
 ```yaml
 jobs:
   rust-skills2:
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
 ```
+
+Pin the reusable workflow to an immutable full commit SHA and keep the tracked branch in an end-of-line comment (`@<full-commit-sha> # main`). Renovate understands that form and can advance the digest while preserving immutable execution; a bare SHA has no branch identity for Renovate to follow.
 
 The default gate runs:
 
@@ -24,7 +26,7 @@ split pass:
 ```yaml
 jobs:
   rust-skills2:
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
     with:
       allow-test-panics: true
 ```
@@ -83,7 +85,7 @@ For a Rust workspace below the repository root:
 ```yaml
 jobs:
   rust-skills2:
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
     with:
       working-directory: rust
 ```
@@ -99,7 +101,7 @@ policy overrides (`--config`, `-Z`), rustc argument injection (a second
 ```yaml
 jobs:
   rust-skills2:
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
     with:
       cargo-args: "--locked --workspace --all-targets --all-features"
 ```
@@ -119,7 +121,7 @@ Trusted self-hosted runners may preserve a deterministic local compiler wrapper 
 ```yaml
 jobs:
   rust-skills2:
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
     with:
       runner: '["self-hosted","Linux","X64","local-ci"]'
       preserve-rustc-wrapper: true
@@ -244,15 +246,14 @@ rewrites dependency state. Standalone Python outside any `pyproject.toml` is
 still checked and can resolve first-party/stdlib imports, but undeclared external
 dependencies fail as unresolved imports rather than depending on runner state.
 
-Repositories that are intended to contain Python only as CI implementation can
-turn on the separate location gate:
+Python is CI-only by default. Repositories with a deliberate non-CI Python surface must opt out of the separate location gate explicitly:
 
 ```yaml
 jobs:
   rust-skills2:
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
     with:
-      ban-python-outside-ci: true
+      ban-python-outside-ci: false
 ```
 
 The built-in CI-only prefixes are `.github/`, `.gitlab/`, `.circleci/`,
@@ -266,7 +267,7 @@ ty:
         packaging/ci
 ```
 
-`ban-python-outside-ci` defaults to `false`; Ruff and ty do not.
+`ban-python-outside-ci` defaults to `true`; Ruff and ty are mandatory whenever tracked Python exists, including repositories that explicitly opt out of the location restriction.
 
 ## Scope
 

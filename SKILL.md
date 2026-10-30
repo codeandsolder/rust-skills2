@@ -107,7 +107,7 @@ Reference these guidelines when:
 - [`err-custom-type`](rules/err-custom-type.md) - Define domain error types when callers benefit from knowing what failed
 - [`err-clippy-unwrap-types`](rules/err-clippy-unwrap-types.md) - Do not use Clippy's `allow-unwrap-types` to punch type-wide holes in a strict no-unwrap/no-expect policy
 - [`err-diagnostic-do-not-recommend`](rules/err-diagnostic-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` on trait impls whose appearance in diagnostics would mislead users
-- [`err-expect-not-allow`](rules/err-expect-not-allow.md) - Prefer narrow, reasoned `#[expect(...)]` when a suppressible lint reliably fires; use a narrow reasoned `#[allow(...)]` only when lint activation is configuration-dependent and fulfillment semantics cannot work
+- [`err-expect-not-allow`](rules/err-expect-not-allow.md) - Use narrow, reasoned `#[expect(...)]` for deliberate suppressible-lint exceptions; handwritten `#[allow(...)]`, Cargo lint levels set to `allow`, and `-A` / `--allow` compiler flags are prohibited by the strict policy
 - [`err-no-std-error`](rules/err-no-std-error.md) - Use `core::error::Error` for genuine `no_std` error types; current `thiserror` supports this on Rust 1.81+
 - [`err-try-block-experimental`](rules/err-try-block-experimental.md) - `try {}` blocks remain nightly-only; prefer stable `Result`/`Option` contexts unless the scoped expression is worth the nightly dependency
 
@@ -437,7 +437,7 @@ Reference these guidelines when:
 - [`lint-warn-style`](rules/lint-warn-style.md) - Enable `clippy::style` for established Rust idioms, while treating its suggestions as reviewable guidance rather than formatting law
 - [`lint-warn-complexity`](rules/lint-warn-complexity.md) - Enable `clippy::complexity` to catch needlessly complicated expressions and operations
 - [`lint-warn-perf`](rules/lint-warn-perf.md) - Enable `clippy::perf` for established performance anti-patterns; measure before adding optimizer hints
-- [`lint-pedantic-selective`](rules/lint-pedantic-selective.md) - Enable clippy::pedantic selectively
+- [`lint-pedantic-selective`](rules/lint-pedantic-selective.md) - Enable `clippy::pedantic` as a baseline, review its findings individually, and use narrow reasoned `#[expect]` exceptions instead of disabling lints with `allow`
 - [`lint-missing-docs`](rules/lint-missing-docs.md) - Warn on missing documentation for public items
 - [`lint-unsafe-doc`](rules/lint-unsafe-doc.md) - Document every unsafe operation with the invariant that makes it sound
 - [`lint-cargo-metadata`](rules/lint-cargo-metadata.md) - Enable clippy::cargo for published crates

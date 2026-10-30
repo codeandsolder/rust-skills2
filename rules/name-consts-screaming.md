@@ -17,7 +17,7 @@ The Rust Reference generally recommends constants unless the single-address prop
 
 <!-- rust-check: compile -->
 ```rust
-#![allow(non_upper_case_globals)]
+#![expect(non_upper_case_globals, reason = "bad example intentionally violates constant naming")]
 
 use std::sync::atomic::AtomicU64;
 

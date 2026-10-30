@@ -9,7 +9,7 @@ Rust's type-level naming convention is `UpperCamelCase`. The built-in `non_camel
 ## Bad
 
 ```rust
-#![allow(non_camel_case_types)]
+#![expect(non_camel_case_types, reason = "bad example intentionally violates type naming")]
 
 struct http_client {
     connected: bool,

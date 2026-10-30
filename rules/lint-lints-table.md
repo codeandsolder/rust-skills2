@@ -54,8 +54,8 @@ Since Rust 1.74, lint levels support a `priority` field. Lower values win when m
 # Category: lower priority so individual lints can override
 pedantic = { level = "warn", priority = -1 }
 
-# Individual lint: higher priority (0, the default) wins
-missing_errors_doc = "allow"   # Overrides pedantic for this lint
+# Individual lint: higher priority (0, the default) can make policy stricter.
+missing_errors_doc = "deny"
 ```
 
 ## Baseline Configuration
@@ -88,7 +88,7 @@ style       = "warn"
 workspace = true
 ```
 
-> **Note**: When using `lints.workspace = true`, member crates cannot override individual lints in their `Cargo.toml` (see [Cargo issue #13157](https://github.com/rust-lang/cargo/issues/13157)). Use `#![allow(...)]` in code for per-crate exceptions instead.
+> **Note**: When using `lints.workspace = true`, member crates cannot override individual lints in their `Cargo.toml` (see [Cargo issue #13157](https://github.com/rust-lang/cargo/issues/13157)). Do not use `#[allow]` as an escape hatch. Keep the inherited lint enabled and place one reasoned `#[expect]` on the narrow source item that owns a suppressible exception; use a separate explicit lint baseline if the entire crate intentionally differs.
 
 ## Migrating from Inner Attributes
 

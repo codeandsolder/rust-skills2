@@ -29,7 +29,7 @@ gate. Import it as one GitHub Actions job:
 ```yaml
 jobs:
   strict-rust:
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@main
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
 ```
 
 It runs `rustfmt --check` plus the centrally maintained Clippy policy with warnings fatal, pedantic + nursery

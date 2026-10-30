@@ -11,9 +11,8 @@ Consistent casing makes roles easy to scan: `HttpClient` looks like a type while
 ## Bad
 
 ```rust
-#![allow(dead_code)]
-
-#[allow(non_snake_case)]
+#[expect(dead_code, reason = "bad example intentionally leaves the helper unused")]
+#[expect(non_snake_case, reason = "bad example intentionally violates Rust naming")]
 fn calculateTotal(values: &[u32]) -> u32 {
     values.iter().sum()
 }

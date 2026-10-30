@@ -88,23 +88,23 @@ struct Internal { }  // No warning - private
 pub struct Public { }  // WARN - public, needs docs
 ```
 
-## Allow for Specific Items
+## Do Not Hide Public API with `allow`
+
+If an item is implementation-only, give it implementation-only visibility. If it is genuinely public, document it. A rare reviewed transitional exception uses a reasoned expectation rather than permanent permission:
 
 ```rust
 #![warn(missing_docs)]
 
-/// Documented module.
-pub mod api {
-    /// Documented struct.
-    pub struct Config { }
-    
-    #[allow(missing_docs)]
-    pub mod internal {
-        // Internal API, docs not required
-        pub struct Helper { }
-    }
+#[expect(
+    missing_docs,
+    reason = "temporary compatibility module is public only for the v1 migration window"
+)]
+pub mod legacy_compat {
+    pub struct Helper;
 }
 ```
+
+Prefer removing the expectation by documenting the API or narrowing its visibility.
 
 ## Gradual Adoption
 

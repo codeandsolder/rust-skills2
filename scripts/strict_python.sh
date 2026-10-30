@@ -30,7 +30,7 @@ if (( ${#PYTHON_FILES[@]} == 0 )); then
     exit 0
 fi
 
-BAN_PYTHON_OUTSIDE_CI="${RUST_SKILLS2_BAN_PYTHON_OUTSIDE_CI:-false}"
+BAN_PYTHON_OUTSIDE_CI="${RUST_SKILLS2_BAN_PYTHON_OUTSIDE_CI:-true}"
 case "$BAN_PYTHON_OUTSIDE_CI" in
     true|false) ;;
     *)

@@ -66,11 +66,25 @@ jobs:
           RUST_SKILLS2_BAN_PYTHON_OUTSIDE_CI: "true"
         run: bash scripts/strict_python.sh
 
-      - name: Python location ban is off by default
+      - name: Python location ban rejects non-CI Python by default
         shell: bash
         env:
           RUST_SKILLS2_REPOSITORY_ROOT: ${{ github.workspace }}/checks/fixtures/strict-python-outside-ci
           RUST_SKILLS2_PYTHON_ACTION_DIR: ${{ github.workspace }}/.github/actions/python-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_python.sh; then
+            echo "Python location gate unexpectedly accepted non-CI Python by default" >&2
+            exit 1
+          fi
+          echo "Python location gate correctly rejected non-CI Python by default"
+
+      - name: Python location ban can be explicitly disabled
+        shell: bash
+        env:
+          RUST_SKILLS2_REPOSITORY_ROOT: ${{ github.workspace }}/checks/fixtures/strict-python-outside-ci
+          RUST_SKILLS2_PYTHON_ACTION_DIR: ${{ github.workspace }}/.github/actions/python-strict
+          RUST_SKILLS2_BAN_PYTHON_OUTSIDE_CI: "false"
         run: bash scripts/strict_python.sh
 
       - name: Python location ban rejects non-CI Python when enabled
@@ -321,11 +335,47 @@ jobs:
           fi
           echo "strict gate correctly rejected a multi-lint expectation"
 
-      - name: Specific reasoned allow may preserve external API/schema
-        uses: ./.github/actions/rust-strict
-        with:
-          working-directory: checks/fixtures/strict-ci-reasoned-allow
-          cargo-args: "--locked --all-targets"
+      - name: Reasoned handwritten allow must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-reasoned-allow
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted reasoned #[allow(...)]" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected reasoned #[allow(...)]"
+
+      - name: Cargo lint allow level must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-cargo-allow
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted Cargo lint level = allow" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected Cargo lint level = allow"
+
+      - name: Cargo rustflags lint allow must fail
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-rustflags-allow
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if bash scripts/strict_clippy.sh; then
+            echo "strict gate unexpectedly accepted Cargo rustflags -A" >&2
+            exit 1
+          fi
+          echo "strict gate correctly rejected Cargo rustflags -A"
 
       - name: Unreasoned handwritten allow must fail
         shell: bash
