@@ -3,11 +3,27 @@
 The rust-skills2 CI gate turns the mechanically enforceable high-signal Rust
 and Python rules into one centrally maintained GitHub Actions check.
 
+## Canonical caller identity
+
+Use the following identity for new callers:
+
+- standalone workflow file: `.github/workflows/rust-skills2-strict.yml`
+- workflow display name: `Strict Rust`
+- reusable-workflow job ID: `strict-rust`
+
+A repository may keep the job inside a broader `ci.yml` when that is useful, but the
+job ID should still be `strict-rust`. Fleet tooling must discover consumers by the
+`uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@...` target, not by
+workflow filename, display name, or job ID. Those presentation details are deliberately
+not an API and may differ in older repositories.
+
 ## One-line job import
 
 ```yaml
+name: Strict Rust
+
 jobs:
-  rust-skills2:
+  strict-rust:
     uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
 ```
 
@@ -25,7 +41,7 @@ split pass:
 
 ```yaml
 jobs:
-  rust-skills2:
+  strict-rust:
     uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
     with:
       allow-test-panics: true
