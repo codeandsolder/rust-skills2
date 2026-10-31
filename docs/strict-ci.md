@@ -122,6 +122,16 @@ jobs:
       cargo-args: "--locked --workspace --all-targets --all-features"
 ```
 
+Repositories that compile examples or tests from files stored in Git submodules can opt the caller checkout into submodule initialization. `checkout-submodules` is passed directly to the caller-repository `actions/checkout` step and accepts checkout's `false`, `true`, or `recursive` modes; it defaults to `false`. The separately pinned rust-skills2 implementation checkout remains isolated.
+
+```yaml
+jobs:
+  rust-skills2:
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
+    with:
+      checkout-submodules: "true"
+```
+
 ## Policy
 
 The gate always runs the latest nightly rustfmt and Clippy so formatting drift and new diagnostics are surfaced

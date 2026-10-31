@@ -18,6 +18,11 @@ on:
         required: false
         type: string
         default: "--locked --workspace --all-targets"
+      checkout-submodules:
+        description: "Submodule checkout mode passed to actions/checkout for the caller repository: false, true, or recursive."
+        required: false
+        type: string
+        default: "false"
       apt-packages:
         description: Space-separated Ubuntu packages required to compile the selected workspace targets.
         required: false
@@ -66,6 +71,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          submodules: ${{ inputs.checkout-submodules }}
 
       - name: Checkout pinned rust-skills2 gate implementation
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
