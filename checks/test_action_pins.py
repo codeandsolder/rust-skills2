@@ -60,6 +60,20 @@ for needle in required:
 if "codeandsolder/rust-skills2/.github/actions/" in workflow:
     raise SystemExit("strict reusable workflow must not call rust-skills2 composite actions through a remote ref")
 
+provider_sha = "18397eb8f0bd8a76f90010a66a8519011f7992ca"
+for action in ("setup-sccache", "finalize-sccache"):
+    needle = f"codeandsolder/ci-workflows/.github/actions/{action}@{provider_sha}"
+    if needle not in workflow:
+        raise SystemExit(f"strict reusable workflow must use pinned canonical {action}: {needle}")
+for forbidden in (
+    "Swatinem/rust-cache",
+    "preserve-rustc-wrapper",
+    "rustc-wrapper:",
+    "sccache-server-port",
+):
+    if forbidden in workflow:
+        raise SystemExit(f"strict reusable workflow retains obsolete cache escape hatch: {forbidden}")
+
 python_action = (ROOT / ".github/actions/python-strict/action.yml").read_text()
 if not indented_block_contains(
     python_action,

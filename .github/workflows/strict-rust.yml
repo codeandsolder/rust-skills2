@@ -3,11 +3,6 @@ name: rust-skills2 strict CI gate
 on:
   workflow_call:
     inputs:
-      runner:
-        description: JSON-encoded runs-on selector. Defaults to GitHub-hosted Ubuntu; private callers may opt into a self-hosted label set.
-        required: false
-        type: string
-        default: '"ubuntu-24.04"'
       working-directory:
         description: Rust workspace directory relative to repository root.
         required: false
@@ -43,21 +38,6 @@ on:
         required: false
         type: boolean
         default: false
-      preserve-rustc-wrapper:
-        description: Preserve an explicitly configured local/deterministic RUSTC_WRAPPER instead of clearing compiler wrappers.
-        required: false
-        type: boolean
-        default: false
-      rustc-wrapper:
-        description: Optional explicit RUSTC_WRAPPER path used when preserve-rustc-wrapper is true.
-        required: false
-        type: string
-        default: ""
-      sccache-server-port:
-        description: Optional existing sccache daemon port used when preserve-rustc-wrapper is true.
-        required: false
-        type: string
-        default: ""
 
 permissions:
   contents: read
@@ -65,7 +45,7 @@ permissions:
 jobs:
   strict-rust:
     name: Strict Rust + Python policy
-    runs-on: ${{ fromJSON(inputs.runner) }}
+    runs-on: ${{ github.event.repository.private && 'asus' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -91,6 +71,16 @@ jobs:
           ban-python-outside-ci: ${{ inputs.ban-python-outside-ci }}
           python-ci-paths: ${{ inputs.python-ci-paths }}
 
+      - name: Enforce canonical Rust CI caching
+        shell: bash
+        env:
+          EXPECTED_STRICT_REF: ${{ job.workflow_sha }}
+        run: >-
+          uv run --no-project --with pyyaml python
+          .rust-skills2-gate/scripts/check_ci_sccache_policy.py
+          --root "$GITHUB_WORKSPACE"
+          --strict-ref "$EXPECTED_STRICT_REF"
+
       - name: Install native build dependencies
         if: ${{ inputs.apt-packages != '' }}
         env:
@@ -107,15 +97,19 @@ jobs:
           toolchain: nightly
           components: clippy,rustfmt
 
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Setup mandatory sccache
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@18397eb8f0bd8a76f90010a66a8519011f7992ca # main
         with:
-          workspaces: ${{ inputs.working-directory }}
-          shared-key: rust-skills2-nightly-strict
-          # Pull requests may restore the default-branch cache, but do not
-          # persist branch-scoped copies. Renovate fan-out otherwise duplicates
-          # ~550 MiB of target state per PR in every caller repository.
-          save-if: ${{ github.event_name != 'pull_request' }}
+          rust-toolchain: nightly
+          rustflags: ""
+
+      - name: Configure runner-local Cargo target
+        shell: bash
+        run: |
+          set -euo pipefail
+          target_dir="$RUNNER_TEMP/rust-skills2-target"
+          mkdir -p "$target_dir"
+          echo "CARGO_TARGET_DIR=$target_dir" >> "$GITHUB_ENV"
 
       - name: rust-skills2 strict gate
         uses: ./.rust-skills2-gate/.github/actions/rust-strict
@@ -123,9 +117,6 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
           cargo-args: ${{ inputs.cargo-args }}
           allow-test-panics: ${{ inputs.allow-test-panics }}
-          preserve-rustc-wrapper: ${{ inputs.preserve-rustc-wrapper }}
-          rustc-wrapper: ${{ inputs.rustc-wrapper }}
-          sccache-server-port: ${{ inputs.sccache-server-port }}
           install-toolchain: "false"
 
       - name: Show Cargo future-incompatibility report
@@ -134,3 +125,8 @@ jobs:
         shell: bash
         run: |
           cargo +nightly report future-incompatibilities || true
+
+
+      - name: Finalize mandatory sccache
+        if: always()
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@18397eb8f0bd8a76f90010a66a8519011f7992ca # main

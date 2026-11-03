@@ -20,14 +20,22 @@ if [[ -n "${CARGO_TARGET_DIR:-}" && "$CARGO_TARGET_DIR" != /* ]]; then
     export CARGO_TARGET_DIR="$(pwd -P)/$CARGO_TARGET_DIR"
 fi
 
-# Rule validation clears compiler wrappers by default because a distributed worker
-# cannot see the generated-example tree. Trusted same-namespace wrappers may be
-# preserved explicitly (the self-hosted CI path uses local-only sccache).
-if [[ "${RUST_SKILLS2_PRESERVE_RUSTC_WRAPPER:-false}" == "true" ]]; then
-    [[ -n "${RUSTC_WRAPPER:-}" ]] || { echo "preserve wrapper requested but RUSTC_WRAPPER is empty" >&2; exit 2; }
-else
-    export RUSTC_WRAPPER=
-    export RUSTC_WORKSPACE_WRAPPER=
+# CI owns compiler caching centrally. Public jobs use runner-local sccache;
+# private jobs use Asus's local-only Garage-backed daemon so generated sources
+# and policy files remain in the compiler filesystem namespace. Never clear the
+# configured wrapper here: doing so silently bypasses the fleet cache invariant.
+if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
+    case "${CODEANDSOLDER_SCCACHE_MODE:-}" in
+        public-actions|private-asus-garage) ;;
+        *)
+            echo "checks: CI requires canonical sccache setup" >&2
+            exit 2
+            ;;
+    esac
+    [[ -n "${RUSTC_WRAPPER:-}" && -n "${SCCACHE_BIN:-}" ]] || {
+        echo "checks: canonical CI sccache wrapper is missing" >&2
+        exit 2
+    }
 fi
 
 run_python() {
@@ -48,6 +56,8 @@ echo "==> compiler evidence and source-policy regression tests"
 run_python "$ROOT/checks/test_analyze.py"
 run_python "$ROOT/checks/test_source_lint_policy.py"
 run_python "$ROOT/checks/test_action_pins.py"
+"$UV" run --no-project --with pyyaml python "$ROOT/checks/test_ci_sccache_policy.py"
+"$UV" run --no-project --with pyyaml python "$ROOT/scripts/check_ci_sccache_policy.py" --root "$ROOT"
 
 echo "==> generating example files from rules"
 cd "$ROOT/checks"

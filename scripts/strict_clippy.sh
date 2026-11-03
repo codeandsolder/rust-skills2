@@ -97,50 +97,28 @@ uv run --no-project python "$SOURCE_POLICY_SCRIPT"
 export CLIPPY_CONF_DIR="$ACTION_DIR"
 export CARGO_BUILD_WARNINGS=deny
 
-# Clippy reads policy files at compiler execution time. A distributed compiler
-# wrapper can execute clippy-driver on a worker that cannot see the action checkout.
-# Clear wrappers by default. Trusted self-hosted callers may explicitly preserve a
-# wrapper when they guarantee it executes locally in this filesystem namespace.
-PRESERVE_RUSTC_WRAPPER="${RUST_SKILLS2_PRESERVE_RUSTC_WRAPPER:-false}"
-case "$PRESERVE_RUSTC_WRAPPER" in
-    true)
-        if [[ -n "${RUST_SKILLS2_RUSTC_WRAPPER:-}" ]]; then
-            export RUSTC_WRAPPER="$RUST_SKILLS2_RUSTC_WRAPPER"
-        fi
-        if [[ -z "${RUSTC_WRAPPER:-}" ]]; then
-            echo "rust-skills2: preserve-rustc-wrapper requested but RUSTC_WRAPPER is empty" >&2
+# CI compilation is required to run through the centrally configured sccache.
+# The private strict-CI backend is intentionally local-only so clippy-driver can
+# read this checked-out policy directory; public runners use runner-local sccache.
+if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
+    case "${CODEANDSOLDER_SCCACHE_MODE:-}" in
+        public-actions|private-asus-garage) ;;
+        *)
+            echo "rust-skills2: CI requires canonical sccache setup; invalid/missing CODEANDSOLDER_SCCACHE_MODE=${CODEANDSOLDER_SCCACHE_MODE:-<unset>}" >&2
             exit 2
-        fi
-        if [[ -n "${RUST_SKILLS2_SCCACHE_SERVER_PORT:-}" ]]; then
-            case "$RUST_SKILLS2_SCCACHE_SERVER_PORT" in
-                *[!0-9]*|'')
-                    echo "rust-skills2: invalid sccache server port: $RUST_SKILLS2_SCCACHE_SERVER_PORT" >&2
-                    exit 2
-                    ;;
-            esac
-            if (( RUST_SKILLS2_SCCACHE_SERVER_PORT < 1 || RUST_SKILLS2_SCCACHE_SERVER_PORT > 65535 )); then
-                echo "rust-skills2: sccache server port out of range: $RUST_SKILLS2_SCCACHE_SERVER_PORT" >&2
-                exit 2
-            fi
-            export SCCACHE_SERVER_PORT="$RUST_SKILLS2_SCCACHE_SERVER_PORT"
-            export SCCACHE_START_SERVER=0
-        fi
-        echo "rust-skills2: preserving local compiler wrapper: $RUSTC_WRAPPER"
-        [[ -z "${SCCACHE_SERVER_PORT:-}" ]] || echo "rust-skills2: using existing sccache daemon on port $SCCACHE_SERVER_PORT"
-        ;;
-    false)
-        if [[ -n "${RUST_SKILLS2_RUSTC_WRAPPER:-}" || -n "${RUST_SKILLS2_SCCACHE_SERVER_PORT:-}" ]]; then
-            echo "rust-skills2: rustc-wrapper/sccache-server-port require preserve-rustc-wrapper=true" >&2
-            exit 2
-        fi
-        export RUSTC_WRAPPER=
-        export RUSTC_WORKSPACE_WRAPPER=
-        ;;
-    *)
-        echo "rust-skills2: RUST_SKILLS2_PRESERVE_RUSTC_WRAPPER must be true or false" >&2
+            ;;
+    esac
+    if [[ -z "${RUSTC_WRAPPER:-}" || -z "${SCCACHE_BIN:-}" ]]; then
+        echo "rust-skills2: CI requires RUSTC_WRAPPER and SCCACHE_BIN from canonical sccache setup" >&2
         exit 2
-        ;;
-esac
+    fi
+    if [[ -n "${RUSTC_WORKSPACE_WRAPPER:-}" ]]; then
+        echo "rust-skills2: RUSTC_WORKSPACE_WRAPPER may not override the canonical CI compiler cache" >&2
+        exit 2
+    fi
+    "$SCCACHE_BIN" --version
+    echo "rust-skills2: mandatory CI sccache mode: $CODEANDSOLDER_SCCACHE_MODE"
+fi
 
 # Everything is deny-level at compiler/Clippy level. Proc macros legitimately
 # inject internal allow attributes, so command-line forbid is not composable

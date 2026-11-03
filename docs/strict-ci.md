@@ -140,20 +140,12 @@ cannot weaken the shared gate with repository-local settings. Test panic
 ergonomics are available only through the explicit reusable-workflow opt-in
 described above; const evaluation and production targets remain strict.
 
-The policy pass clears both `RUSTC_WRAPPER` and `RUSTC_WORKSPACE_WRAPPER` by default. The rust-skills2 example/fixture verifier does the same for all Cargo invocations. Clippy reads its configuration during compiler execution, so distributing clippy-driver to a worker that cannot see the action checkout can make the policy fail or diverge.
+Compiler caching is mandatory in CI and is not a caller option. The reusable gate selects the backend from repository visibility and uses the shared `codeandsolder/ci-workflows` sccache actions:
 
-Trusted self-hosted runners may preserve a deterministic local compiler wrapper explicitly. `preserve-rustc-wrapper: true` opts in; `rustc-wrapper` may provide the wrapper path, and `sccache-server-port` may select an already-running sccache daemon. A local-only sccache daemon is suitable because it preserves compile caching while keeping clippy-driver in the runner's filesystem namespace. These wrapper inputs are rejected unless preservation is explicitly enabled.
+- public repositories run on GitHub-hosted Ubuntu with runner-local sccache; the bounded compiler cache is restored and persisted through ordinary GitHub Actions cache storage;
+- private repositories run on the Asus self-hosted runner and use its existing local-only Garage-backed sccache service. The strict path intentionally stays local so `clippy-driver` can read the checked-out policy files and generated sources in the runner filesystem namespace.
 
-```yaml
-jobs:
-  rust-skills2:
-    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
-    with:
-      runner: '["self-hosted","Linux","X64","local-ci"]'
-      preserve-rustc-wrapper: true
-      rustc-wrapper: /usr/local/libexec/sccache-client
-      sccache-server-port: "4228"
-```
+The gate no longer accepts runner, wrapper, or daemon-selection inputs, and neither the strict policy pass nor the example/fixture verifier clears `RUSTC_WRAPPER`. In GitHub Actions they instead fail if the canonical sccache setup is absent or overridden. Project-specific platform/MSRV/domain jobs may remain separate, but any job that invokes Rust tooling must configure the same shared sccache primitive rather than selecting a cache backend itself.
 
 All compiler and Clippy lints are passed at `deny`, not `forbid`.
 External derive/proc macros legitimately inject internal lint allowances;
