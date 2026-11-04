@@ -125,7 +125,6 @@ jobs:
     "executing gate",
     STRICT_SHA,
 )
-print("rust-skills2: CI sccache policy regressions passed")
 assert_clean(
     """
 jobs:
@@ -205,3 +204,262 @@ jobs:
 """,
     "Swatinem/rust-cache is forbidden",
 )
+
+
+def inspect_tree(workflow: str, files: dict[str, str]) -> list[str]:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        file = root / ".github/workflows/ci.yml"
+        file.parent.mkdir(parents=True)
+        file.write_text(workflow)
+        for name, body in files.items():
+            script = root / name
+            script.parent.mkdir(parents=True, exist_ok=True)
+            script.write_text(body)
+        return mod.inspect_root(root)
+
+
+def assert_tree_blocked(workflow: str, files: dict[str, str], fragment: str) -> None:
+    violations = inspect_tree(workflow, files)
+    assert any(fragment in violation for violation in violations), violations
+
+
+# The real-world failure: a workflow invokes a local shell entrypoint that
+# compiles Rust, but no inline Cargo command is visible to the old scanner.
+plain = """
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./ci/live-altcha-e2e.sh
+"""
+scripts = {"ci/live-altcha-e2e.sh": "#!/usr/bin/env bash\ncargo build --locked\n"}
+assert_tree_blocked(plain, scripts, "missing canonical setup-sccache")
+assert_tree_blocked(plain, scripts, "missing canonical finalize-sccache")
+
+# Canonical actions around indirect work are sufficient.
+assert not inspect_tree(
+    f"""
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@{SHA}
+      - run: ./ci/live-altcha-e2e.sh
+      - if: always()
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@{SHA}
+""",
+    scripts,
+)
+
+# Multiple local-script hops, environment assignments, source, and recursion.
+assert_tree_blocked(
+    """
+jobs:
+  indirect:
+    runs-on: ubuntu-latest
+    steps:
+      - run: env MODE=ci bash ./ci/first.sh
+""",
+    {
+        "ci/first.sh": "#!/bin/sh\nsource ./ci/second.sh\n",
+        "ci/second.sh": "#!/usr/bin/env bash\ncargo +nightly clippy --all-targets\n",
+    },
+    "missing canonical setup-sccache",
+)
+assert_tree_blocked(
+    """
+jobs:
+  cycle:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./ci/a.sh
+""",
+    {
+        "ci/a.sh": "#!/bin/sh\n./ci/b.sh\n",
+        "ci/b.sh": "#!/bin/sh\n./ci/a.sh\nrustc src/main.rs\n",
+    },
+    "missing canonical setup-sccache",
+)
+
+# Both step-specific working directories and job defaults affect resolution.
+for header in (
+    "    defaults:\n      run:\n        working-directory: test-area",
+    "",
+):
+    step_workdir = "" if header else "        working-directory: test-area\n"
+    assert_tree_blocked(
+        f"""
+jobs:
+  cwd:
+    runs-on: ubuntu-latest
+{header}
+    steps:
+      - run: bash ./run.sh
+{step_workdir}""",
+        {"test-area/run.sh": "#!/bin/bash\ncargo test --locked\n"},
+        "missing canonical setup-sccache",
+    )
+
+# A cd inside a wrapper changes where nested relative script references resolve.
+assert_tree_blocked(
+    """
+jobs:
+  cwd-nested:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./ci/runner.sh
+""",
+    {
+        "ci/runner.sh": "#!/bin/sh\ncd scripts && ./compile.sh\n",
+        "scripts/compile.sh": "#!/bin/sh\ncargo check\n",
+    },
+    "missing canonical setup-sccache",
+)
+assert_tree_blocked(
+    """
+jobs:
+  inline:
+    runs-on: ubuntu-latest
+    steps:
+      - run: bash -lc 'cargo test --locked'
+""",
+    {},
+    "missing canonical setup-sccache",
+)
+
+# Unresolvable script paths cannot silently guarantee compiler caching.
+for step in ('bash "$DYNAMIC_SCRIPT"', "bash ./ci/missing.sh"):
+    assert_tree_blocked(
+        f"""
+jobs:
+  unknown:
+    runs-on: ubuntu-latest
+    steps:
+      - run: {step}
+""",
+        {},
+        "unresolved local shell script",
+    )
+
+# Noncompiling Cargo queries and heredoc documentation in nested shell scripts
+# must not cause spurious Rust compilation detection.
+assert not inspect_tree(
+    plain,
+    {
+        "ci/live-altcha-e2e.sh": """#!/bin/sh
+cargo metadata --format-version 1
+cargo +nightly fmt --all
+cat <<'EOF'
+cargo build
+EOF
+"""
+    },
+)
+
+# Here scripts must remain data, not mistaken for executable local entrypoints.
+assert not inspect_tree(
+    """
+jobs:
+  data-only:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          assets=(
+            dist/rust-skills.zip
+            dist/SHA256SUMS
+          )
+          echo done
+""",
+    {},
+)
+
+# Sourcing shell fragments does not require an executable bit, a suffix or a shebang.
+assert_tree_blocked(
+    """
+jobs:
+  sourced:
+    steps:
+      - run: . ./ci/build.env
+""",
+    {"ci/build.env": "cargo build --locked\n"},
+    "missing canonical setup-sccache",
+)
+
+# Shell commands provided on standard input through a heredoc are executable.
+assert_tree_blocked(
+    """
+jobs:
+  stdin-script:
+    steps:
+      - run: |
+          bash <<'EOF'
+          cargo build --locked
+          EOF
+""",
+    {},
+    "missing canonical setup-sccache",
+)
+
+# A dynamic shell -c command is unresolved, not proven to be non-compiling.
+assert_tree_blocked(
+    """
+jobs:
+  dynamic:
+    steps:
+      - run: bash -c "$MAYBE_BUILD"
+""",
+    {},
+    "unresolved dynamic shell -c program",
+)
+
+# Unknown scripts still need both canonical actions, not merely setup.
+assert_tree_blocked(
+    f"""
+jobs:
+  incomplete:
+    steps:
+      - uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@{SHA}
+      - run: ./ci/generated.sh
+""",
+    {},
+    "missing canonical finalize-sccache",
+)
+
+# Case patterns and array elements are data; inline commands after an arm
+# separator still execute and must be traversed.
+assert_tree_blocked(
+    """
+jobs:
+  shell-case:
+    steps:
+      - run: ./ci/case.sh
+""",
+    {
+        "ci/case.sh": """#!/bin/bash
+paths=(
+  ../*
+  dist/file.zip
+)
+case "$MODE" in
+  '../*') echo not-an-execution ;;
+  build) cargo build --locked ;;
+esac
+"""
+    },
+    "missing canonical setup-sccache",
+)
+
+# Scripts without extensions are resolved through their shell shebang.
+assert_tree_blocked(
+    """
+jobs:
+  shebang:
+    steps:
+      - run: ci/worker
+""",
+    {"ci/worker": "#!/usr/bin/env bash\ncargo test --locked\n"},
+    "missing canonical setup-sccache",
+)
+
+print("rust-skills2: nested shell CI sccache policy regressions passed")

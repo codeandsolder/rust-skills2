@@ -84,7 +84,7 @@ def cargo_tokens_compile(tokens: list[str]) -> bool:
 
 SHELL_BOUNDARY = {";", "&&", "||", "|", "&"}
 CONTROL_PREFIX = {"if", "then", "do", "while", "until", "!", "command"}
-ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\+)?=")
 
 
 def shell_segment_compiles(tokens: list[str]) -> bool:
@@ -165,6 +165,210 @@ def run_mentions_rust(run: str) -> bool:
     return False
 
 
+
+SHELL_INTERPRETERS = {"bash", "sh", "dash", "zsh", "ksh"}
+SCRIPT_CONTEXT = {"exec", "command", "time", "nohup"}
+DYNAMIC_PATH = re.compile(r"[$*?\x60]")
+
+def shell_commands(source: str) -> list[list[str]]:
+    commands: list[list[str]] = []
+    terminator: str | None = None
+    array_assignment = False
+    shell_stdin = False
+    stdin_lines: list[str] = []
+    case_depth = 0
+    for raw_line in source.replace("\\\n", "").splitlines():
+        line = raw_line.strip()
+        if re.match(r"^case\s+.+\s+in$", line):
+            case_depth += 1
+            continue
+        if case_depth and line == "esac":
+            case_depth -= 1
+            continue
+        if case_depth:
+            arm = re.match(r"^[^()]*\)\s*(.*)$", line)
+            if arm:
+                # Ignore the pattern, but inspect commands after it.
+                line = arm.group(1).strip()
+                if not line:
+                    continue
+        if array_assignment:
+            if line.startswith(")"):
+                array_assignment = False
+            continue
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=\(\s*", line):
+            array_assignment = True
+            continue
+        if terminator is not None:
+            if line == terminator:
+                if shell_stdin:
+                    commands.extend(shell_commands("\n".join(stdin_lines)))
+                terminator = None
+                shell_stdin = False
+                stdin_lines.clear()
+            elif shell_stdin:
+                stdin_lines.append(raw_line)
+            continue
+        if not line or line.startswith("#"):
+            continue
+        heredoc = re.search(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?", line)
+        if heredoc is not None:
+            terminator = heredoc.group(1)
+            shell_stdin = bool(re.match(r"^(?:bash|sh|dash|zsh|ksh)\b", line))
+        try:
+            lexer = shlex.shlex(line, posix=True, punctuation_chars=";&|")
+            lexer.whitespace_split = True
+            lexer.commenters = "#"
+            tokens = list(lexer)
+        except ValueError:
+            if shell_line_compiles(line):
+                commands.append(["cargo", "build"])
+            continue
+        segment: list[str] = []
+        for token in [*tokens, ";"]:
+            if token in SHELL_BOUNDARY or (token and set(token) <= {";", "&", "|"}):
+                if segment:
+                    commands.append(segment)
+                segment = []
+            else:
+                segment.append(token)
+    return commands
+
+
+def normalized_command(tokens: list[str]) -> list[str]:
+    tokens = tokens.copy()
+    while tokens and (tokens[0] in CONTROL_PREFIX | SCRIPT_CONTEXT or ASSIGNMENT_RE.match(tokens[0])):
+        tokens.pop(0)
+    if tokens and tokens[0] == "env":
+        tokens.pop(0)
+        while tokens:
+            if tokens[0] in {"-u", "--unset"} and len(tokens) > 1:
+                del tokens[:2]
+            elif tokens[0].startswith("-") or ASSIGNMENT_RE.match(tokens[0]):
+                tokens.pop(0)
+            else:
+                break
+    if tokens and tokens[0] == "sudo":
+        tokens.pop(0)
+        while tokens and tokens[0].startswith("-"):
+            tokens.pop(0)
+    return tokens
+
+
+def repo_path(root: Path, cwd: Path, value: str) -> Path | None:
+    if DYNAMIC_PATH.search(value) or value.startswith("~") or not value:
+        return None
+    resolved = (Path(value) if Path(value).is_absolute() else cwd / value).resolve()
+    return resolved if resolved.is_relative_to(root) else None
+
+
+def script_target(tokens: list[str]) -> tuple[str | None, str | None]:
+    if not tokens:
+        return None, None
+    command, *args = tokens
+    if command in SHELL_INTERPRETERS:
+        if any(arg.startswith("<<") for arg in args):
+            return None, None
+        index = 0
+        while index < len(args):
+            arg = args[index]
+            if arg == "--":
+                index += 1
+                break
+            if arg.startswith("-") and "c" in arg[1:] and not arg.startswith("--"):
+                return None, args[index + 1] if index + 1 < len(args) else ""
+            if arg in {"-o", "-O", "--rcfile", "--init-file"} or (
+                arg.startswith("-") and "o" in arg[1:] and not arg.startswith("--")
+            ):
+                index += 2
+                continue
+            if arg.startswith("-"):
+                index += 1
+                continue
+            break
+        return (args[index], None) if index < len(args) else (None, None)
+    if command in {"source", "."}:
+        return (args[0], None) if args else (None, None)
+    if command.startswith(("./", "../", "/")) or command.endswith((".sh", ".bash")):
+        return command, None
+    if "/" in command and not any(ch in command for ch in ":*?[]()=$") and not any(ch.isspace() for ch in command):
+        return command, None
+    return None, None
+
+
+def script_is_shell(path: Path) -> bool:
+    if path.suffix in {".sh", ".bash"}:
+        return True
+    try:
+        with path.open(encoding="utf-8", errors="replace") as stream:
+            first = stream.readline().lower()
+    except OSError:
+        return False
+    return first.startswith("#!") and any(
+        re.search(r"(?:/|[ ])" + name + r"(?:\s|$)", first)
+        for name in SHELL_INTERPRETERS
+    )
+
+
+def inspect_shell_source(
+    source: str,
+    root: Path,
+    initial_cwd: Path,
+    active: set[tuple[Path, Path]],
+) -> tuple[bool, set[str]]:
+    found = run_mentions_rust(source)
+    unresolved: set[str] = set()
+    cwd = initial_cwd
+    for segment in shell_commands(source):
+        tokens = normalized_command(segment)
+        if not tokens:
+            continue
+        if shell_segment_compiles(tokens.copy()):
+            found = True
+            continue
+        if tokens[0] == "cd" and len(tokens) >= 2:
+            destination = repo_path(root, cwd, tokens[1])
+            cwd = destination if destination is not None and destination.is_dir() else root / "__unresolved_working_directory__"
+            continue
+        script, inline = script_target(tokens)
+        if inline is not None:
+            if inline.lstrip().startswith("$") or chr(96) in inline:
+                unresolved.add("unresolved dynamic shell -c program")
+            nested, unknown = inspect_shell_source(inline, root, cwd, active)
+            found |= nested
+            unresolved.update(unknown)
+        if script is None:
+            continue
+        path = repo_path(root, cwd, script)
+        if path is None or not path.is_file():
+            unresolved.add(f"unresolved local shell script: {script}")
+            continue
+        if tokens[0] not in {"source", "."} and not script_is_shell(path):
+            continue
+        key = (path, cwd)
+        if key in active:
+            continue
+        active.add(key)
+        try:
+            nested, unknown = inspect_shell_source(
+                path.read_text(encoding="utf-8", errors="replace"), root, cwd, active
+            )
+            found |= nested
+            unresolved.update(unknown)
+        except OSError:
+            unresolved.add(f"unreadable local shell script: {script}")
+        finally:
+            active.remove(key)
+    return found, unresolved
+
+
+def working_directory(root: Path, job: dict[str, Any], step: dict[str, Any]) -> Path | None:
+    defaults = job.get("defaults")
+    run_defaults = defaults.get("run") if isinstance(defaults, dict) else None
+    default = run_defaults.get("working-directory") if isinstance(run_defaults, dict) else None
+    value = step.get("working-directory", default)
+    return root if value is None else repo_path(root, root, value) if isinstance(value, str) else None
+
 def step_mentions_rust(step: Any) -> bool:
     if not isinstance(step, dict):
         return False
@@ -199,7 +403,7 @@ def canonical_step_kind(uses: str) -> str | None:
     return None
 
 
-def inspect_job(path: Path, job_name: str, job: Any, strict_ref: str | None) -> list[str]:
+def inspect_job(path: Path, job_name: str, job: Any, strict_ref: str | None, root: Path) -> list[str]:
     if not isinstance(job, dict):
         return []
     violations: list[str] = []
@@ -225,7 +429,25 @@ def inspect_job(path: Path, job_name: str, job: Any, strict_ref: str | None) -> 
     if not isinstance(steps, list):
         return violations
 
-    rust_indices = [index for index, step in enumerate(steps) if step_mentions_rust(step)]
+    rust_indices: list[int] = []
+    unresolved_by_step: dict[int, set[str]] = {}
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict):
+            continue
+        known = step_mentions_rust(step)
+        run = step.get("run")
+        if isinstance(run, str):
+            cwd = working_directory(root, job, step)
+            if cwd is None:
+                if "./" in run or ".sh" in run:
+                    unresolved_by_step[index] = {"dynamic working-directory for shell script invocation"}
+            else:
+                indirect, unresolved = inspect_shell_source(run, root, cwd, set())
+                known |= indirect
+                if unresolved:
+                    unresolved_by_step[index] = unresolved
+        if known or index in unresolved_by_step:
+            rust_indices.append(index)
     setup_indices: list[int] = []
     finalize_indices: list[int] = []
     for index, step in enumerate(steps):
@@ -241,6 +463,11 @@ def inspect_job(path: Path, job_name: str, job: Any, strict_ref: str | None) -> 
             finalize_indices.append(index)
         if uses.lower().startswith("swatinem/rust-cache@"):
             violations.append(f"{path}:{job_name}: Swatinem/rust-cache is forbidden; use canonical sccache")
+
+    if unresolved_by_step and not setup_indices:
+        for index, unknowns in sorted(unresolved_by_step.items()):
+            for reason in sorted(unknowns):
+                violations.append(f"{path}:{job_name}: step {index}: {reason}; canonical sccache required")
 
     if not rust_indices:
         return violations
@@ -282,7 +509,7 @@ def inspect_root(root: Path, strict_ref: str | None = None) -> list[str]:
         if not isinstance(jobs, dict):
             continue
         for name, job in jobs.items():
-            violations.extend(inspect_job(path.relative_to(root), str(name), job, strict_ref))
+            violations.extend(inspect_job(path.relative_to(root), str(name), job, strict_ref, root))
     return violations
 
 
