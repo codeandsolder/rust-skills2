@@ -147,6 +147,18 @@ Compiler caching is mandatory in CI and is not a caller option. The reusable gat
 
 The gate no longer accepts runner, wrapper, or daemon-selection inputs, and neither the strict policy pass nor the example/fixture verifier clears `RUSTC_WRAPPER`. In GitHub Actions they instead fail if the canonical sccache setup is absent or overridden. Project-specific platform/MSRV/domain jobs may remain separate, but any job that invokes Rust tooling must configure the same shared sccache primitive rather than selecting a cache backend itself.
 
+The [CI sccache policy scanner](../scripts/check_ci_sccache_policy.py) also follows
+statically resolvable local shell script entrypoints invoked by workflow steps,
+including nested scripts, sourced fragments, shell `-c` bodies, heredocs,
+and step/job working directories. This prevents hiding Rust compilation behind
+`./ci/test.sh` or `bash ./ci/test.sh`. A cyclic script call graph is traversed
+without executing the scripts. If a script entrypoint cannot be resolved
+statically (for example a generated path or dynamic shell `-c` body), the
+job must still provide canonical cache setup and finalization; the
+scanner does not assume the unknown program is noncompiling. Commands
+through arbitrary external build tools remain outside this shell-specific
+static traversal and should be audited separately.
+
 All compiler and Clippy lints are passed at `deny`, not `forbid`.
 External derive/proc macros legitimately inject internal lint allowances;
 forbidding either a group or a concrete lint can make rustc reject generated
