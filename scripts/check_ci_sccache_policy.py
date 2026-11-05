@@ -72,12 +72,10 @@ def cargo_tokens_compile(tokens: list[str]) -> bool:
     subcommand = tokens[0]
     if subcommand in CARGO_NON_COMPILING:
         return False
-    if subcommand in {"package", "publish"} and "--no-verify" in tokens[1:]:
-        return False
     # Unknown cargo subcommands are cache-required by default. Cargo plugins can
     # invoke rustc internally, and silently exempting a new compiling subcommand
     # would break the invariant.
-    return True
+    return not (subcommand in {"package", "publish"} and "--no-verify" in tokens[1:])
 
 
 SHELL_BOUNDARY = {";", "&&", "||", "|", "&"}
