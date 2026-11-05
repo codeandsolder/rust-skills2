@@ -60,6 +60,22 @@ jobs:
 """,
     "missing canonical setup-sccache",
 )
+# Untrusted relative actions cannot impersonate the pinned cache provider.
+for local_dir in ("./.github", "./.ci-workflows/.github", "./untrusted/.github"):
+    assert_blocked(
+        f"""
+jobs:
+  spoofed:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: {local_dir}/actions/setup-sccache
+      - run: cargo test --locked
+      - if: always()
+        uses: {local_dir}/actions/finalize-sccache
+""",
+        "missing canonical setup-sccache",
+    )
+
 assert_blocked(
     f"""
 jobs:

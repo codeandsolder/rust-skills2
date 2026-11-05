@@ -15,8 +15,6 @@ CANONICAL_WORKFLOW = "codeandsolder/ci-workflows/.github/workflows/rust-sccache.
 STRICT_WORKFLOW = "codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@"
 CANONICAL_SETUP = "codeandsolder/ci-workflows/.github/actions/setup-sccache@"
 CANONICAL_FINALIZE = "codeandsolder/ci-workflows/.github/actions/finalize-sccache@"
-LOCAL_SETUP_SUFFIX = "/.github/actions/setup-sccache"
-LOCAL_FINALIZE_SUFFIX = "/.github/actions/finalize-sccache"
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 CARGO_NON_COMPILING = {
     "add",
@@ -74,12 +72,10 @@ def cargo_tokens_compile(tokens: list[str]) -> bool:
     subcommand = tokens[0]
     if subcommand in CARGO_NON_COMPILING:
         return False
-    if subcommand in {"package", "publish"} and "--no-verify" in tokens[1:]:
-        return False
     # Unknown cargo subcommands are cache-required by default. Cargo plugins can
     # invoke rustc internally, and silently exempting a new compiling subcommand
     # would break the invariant.
-    return True
+    return not (subcommand in {"package", "publish"} and "--no-verify" in tokens[1:])
 
 
 SHELL_BOUNDARY = {";", "&&", "||", "|", "&"}
@@ -396,9 +392,12 @@ def step_mentions_rust(step: Any) -> bool:
 
 
 def canonical_step_kind(uses: str) -> str | None:
-    if is_full_sha_use(uses, CANONICAL_SETUP) or uses.endswith(LOCAL_SETUP_SUFFIX):
+    # Relative actions can be supplied by the caller and need not be the
+    # trusted implementation. Only immutable, externally pinned provider
+    # actions can satisfy the fleet's cache invariant.
+    if is_full_sha_use(uses, CANONICAL_SETUP):
         return "setup"
-    if is_full_sha_use(uses, CANONICAL_FINALIZE) or uses.endswith(LOCAL_FINALIZE_SUFFIX):
+    if is_full_sha_use(uses, CANONICAL_FINALIZE):
         return "finalize"
     return None
 
