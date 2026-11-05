@@ -63,8 +63,8 @@ if "codeandsolder/rust-skills2/.github/actions/" in workflow:
 provider_revisions: set[str] = set()
 for action in ("setup-sccache", "finalize-sccache"):
     matcher = re.compile(
-        rf"(?m)^\\s*uses:\\s*codeandsolder/ci-workflows/\\.github/actions/"
-        rf"{action}@([0-9a-f]{{40}})\\s*# main\\s*$"
+        rf"(?m)^\s*uses:\s*codeandsolder/ci-workflows/\.github/actions/"
+        rf"{action}@([0-9a-f]{{40}})\s*# main\s*$"
     )
     matches = matcher.findall(workflow)
     if len(matches) != 1:
