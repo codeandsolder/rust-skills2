@@ -60,11 +60,24 @@ for needle in required:
 if "codeandsolder/rust-skills2/.github/actions/" in workflow:
     raise SystemExit("strict reusable workflow must not call rust-skills2 composite actions through a remote ref")
 
-provider_sha = "18397eb8f0bd8a76f90010a66a8519011f7992ca"
+provider_revisions: set[str] = set()
 for action in ("setup-sccache", "finalize-sccache"):
-    needle = f"codeandsolder/ci-workflows/.github/actions/{action}@{provider_sha}"
-    if needle not in workflow:
-        raise SystemExit(f"strict reusable workflow must use pinned canonical {action}: {needle}")
+    matcher = re.compile(
+        rf"(?m)^\\s*uses:\\s*codeandsolder/ci-workflows/\\.github/actions/"
+        rf"{action}@([0-9a-f]{{40}})\\s*# main\\s*$"
+    )
+    matches = matcher.findall(workflow)
+    if len(matches) != 1:
+        raise SystemExit(
+            f"strict reusable workflow must use exactly one immutable, "
+            f"Renovate-tracked canonical {action} action; found {len(matches)}"
+        )
+    provider_revisions.add(matches[0])
+if len(provider_revisions) != 1:
+    raise SystemExit(
+        "strict reusable workflow setup/finalize actions must pin the same "
+        "provider commit SHA"
+    )
 for forbidden in (
     "Swatinem/rust-cache",
     "preserve-rustc-wrapper",
