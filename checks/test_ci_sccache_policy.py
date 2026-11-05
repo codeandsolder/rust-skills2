@@ -207,6 +207,24 @@ jobs:
 """
 )
 
+# Installation streams execute shell from stdin, not the first argument
+# following `--`. rustup's "--default-toolchain" must not be mistaken for a
+# locally executed script, or the strict gate falsely rejects valid installers.
+for command in (
+    "curl -fsSL https://sh.rustup.rs | sh -s -- --default-toolchain none -y",
+    "curl -fsSL https://sh.rustup.rs | bash -es -- --default-toolchain none -y",
+    "printf 'echo ok' | dash -s -- --default-toolchain none",
+):
+    assert_clean(
+        f"""
+jobs:
+  installer:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: {command}
+"""
+    )
+
 # Legacy cache actions are forbidden even if compilation is hidden behind a task
 # runner and therefore cannot be proven from the workflow text alone.
 assert_blocked(

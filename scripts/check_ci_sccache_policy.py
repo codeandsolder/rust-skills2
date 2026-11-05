@@ -266,6 +266,7 @@ def script_target(tokens: list[str]) -> tuple[str | None, str | None]:
         if any(arg.startswith("<<") for arg in args):
             return None, None
         index = 0
+        reads_stdin = False
         while index < len(args):
             arg = args[index]
             if arg == "--":
@@ -279,9 +280,16 @@ def script_target(tokens: list[str]) -> tuple[str | None, str | None]:
                 index += 2
                 continue
             if arg.startswith("-"):
+                # POSIX sh/bash -s reads the program from stdin. Arguments
+                # after `--` are positional parameters, not local scripts.
+                # A combined short option such as `-es` has the same meaning.
+                if not arg.startswith("--") and "s" in arg[1:]:
+                    reads_stdin = True
                 index += 1
                 continue
             break
+        if reads_stdin:
+            return None, None
         return (args[index], None) if index < len(args) else (None, None)
     if command in {"source", "."}:
         return (args[0], None) if args else (None, None)
