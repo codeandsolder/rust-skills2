@@ -15,8 +15,6 @@ CANONICAL_WORKFLOW = "codeandsolder/ci-workflows/.github/workflows/rust-sccache.
 STRICT_WORKFLOW = "codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@"
 CANONICAL_SETUP = "codeandsolder/ci-workflows/.github/actions/setup-sccache@"
 CANONICAL_FINALIZE = "codeandsolder/ci-workflows/.github/actions/finalize-sccache@"
-LOCAL_SETUP_SUFFIX = "/.github/actions/setup-sccache"
-LOCAL_FINALIZE_SUFFIX = "/.github/actions/finalize-sccache"
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 CARGO_NON_COMPILING = {
     "add",
@@ -396,9 +394,12 @@ def step_mentions_rust(step: Any) -> bool:
 
 
 def canonical_step_kind(uses: str) -> str | None:
-    if is_full_sha_use(uses, CANONICAL_SETUP) or uses.endswith(LOCAL_SETUP_SUFFIX):
+    # Relative actions can be supplied by the caller and need not be the
+    # trusted implementation. Only immutable, externally pinned provider
+    # actions can satisfy the fleet's cache invariant.
+    if is_full_sha_use(uses, CANONICAL_SETUP):
         return "setup"
-    if is_full_sha_use(uses, CANONICAL_FINALIZE) or uses.endswith(LOCAL_FINALIZE_SUFFIX):
+    if is_full_sha_use(uses, CANONICAL_FINALIZE):
         return "finalize"
     return None
 
