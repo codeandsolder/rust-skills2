@@ -26,7 +26,7 @@ fi
 # configured wrapper here: doing so silently bypasses the fleet cache invariant.
 if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
     case "${CODEANDSOLDER_SCCACHE_MODE:-}" in
-        public-actions|private-asus-garage) ;;
+        public-actions|private-local-garage) ;;
         *)
             echo "checks: CI requires canonical sccache setup" >&2
             exit 2
