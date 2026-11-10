@@ -50,6 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 2
           persist-credentials: false
           submodules: ${{ inputs.checkout-submodules }}
 
@@ -81,6 +82,14 @@ jobs:
           --root "$GITHUB_WORKSPACE"
           --strict-ref "$EXPECTED_STRICT_REF"
 
+      - name: Quarantine newly introduced crates.io versions across all workspaces
+        if: github.event_name == 'pull_request'
+        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@b52860b2cbe7cb651ee047e1235731be4a7d672d # main
+        with:
+          base-ref: ${{ github.event.pull_request.base.sha }}
+          lockfile: auto
+          hours: "72"
+
       - name: Install native build dependencies
         if: ${{ inputs.apt-packages != '' }}
         env:
@@ -98,7 +107,7 @@ jobs:
           components: clippy,rustfmt
 
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@be66a1ada16209be5b75d39724ef7383892d92cc # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@b52860b2cbe7cb651ee047e1235731be4a7d672d # main
         with:
           rust-toolchain: nightly
           rustflags: ""
@@ -129,4 +138,4 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@be66a1ada16209be5b75d39724ef7383892d92cc # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@b52860b2cbe7cb651ee047e1235731be4a7d672d # main
