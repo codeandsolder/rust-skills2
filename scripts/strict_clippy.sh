@@ -102,7 +102,7 @@ export CARGO_BUILD_WARNINGS=deny
 # read this checked-out policy directory; public runners use runner-local sccache.
 if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
     case "${CODEANDSOLDER_SCCACHE_MODE:-}" in
-        public-actions|private-asus-garage) ;;
+        public-actions|private-local-garage) ;;
         *)
             echo "rust-skills2: CI requires canonical sccache setup; invalid/missing CODEANDSOLDER_SCCACHE_MODE=${CODEANDSOLDER_SCCACHE_MODE:-<unset>}" >&2
             exit 2
