@@ -51,11 +51,21 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
 
       - name: Source-only lint policy action accepts generated-boundary fixture
         uses: ./.github/actions/source-lint-policy
         with:
           working-directory: checks/fixtures/strict-ci-generated-boundary
+
+      - name: Strict Rust quarantine action checks real Cargo.lock baseline
+        if: github.event_name == 'pull_request'
+        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@b52860b2cbe7cb651ee047e1235731be4a7d672d # main
+        with:
+          base-ref: ${{ github.event.pull_request.base.sha }}
+          lockfile: auto
+          hours: "72"
 
       - name: Python action accepts strict CI-only Python
         uses: ./.github/actions/python-strict

@@ -86,6 +86,22 @@ for forbidden in (
     if forbidden in workflow:
         raise SystemExit(f"strict reusable workflow retains obsolete cache escape hatch: {forbidden}")
 
+quarantine_match = re.search(
+    r"(?m)^        uses: codeandsolder/ci-workflows/\.github/actions/"
+    r"cargo-release-quarantine@([0-9a-f]{40}) # main$",
+    workflow,
+)
+if quarantine_match is None:
+    raise SystemExit("strict Rust must pin the shared Cargo quarantine action")
+if "if: github.event_name == 'pull_request'" not in workflow:
+    raise SystemExit("Cargo quarantine must run on PRs only")
+if "base-ref: ${{ github.event.pull_request.base.sha }}" not in workflow:
+    raise SystemExit("Cargo quarantine must compare to the PR base")
+if "lockfile: auto" not in workflow:
+    raise SystemExit("Cargo quarantine must scan all tracked workspaces")
+if quarantine_match.group(1) != next(iter(provider_revisions)):
+    raise SystemExit("Cargo quarantine and sccache must use one trusted CI provider SHA")
+
 python_action = (ROOT / ".github/actions/python-strict/action.yml").read_text()
 if not indented_block_contains(
     python_action,
