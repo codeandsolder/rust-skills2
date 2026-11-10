@@ -45,7 +45,7 @@ permissions:
 jobs:
   strict-rust:
     name: Strict Rust + Python policy
-    runs-on: ${{ github.event.repository.private && 'asus' || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && fromJSON('["self-hosted","Linux","X64"]') || 'ubuntu-24.04' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,7 +84,7 @@ jobs:
 
       - name: Quarantine newly introduced crates.io versions across all workspaces
         if: github.event_name == 'pull_request'
-        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@b52860b2cbe7cb651ee047e1235731be4a7d672d # main
+        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@3a19d861aced60226c05c499fecc6761b66a6f49 # main
         with:
           base-ref: ${{ github.event.pull_request.base.sha }}
           lockfile: auto
@@ -107,7 +107,7 @@ jobs:
           components: clippy,rustfmt
 
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@b52860b2cbe7cb651ee047e1235731be4a7d672d # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@3a19d861aced60226c05c499fecc6761b66a6f49 # main
         with:
           rust-toolchain: nightly
           rustflags: ""
@@ -138,4 +138,4 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@b52860b2cbe7cb651ee047e1235731be4a7d672d # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@3a19d861aced60226c05c499fecc6761b66a6f49 # main

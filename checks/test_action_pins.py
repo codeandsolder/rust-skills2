@@ -43,6 +43,10 @@ for path in GATE_FILES:
             raise SystemExit(f"{path}:{lineno}: external action ref is not a full commit SHA: {ref}")
 
 workflow = (ROOT / ".github/workflows/strict-rust.yml").read_text()
+selector = "runs-on: ${{ github.event.repository.private && fromJSON('[\"self-hosted\",\"Linux\",\"X64\"]') || 'ubuntu-24.04' }}"
+if selector not in workflow:
+    raise SystemExit("strict Rust visibility routing must use hosted Ubuntu for public and local Linux x64 for private")
+
 required = [
     "repository: ${{ job.workflow_repository }}",
     "ref: ${{ job.workflow_sha }}",
