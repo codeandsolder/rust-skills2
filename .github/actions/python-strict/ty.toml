@@ -10,7 +10,7 @@ possibly-missing-attribute = "ignore"
 possibly-missing-import = "ignore"
 possibly-unresolved-reference = "error"
 unsound-assignment = "error"
-unsound-return-statement = "error"
+unsound-return = "error"
 unsound-yield = "error"
 unsupported-dynamic-base = "error"
 
