@@ -27,7 +27,7 @@ jobs:
         with:
           targets: x86_64-unknown-linux-gnu
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@39f1e45632ec74fa43ef9976962c26f692c22b6e # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@a79d5260eee1f40d6499e04c6f7999effe071831 # main
         with:
           rust-toolchain: "1.100.0"
           rustflags: ""
@@ -43,7 +43,7 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@39f1e45632ec74fa43ef9976962c26f692c22b6e # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@a79d5260eee1f40d6499e04c6f7999effe071831 # main
 
   strict-gate-self-test:
     name: Strict reusable gate self-test
@@ -61,7 +61,7 @@ jobs:
 
       - name: Strict Rust quarantine action checks real Cargo.lock baseline
         if: github.event_name == 'pull_request'
-        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@39f1e45632ec74fa43ef9976962c26f692c22b6e # main
+        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@a79d5260eee1f40d6499e04c6f7999effe071831 # main
         with:
           base-ref: ${{ github.event.pull_request.base.sha }}
           lockfile: auto
@@ -146,7 +146,7 @@ jobs:
           echo "Python gate correctly rejected a ty violation"
 
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@39f1e45632ec74fa43ef9976962c26f692c22b6e # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@a79d5260eee1f40d6499e04c6f7999effe071831 # main
         with:
           rust-toolchain: nightly
           rustflags: ""
@@ -521,5 +521,5 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@39f1e45632ec74fa43ef9976962c26f692c22b6e # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@a79d5260eee1f40d6499e04c6f7999effe071831 # main
 
