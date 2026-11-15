@@ -96,7 +96,7 @@ Do not convert “need two consumers” into an automatic “must collect” rul
 
 ## Reuse a Stable Collection with `Extend`
 
-On stable Rust 1.98, `Iterator::collect_into()` is still a nightly-only experimental API (`iter_collect_into`). For a caller-provided reusable `Vec`, use stable collection operations instead:
+On stable Rust 1.100, `Iterator::collect_into()` is still a nightly-only experimental API (`iter_collect_into`). For a caller-provided reusable `Vec`, use stable collection operations instead:
 
 ```rust
 struct Item {
@@ -169,7 +169,7 @@ Measure the workload if allocation traffic or cache behavior is material.
 - Prefer direct consumers such as `any`, `find`, `count`, and `sum` for stream questions.
 - Collect when you need ownership, sorting, indexing, mutation, phase separation, or durable reuse.
 - Recompute a cheap repeatable iterator when that is simpler than storing it; materialize expensive/nonrepeatable work when appropriate.
-- On stable Rust 1.98, reuse caller-provided collections with `clear` + `extend`; `collect_into` remains nightly-only.
+- On stable Rust 1.100, reuse caller-provided collections with `clear` + `extend`; `collect_into` remains nightly-only.
 - Do not promise fixed allocation counts without measuring the concrete collection and workload.
 
 ## See Also

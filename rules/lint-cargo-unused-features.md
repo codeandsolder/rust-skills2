@@ -1,11 +1,10 @@
 # lint-cargo-unused-features
 
-> Detect unused feature flags declared in Cargo.toml (`[lints.cargo]`, nightly-only)
+> Audit unused Cargo feature flags; distinguish Cargo 1.100’s stable lint infrastructure from the still-experimental feature lint
 
 **Rule**: `lint-cargo-unused-features`
 
-**Status**: 🚧 Unstable — this lint has not yet been stabilized. The Cargo linting
-infrastructure (`-Zcargo-lints` / `[lints.cargo]`) is still nightly-only.
+**Status**: 🚧 The `unused_features` lint itself is not known to be stable in Cargo 1.100. The `[lints.cargo]` infrastructure **is stable** since Cargo 1.100 and includes the separate `cargo::unused_dependencies` lint.
 Tracking issue: [rust-lang/cargo#12158](https://github.com/rust-lang/cargo/issues/12158).
 
 ## Why It Matters
@@ -38,10 +37,10 @@ std = []
 
 ## Configuration (Nightly Only)
 
-When the Cargo linting infrastructure is available, configure under `[lints.cargo]`:
+Only use the experimental unused-feature lint on a nightly Cargo version where it actually exists. Do **not** confuse this with the stabilized `cargo::unused_dependencies` lint:
 
 ```toml
-# Cargo.toml (requires nightly + -Zcargo-lints)
+# Cargo.toml (experimental lint; not stable on 1.100)
 [lints.cargo]
 unused_features = "deny"
 ```
@@ -49,7 +48,7 @@ unused_features = "deny"
 Or at the workspace level:
 
 ```toml
-# Root Cargo.toml (requires nightly + -Zcargo-lints)
+# Root Cargo.toml (experimental lint; not stable on 1.100)
 [workspace.lints.cargo]
 unused_features = "deny"
 ```
@@ -83,7 +82,7 @@ While the lint is unstable, prune unused features manually:
 
 ```bash
 # 1. List declared features
-grep -r 'cfg(feature\s*=' src/ | sort -u
+rg 'cfg(feature\s*=' src/ | sort -u
 
 # 2. Cross-reference with Cargo.toml [features]
 #    Features not appearing in any cfg!(feature = "...") are candidates
@@ -100,3 +99,4 @@ cargo test --all-features
 - [Cargo unstable features — lints.cargo](https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#lintscargo)
 - [Cargo reference — Features](https://doc.rust-lang.org/cargo/reference/features.html)
 - [lint-cargo-metadata](./lint-cargo-metadata.md) — Cargo metadata lints
+- [lint-cargo-unused-dependencies](./lint-cargo-unused-dependencies.md) — the stable Cargo 1.100 dependency lint

@@ -45,6 +45,24 @@ broken_intra_doc_links   = "deny"
 private_intra_doc_links  = "warn"
 ```
 
+## Cargo-Native Lints (Rust/Cargo 1.100+)
+
+The Cargo lint namespace is stable as of 1.100. It is separate from compiler,
+Clippy, and rustdoc lint namespaces:
+
+```toml
+[lints.cargo]
+unused_dependencies = "deny"
+```
+
+This lint checks manifest dependencies after relevant package targets have been
+built and does **not** currently report unused dev dependencies. For inherited
+policy, use `[workspace.lints.cargo]` in the workspace root and opt in via
+`[lints] workspace = true` on each member. Do not conflate this stable lint
+with Cargo's experimental `unused_features` lint.
+
+See [lint-cargo-unused-dependencies](./lint-cargo-unused-dependencies.md).
+
 ## Priority System
 
 Since Rust 1.74, lint levels support a `priority` field. Lower values win when multiple configs apply the same lint. Use `priority = -1` for category-level configs so individual lint overrides (which default to `priority = 0`) take precedence:

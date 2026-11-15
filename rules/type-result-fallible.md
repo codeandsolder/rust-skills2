@@ -177,6 +177,15 @@ impl std::error::Error for ParsePortError {}
 
 Libraries usually benefit from typed public errors callers can match. Applications may prefer a context-oriented dynamic error internally. Choose from the needs of the API boundary rather than applying one error crate everywhere.
 
+## Rust 1.100: Never Type as an Infallible Error
+
+As of 1.100, `!` is stable in generic positions, and
+`std::convert::Infallible` is a type alias for `!`. For new code targeting
+1.100+, `Result<T, !>` expresses an impossible error arm directly.
+Use `Infallible` when supporting pre-1.100 compilers. Never-type fallback
+also changes for pre-2024 editions; see
+[type-never-diverge](./type-never-diverge.md) for migration implications.
+
 ## See Also
 
 - [err-thiserror-lib](./err-thiserror-lib.md) — deriving typed library errors

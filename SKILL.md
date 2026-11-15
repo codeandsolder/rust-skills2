@@ -1,16 +1,16 @@
 ---
 name: rust-skills
 description: >
-  Comprehensive Rust coding guidelines with 325 rules across 26 categories.
+  Comprehensive Rust coding guidelines with 337 rules across 26 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
   matching, macros, closures, observability, testing, and common anti-patterns.
-  Modernized for Rust 1.99 (2024 edition). Invoke with /rust-skills.
+  Modernized for Rust 1.100 (2024 edition). Invoke with /rust-skills.
 license: MIT
 metadata:
   author: leonardomso
-  version: "2.1.0"
+  version: "2.2.0"
   sources:
     - Rust API Guidelines
     - Rust Performance Book
@@ -18,12 +18,12 @@ metadata:
     - The Rustonomicon
     - ripgrep, tokio, serde, polars, axum, cargo codebases
     - This Week in Rust 2024-2026
-    - blog.rust-lang.org release posts 1.85-1.99
+    - blog.rust-lang.org release posts 1.85-1.100
 ---
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 325 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.99 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 337 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.100 (2024 edition).
 
 ## When to Apply
 
@@ -43,12 +43,12 @@ Reference these guidelines when:
 |----------|----------|--------|--------|-------|
 | 1 | Ownership & Borrowing | CRITICAL | `own-` | 16 |
 | 2 | Error Handling | CRITICAL | `err-` | 17 |
-| 3 | Memory Optimization | CRITICAL | `mem-` | 22 |
-| 4 | Unsafe Code | CRITICAL | `unsafe-` | 8 |
+| 3 | Memory Optimization | CRITICAL | `mem-` | 25 |
+| 4 | Unsafe Code | CRITICAL | `unsafe-` | 10 |
 | 5 | API Design | HIGH | `api-` | 20 |
 | 6 | Async/Await | HIGH | `async-` | 21 |
 | 7 | Concurrency | HIGH | `conc-` | 4 |
-| 8 | Compiler Optimization | HIGH | `opt-` | 14 |
+| 8 | Compiler Optimization | HIGH | `opt-` | 15 |
 | 9 | Numeric & Arithmetic Safety | HIGH | `num-` | 5 |
 | 10 | Type Safety | MEDIUM | `type-` | 17 |
 | 11 | Trait & Generics Design | MEDIUM | `trait-` | 7 |
@@ -58,14 +58,14 @@ Reference these guidelines when:
 | 15 | Pattern Matching | MEDIUM | `pat-` | 5 |
 | 16 | Macros | MEDIUM | `macro-` | 8 |
 | 17 | Closures | MEDIUM | `closure-` | 6 |
-| 18 | Collections | MEDIUM | `coll-` | 4 |
+| 18 | Collections | MEDIUM | `coll-` | 6 |
 | 19 | Naming Conventions | MEDIUM | `name-` | 18 |
 | 20 | Testing | MEDIUM | `test-` | 21 |
 | 21 | Documentation | MEDIUM | `doc-` | 16 |
 | 22 | Observability | MEDIUM | `obs-` | 7 |
 | 23 | Performance Patterns | MEDIUM | `perf-` | 18 |
-| 24 | Project Structure | LOW | `proj-` | 17 |
-| 25 | Clippy & Linting | LOW | `lint-` | 18 |
+| 24 | Project Structure | LOW | `proj-` | 19 |
+| 25 | Clippy & Linting | LOW | `lint-` | 20 |
 | 26 | Anti-patterns | REFERENCE | `anti-` | 21 |
 
 ---
@@ -135,6 +135,9 @@ Reference these guidelines when:
 - [`mem-ecow-clone-heavy`](rules/mem-ecow-clone-heavy.md) - Consider `EcoString` for clone-heavy immutable-or-COW strings
 - [`mem-hotpath-profile`](rules/mem-hotpath-profile.md) - Profile memory before optimizing
 - [`mem-slotmap-arena`](rules/mem-slotmap-arena.md) - Use `SlotMap` for generation-checked stable keys; use `DenseSlotMap` when densely stored values and fast iteration are important
+- [`mem-box-map-take`](rules/mem-box-map-take.md) - Use Rust 1.100 `Box::map` and `Box::take` for value transformations that can preserve heap allocation
+- [`mem-custom-allocator`](rules/mem-custom-allocator.md) - Use stable Rust 1.100 allocator-aware `Vec` and `Box` when allocation ownership or placement is part of the API contract
+- [`mem-drop-guard`](rules/mem-drop-guard.md) - Use Rust 1.100 `DropGuard` for local unconditional cleanup and dismissible rollback; keep longer-lived ownership in dedicated RAII types
 
 ### 4. Unsafe Code (CRITICAL)
 
@@ -146,6 +149,8 @@ Reference these guidelines when:
 - [`unsafe-send-sync-manual`](rules/unsafe-send-sync-manual.md) - Justify manual `Send`/`Sync` from invariants enforced by the type and its dependencies, not from hoped-for caller behavior
 - [`unsafe-no-mangle-unsafe`](rules/unsafe-no-mangle-unsafe.md) - In Rust 2024, write `#[unsafe(no_mangle)]`, `#[unsafe(export_name = "...")]`, and `#[unsafe(link_section = "...")]` — not the bare attribute forms.
 - [`unsafe-strict-provenance`](rules/unsafe-strict-provenance.md) - Prefer strict provenance APIs (`ptr.addr()`, `ptr.map_addr()`, `ptr.with_addr()`) over integer-pointer round-tripping (`as usize` / `as *const T`); prefer raw borrow syntax (`&raw const x` / `&raw mut x`) over `addr_of!` / `addr_of_mut!`.
+- [`unsafe-cell-access`](rules/unsafe-cell-access.md) - Treat Rust 1.100 `UnsafeCell` accessors as explicit aliasing contracts, not as permission to manufacture simultaneous references
+- [`unsafe-conjure-zst`](rules/unsafe-conjure-zst.md) - Use Rust 1.100 `mem::conjure_zst` only when constructing an inhabited zero-sized value is proven sound
 
 ### 5. API Design (HIGH)
 
@@ -217,6 +222,7 @@ Reference these guidelines when:
 - [`opt-cache-friendly`](rules/opt-cache-friendly.md) - Shape data around measured access patterns and working sets; do not assume one layout is universally cache-friendly
 - [`opt-cold-path`](rules/opt-cold-path.md) - Use `core::hint::cold_path()` to mark unlikely inline paths (Rust 1.95+)
 - [`opt-select-unpredictable`](rules/opt-select-unpredictable.md) - Use `core::hint::select_unpredictable()` for branchless conditional moves (Rust 1.88+)
+- [`opt-sample-profile`](rules/opt-sample-profile.md) - Use stable Rust 1.100 `-Cprofile-sample-use` for measured sample-based PGO when the profiler and target match the build
 
 ### 9. Numeric & Arithmetic Safety (HIGH)
 
@@ -314,6 +320,8 @@ Reference these guidelines when:
 - [`coll-map-choice`](rules/coll-map-choice.md) - Pick the map by access pattern: `HashMap` (fast, unordered), `BTreeMap` (sorted / range queries), `IndexMap` (insertion order)
 - [`coll-seq-choice`](rules/coll-seq-choice.md) - Default to `Vec`; use `VecDeque` for queue/deque behaviour; avoid `LinkedList`
 - [`coll-set-membership`](rules/coll-set-membership.md) - Use `HashSet`/`BTreeSet` for membership tests and dedup, not linear `Vec::contains`
+- [`coll-trim-prefix-suffix`](rules/coll-trim-prefix-suffix.md) - Prefer Rust 1.100 `trim_prefix` / `trim_suffix` when optional boundary removal is clearer than manual slicing
+- [`coll-vec-from-fn`](rules/coll-vec-from-fn.md) - Prefer Rust 1.100 `Vec::from_fn` for an indexed, fixed-length vector constructor with no intermediate collection
 
 ### 19. Naming Conventions (MEDIUM)
 
@@ -429,6 +437,8 @@ Reference these guidelines when:
 - [`proj-lints-table`](rules/proj-lints-table.md) - Use `[lints]` / `[workspace.lints]` for centralized lint configuration
 - [`proj-workspace-metadata`](rules/proj-workspace-metadata.md) - Use `[workspace.package]` for shared metadata inheritance
 - [`proj-workspace-publish`](rules/proj-workspace-publish.md) - Use `cargo publish --workspace` for native workspace publishing (Rust 1.90+)
+- [`proj-cargo-artifact-layout`](rules/proj-cargo-artifact-layout.md) - Consume Cargo's supported artifact discovery interfaces instead of depending on intermediate build paths, especially with shared caches and worktrees
+- [`proj-cargo-publish-age`](rules/proj-cargo-publish-age.md) - Use Cargo 1.100's native dependency cooldown when new releases need time for review, while keeping lockfile changes intentional
 
 ### 25. Clippy & Linting (LOW)
 
@@ -445,11 +455,13 @@ Reference these guidelines when:
 - [`lint-workspace-lints`](rules/lint-workspace-lints.md) - Configure lints at workspace level for consistent enforcement
 - [`lint-cfg-check`](rules/lint-cfg-check.md) - Enable `unexpected_cfgs` and declare known cfgs to catch feature-gate typos
 - [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Enable `clippy::nursery` lints selectively and re-check group membership when the toolchain changes
-- [`lint-cargo-unused-features`](rules/lint-cargo-unused-features.md) - Detect unused feature flags declared in Cargo.toml (`[lints.cargo]`, nightly-only)
+- [`lint-cargo-unused-features`](rules/lint-cargo-unused-features.md) - Audit unused Cargo feature flags; distinguish Cargo 1.100’s stable lint infrastructure from the still-experimental feature lint
 - [`lint-dylint-custom`](rules/lint-dylint-custom.md) - Use Dylint for project-specific custom lints without forking clippy
 - [`lint-edition-2024`](rules/lint-edition-2024.md) - Use the `rust_2024_compatibility` lint group and `cargo fix --edition` to audit edition-sensitive code before switching to Rust 2024
 - [`lint-lints-table`](rules/lint-lints-table.md) - Use the `[lints]` table in `Cargo.toml` for canonical lint configuration (Rust 1.74+)
-- [`lint-uplifted`](rules/lint-uplifted.md) - Track Clippy lints uplifted into rustc and adjacent compiler lint changes (Rust 1.86-1.99)
+- [`lint-uplifted`](rules/lint-uplifted.md) - Track Clippy lints uplifted into rustc and adjacent compiler lint changes (Rust 1.86-1.100)
+- [`lint-cargo-unused-dependencies`](rules/lint-cargo-unused-dependencies.md) - Use Cargo 1.100's `cargo::unused_dependencies` lint for manifest hygiene; check all relevant targets before trusting an absence of warnings
+- [`lint-rustdoc-table`](rules/lint-rustdoc-table.md) - Keep rustdoc Markdown tables syntactically valid; Rust 1.100 adds `invalid_markdown_table` diagnostics
 
 ### 26. Anti-patterns (REFERENCE)
 

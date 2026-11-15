@@ -22,14 +22,14 @@ jobs:
         with:
           version: latest-known
           enable-cache: false
-      # Toolchain/target are pinned by checks/rust-toolchain.toml (Rust 1.99.0).
-      - uses: dtolnay/rust-toolchain@1.99.0
+      # Toolchain/target are pinned by checks/rust-toolchain.toml (Rust 1.100.0).
+      - uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: x86_64-unknown-linux-gnu
       - name: Setup mandatory sccache
         uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@39f1e45632ec74fa43ef9976962c26f692c22b6e # main
         with:
-          rust-toolchain: "1.99.0"
+          rust-toolchain: "1.100.0"
           rustflags: ""
       # The exact same command contributors run locally.
       - name: Run checks

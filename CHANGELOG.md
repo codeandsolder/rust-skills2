@@ -4,6 +4,29 @@ All notable changes to this skill are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning for the rule set.
 
+## [2.2.0]
+
+### Added
+- **Modernized for Rust 1.100.0 (2024 edition)**, with 12 focused new rules
+  covering stable allocator-parametric ownership, `DropGuard`, zero-sized
+  construction soundness, `UnsafeCell` accessors, box mapping/reuse, prefix
+  trimming, `Vec::from_fn`, Cargo-native unused-dependency linting, native
+  dependency cooldowns, artifact discovery, sample-based PGO, and rustdoc tables.
+- Added a release-specific [Rust 1.99 → 1.100 migration guide]
+  (docs/migration-rust-1.99-to-1.100.md) covering compiler compatibility,
+  stdlib APIs, Cargo resolution/layout, cache behavior, lint changes,
+  platforms and ABI changes, and an actionable verification checklist.
+
+### Changed
+- Fixed never-type rule: `Result<T, !>` is stable, `Infallible` is now an
+  alias for `!`, and the never-type fallback change affects all editions.
+- Clarified that Cargo's lint **infrastructure** is stable while its
+  unused-feature lint remains experimental.
+- Moved the example compiler/checker and GitHub Actions CI to Rust 1.100.0;
+  kept project MSRV distinct from the development compiler.
+- Preserved the shared sccache policy and dependency quarantine rather than
+  introducing parallel cache or resolver mechanisms.
+
 ## [2.1.0]
 
 ### Added

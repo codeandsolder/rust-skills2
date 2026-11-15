@@ -10,7 +10,7 @@ The never type `!` has no values. A function returning `!` therefore cannot retu
 
 Diverging expressions such as `panic!()`, `return`, `break`, and an infinite `loop` can coerce to the type required by their surrounding expression. That is why a panic or process exit can occupy a `match` arm whose other arm produces an ordinary value.
 
-On stable Rust 1.98, `!` is usable in **function return types**, but general-purpose uses such as `Result<T, !>` are still unstable. Use `std::convert::Infallible` when a stable generic type needs an uninhabited error/value type.
+As of **Rust 1.100**, `!` is stable in **all type positions**, including `Result<T, !>` and trait bounds. `std::convert::Infallible` is now a type alias for `!`, so these spellings describe the same type. Choose `!` for new, appropriately MSRV-gated code; retain `Infallible` where older compilers must still be supported.
 
 ## Good: Mark a Diverging Function Explicitly
 
@@ -60,24 +60,24 @@ fn parse_or_exit(text: &str) -> u16 {
 }
 ```
 
-## Stable Generic Uninhabited Type: `Infallible`
+## Rust 1.100: Never Type in Generic Positions
 
-General-purpose `!` is not yet stable, so use `Infallible` when a generic position needs a type with no possible values.
+`Result<T, !>` is now a stable way to describe an operation whose error branch is impossible. The single possible `Ok` variant is exhaustive, so no panic or unreachable placeholder is needed:
 
 ```rust
-use std::convert::Infallible;
-
-fn fixed_value() -> Result<u32, Infallible> {
+fn guaranteed() -> Result<u32, !> {
     Ok(42)
 }
 
 fn main() {
-    let value = fixed_value().unwrap();
+    let Ok(value) = guaranteed();
     assert_eq!(value, 42);
 }
 ```
 
-Do not describe `Infallible` as literally identical to a fully stabilized `!` type today. It fills the common stable generic use case while general-purpose never-type syntax remains experimental.
+`std::convert::Infallible` is an **alias** of `!` in 1.100, not a distinct uninhabited enum. In a crate with a pre-1.100 MSRV, continue using `Infallible` where a generic uninhabited type is needed. Public-API changes that require `!` should be explicitly accompanied by an MSRV decision.
+
+**Breaking inference detail:** in Editions 2015/2018/2021, fallback for an unconstrained never type changes from `()` to `!` in 1.100, aligning with Edition 2024. Existing future-compatibility diagnostics (`never_type_fallback_flowing_into_unsafe` and `dependency_on_unit_never_type_fallback`) are good upgrade signals. Prefer explicit type annotations rather than changing logic or suppressing the lints.
 
 ## `Result::flatten` (Rust 1.89+)
 

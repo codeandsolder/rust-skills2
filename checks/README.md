@@ -11,7 +11,7 @@ bash checks/check.sh
 ```
 
 The command runs structural/link/index checks, regression-tests the expectation
-extractor, extracts examples, compiles them with the pinned Rust 1.99 toolchain,
+extractor, extracts examples, compiles them with the pinned Rust 1.100 toolchain,
 and enforces both explicit expectations and the remaining legacy baseline. It also
 runs fixture contracts and runtime regressions for the recommended cancellation
 example (partial reads, frame contents, EOF, and a closed message channel).
@@ -126,7 +126,7 @@ stale legacy debt; the generated diff should be treated as code-review material.
 
 ## Notes
 
-- The harness is pinned by `checks/rust-toolchain.toml` to Rust 1.99.0.
+- The harness is pinned by `checks/rust-toolchain.toml` to Rust 1.100.0.
 - Generated `examples/`, `check.json`, `check.err`, and `manifest.json` are ignored.
 - Outside strict `Good`/`Bad` sections, `gen.py` keeps legacy examples as
   `auto` except `#![feature(...)]` snippets, which remain nightly-only. Special
