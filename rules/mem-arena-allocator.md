@@ -10,6 +10,12 @@ The trade-off is just as important: values allocated directly with `bumpalo::Bum
 
 Use arenas because the lifetime model fits—not because “arena allocation is always faster.” Measure the real workload.
 
+## Standard Allocator API (Rust 1.100+)
+
+`std::alloc::Allocator` is now stable for allocator-parametric `Vec` and `Box`. This is a distinct mechanism from `bumpalo::Bump` references: a custom standard allocator owns the storage behind the collection, and the collection's element destructors still run normally. Do not assume this stabilization automatically makes every bump allocator compatible with `Vec<T, A>`; its trait implementation and lifetime requirements must actually fit.
+
+See [mem-custom-allocator](./mem-custom-allocator.md) for allocator ownership contracts and raw parts.
+
 ## Basic Arena Allocation
 
 ```rust

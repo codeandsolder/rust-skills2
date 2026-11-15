@@ -116,6 +116,25 @@ private_intra_doc_links = "warn"
 missing_crate_level_docs = "warn"
 ```
 
+## Cargo 1.100: Workspace-Level Manifest Lints
+
+The now-stable Cargo lint namespace may be inherited alongside rustc, Clippy,
+and rustdoc configuration. To flag unused ordinary dependencies:
+
+```toml
+[workspace.lints.cargo]
+unused_dependencies = "deny"
+
+# Each workspace member:
+[lints]
+workspace = true
+```
+
+Unlike a source-code lint, `cargo::unused_dependencies` needs comprehensive
+target coverage before a dependency can be proved unused and does not
+currently report unused `dev-dependencies`. See
+[lint-cargo-unused-dependencies](./lint-cargo-unused-dependencies.md).
+
 ## Per-Crate Overrides
 
 > **CRITICAL**: Cargo issue [#13157](https://github.com/rust-lang/cargo/issues/13157) — when `[lints] workspace = true` is set, member `Cargo.toml` files **cannot** override individual lints. For a genuinely suppressible lint, use the narrowest code-level `#[expect(..., reason = "...")]`. Do not use an expectation to waive correctness/safety policy.

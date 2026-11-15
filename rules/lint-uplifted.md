@@ -1,6 +1,6 @@
 # lint-uplifted
 
-> Track Clippy lints uplifted into rustc and adjacent compiler lint changes (Rust 1.86-1.99)
+> Track Clippy lints uplifted into rustc and adjacent compiler lint changes (Rust 1.86-1.100)
 
 **Rule**: `lint-uplifted`
 
@@ -49,7 +49,10 @@ dangling_pointers_from_locals = "warn"
 const_item_interior_mutations = "warn"
 function_casts_as_integer    = "warn"
 unused_visibilities          = "warn"
-uninhabited_static           = "deny"\ninvalid_runtime_symbol_definitions = "deny"\nsuspicious_runtime_symbol_definitions = "warn"\nc_void_returns                 = "warn"
+uninhabited_static           = "deny"
+invalid_runtime_symbol_definitions = "deny"
+suspicious_runtime_symbol_definitions = "warn"
+c_void_returns                 = "warn"
 ```
 
 
@@ -89,7 +92,7 @@ When upgrading the minimum Rust version, check which clippy lints have been upli
 rustc --version
 
 # Look for deprecation warnings from clippy about uplifted lints
-cargo clippy 2>&1 | grep "has been uplifted"
+cargo clippy 2>&1 | rg "has been uplifted"
 ```
 
 When a clippy lint is deprecated due to uplift, clippy prints a warning like:
@@ -114,8 +117,19 @@ dangling_pointers_from_locals = "warn"
 const_item_interior_mutations = "warn"
 function_casts_as_integer     = "warn"
 unused_visibilities           = "warn"
-uninhabited_static            = "deny"\ninvalid_runtime_symbol_definitions = "deny"\nsuspicious_runtime_symbol_definitions = "warn"\nc_void_returns                 = "warn"
+uninhabited_static            = "deny"
+invalid_runtime_symbol_definitions = "deny"
+suspicious_runtime_symbol_definitions = "warn"
+c_void_returns                 = "warn"
 ```
+
+## Rust 1.100 Review Signals
+
+- `aligned_fields_in_packed` is now a **deny-by-default rustc lint**, not a hard parser error; the alignment problem still needs fixing rather than an `allow`.
+- Rustc now warns about repeated `#[repr(...)]` attributes and also diagnoses `drop_in_place` misuse through `dropping_references`, `dropping_copy_types`, and `undropped_manually_drops`.
+- Rustdoc adds `invalid_markdown_table` for malformed table markup.
+- Cargo has **its own** stable `[lints.cargo]` namespace; `cargo::unused_dependencies` is not a rustc or Clippy lint.
+- Rust 1.100 treats `Infallible` as `!` and changes never-type fallback in pre-2024 editions. This is primarily a type-system migration, not a lint uplift.
 
 ## See Also
 
@@ -124,6 +138,10 @@ uninhabited_static            = "deny"\ninvalid_runtime_symbol_definitions = "de
 - [Rust 1.91.0 release notes](https://releases.rs/docs/1.91.0/) — `integer_to_ptr_transmutes`, `dangling_pointers_from_locals`
 - [Rust 1.93.0 release notes](https://releases.rs/docs/1.93.0/) — `const_item_interior_mutations`, `function_casts_as_integer`
 - [Rust 1.94.0 release notes](https://releases.rs/docs/1.94.0/) — `unused_visibilities`
-- [Rust 1.96.0 release notes](https://releases.rs/docs/1.96.0/) — `uninhabited_static`\n- [Rust 1.98.0 release notes](https://blog.rust-lang.org/2026/08/20/Rust-1.98.0/) — runtime-symbol and `c_void_returns` lints\n- [Rust 1.99.0 release notes](https://blog.rust-lang.org/2026/10/01/Rust-1.99.0/) — raw-borrow, cfg-select, panic, and compatibility diagnostics
+- [Rust 1.96.0 release notes](https://releases.rs/docs/1.96.0/) — `uninhabited_static`
+- [Rust 1.98.0 release notes](https://blog.rust-lang.org/2026/08/20/Rust-1.98.0/) — runtime-symbol and `c_void_returns` lints
+- [Rust 1.99.0 release notes](https://blog.rust-lang.org/2026/10/01/Rust-1.99.0/) — raw-borrow, cfg-select, panic, and compatibility diagnostics
+- [Rust 1.100.0 release notes](https://blog.rust-lang.org/2026/11/12/Rust-1.100.0/) — packed alignment, drop-in-place, repr, rustdoc diagnostics, and Cargo-native lints
+- [lint-cargo-unused-dependencies](./lint-cargo-unused-dependencies.md) — stable manifest lint
 - [lint-deny-correctness](./lint-deny-correctness.md) — Correctness lint configuration
 - [lint-lints-table](./lint-lints-table.md) — Lint configuration via `[lints]` table
