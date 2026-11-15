@@ -21,6 +21,18 @@ fn main() {
 }
 ```
 
+For filesystem paths, use the same operation on path components:
+
+```rust
+use std::path::Path;
+
+fn main() {
+    let path = Path::new("/source/crate/src/lib.rs");
+    assert_eq!(path.trim_prefix("/source/crate"), Path::new("src/lib.rs"));
+    assert_eq!(path.trim_prefix("/different"), path);
+}
+```
+
 For a **required** prefix, prefer `strip_prefix` plus an explicit error/branch. Trimming silently retains unmatched data, which is wrong for mandatory input validation. Neither operation implies case folding, canonical Unicode normalization, or path security validation.
 
 Use `Path::trim_prefix` for filesystem paths instead of slicing their string representation. Path semantics are component-aware and not interchangeable with string prefix operations.

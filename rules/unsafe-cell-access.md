@@ -24,6 +24,37 @@ fn main() {
 }
 ```
 
+## Good: 1.100 Accessors With Disjoint Borrow Scopes
+
+```rust
+use std::cell::UnsafeCell;
+
+fn main() {
+    let value = UnsafeCell::new(5_u32);
+
+    // SAFETY: no references to the inner value exist; no concurrent accesses.
+    let previous = unsafe { value.replace(6) };
+    assert_eq!(previous, 5);
+
+    {
+        // SAFETY: no mutable references or writes coexist with this shared borrow.
+        let borrowed = unsafe { value.as_ref_unchecked() };
+        assert_eq!(*borrowed, 6);
+    }
+
+    {
+        // SAFETY: exclusive access for the entire returned mutable reference.
+        let borrowed_mut = unsafe { value.as_mut_unchecked() };
+        *borrowed_mut += 1;
+    }
+    assert_eq!(value.into_inner(), 7);
+}
+```
+
+If the caller already has `&mut UnsafeCell<T>`, prefer the safe `get_mut()`
+shown above. These unchecked accessors exist for carefully audited *shared*
+`UnsafeCell` wrappers, not to avoid expressing exclusive access where possible.
+
 When using the new unchecked helpers, prove absence of conflicting references for the entire resulting borrow. `UnsafeCell::replace` is not an atomic replacement; it does not make concurrent access safe.
 
 ## Review Checklist
