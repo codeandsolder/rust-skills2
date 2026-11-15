@@ -77,7 +77,7 @@ Materializing `a` and `b` into a third collection would add work and memory with
 
 ## Stable API Status
 
-`Iterator::chain` has long been stable. The separate free function `std::iter::chain(a, b)` / `core::iter::chain(a, b)` is **still nightly-only in Rust 1.98** under the `iter_chain` feature. On stable Rust, use the method form:
+`Iterator::chain` has long been stable. The separate free function `std::iter::chain(a, b)` / `core::iter::chain(a, b)` is **still nightly-only in Rust 1.100** under the `iter_chain` feature. On stable Rust, use the method form:
 
 ```rust
 fn collect_all(a: &[u8], b: &[u8]) -> Vec<u8> {
@@ -152,7 +152,7 @@ Use representative sizes and targets. Inspect generated assembly if the claimed 
 - Keep `.chain()` for short-circuiting pipelines unless measurement says otherwise.
 - Use separate loops when they are clearer or benchmark better in a critical kernel.
 - Materialize only when ownership/reuse semantics justify the allocation and copy.
-- Remember that the free `iter::chain` function remains nightly-only on Rust 1.98.
+- Remember that the free `iter::chain` function remains nightly-only on Rust 1.100.
 - Never assign fixed branch counts or performance rankings from source syntax alone.
 
 ## See Also

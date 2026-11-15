@@ -101,7 +101,7 @@ If code size specifically matters, `#[inline(never)]` can be evaluated separatel
 
 ## `cold_path()` Is the Stable Path Hint
 
-As of Rust 1.98, `core::hint::cold_path()` is stable (since 1.95). The direct `core::hint::likely` and `unlikely` functions are still nightly-only.
+As of Rust 1.100, `core::hint::cold_path()` is stable (since 1.95). The direct `core::hint::likely` and `unlikely` functions are still nightly-only.
 
 That means stable code should not teach `likely()` / `unlikely()` as if they were ordinary stable APIs. In many cases a normal branch plus `cold_path()` in the rare arm is clearer anyway.
 
