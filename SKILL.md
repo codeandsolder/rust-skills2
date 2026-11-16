@@ -218,7 +218,7 @@ Reference these guidelines when:
 - [`opt-pgo-profile`](rules/opt-pgo-profile.md) - Use Profile-Guided Optimization (PGO) for maximum performance
 - [`opt-target-cpu`](rules/opt-target-cpu.md) - Tune `target-cpu` only for deployment CPUs you actually control, and use explicit runtime dispatch for portable binaries
 - [`opt-bounds-check`](rules/opt-bounds-check.md) - Structure hot loops so bounds are easy to prove; verify optimized code before using unchecked indexing
-- [`opt-simd-portable`](rules/opt-simd-portable.md) - Start with autovectorization; use stable SIMD crates or carefully dispatched `#[target_feature]` code when measurement justifies it.
+- [`opt-simd-portable`](rules/opt-simd-portable.md) - Treat portable SIMD as a semantic abstraction, not a speed guarantee: preserve scalar behavior, use safe vector memory operations, dispatch CPU-specific kernels correctly, and verify code generation and measured performance.
 - [`opt-cache-friendly`](rules/opt-cache-friendly.md) - Shape data around measured access patterns and working sets; do not assume one layout is universally cache-friendly
 - [`opt-cold-path`](rules/opt-cold-path.md) - Use `core::hint::cold_path()` to mark unlikely inline paths (Rust 1.95+)
 - [`opt-select-unpredictable`](rules/opt-select-unpredictable.md) - Use `core::hint::select_unpredictable()` for branchless conditional moves (Rust 1.88+)
