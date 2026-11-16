@@ -4,6 +4,15 @@ All notable changes to this skill are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning for the rule set.
 
+## [Unreleased]
+
+### Changed
+- Expanded `opt-simd-portable` into a comprehensive SIMD implementation and
+  review guide: nightly portable SIMD APIs, integer/floating-point semantics,
+  mask and memory safety, lane tails, gather/scatter, runtime CPU dispatch,
+  reliable benchmarks, target compatibility, and differential tests. Replaced
+  the incomplete AVX2 sample with a functional dispatched XOR kernel.
+
 ## [2.2.0]
 
 ### Added
