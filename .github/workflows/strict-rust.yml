@@ -72,6 +72,9 @@ jobs:
           ban-python-outside-ci: ${{ inputs.ban-python-outside-ci }}
           python-ci-paths: ${{ inputs.python-ci-paths }}
 
+      - name: Enforce PR workflow supersession across all caller workflows
+        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@f48869d35452af442aa70c6dcc64de5cfa91eca4 # main
+
       - name: Enforce canonical Rust CI caching
         shell: bash
         env:
