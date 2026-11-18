@@ -23,7 +23,7 @@ jobs:
           version: latest-known
           enable-cache: false
       - name: Enforce PR workflow supersession across all caller workflows
-        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@68ff0c543bfd83222d36c7f95321c3f47481c69e # main
+        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@f48869d35452af442aa70c6dcc64de5cfa91eca4 # main
 
       # Toolchain/target are pinned by checks/rust-toolchain.toml (Rust 1.100.0).
       - uses: dtolnay/rust-toolchain@1.100.0
