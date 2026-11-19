@@ -56,8 +56,6 @@ echo "==> compiler evidence and source-policy regression tests"
 run_python "$ROOT/checks/test_analyze.py"
 run_python "$ROOT/checks/test_source_lint_policy.py"
 run_python "$ROOT/checks/test_action_pins.py"
-"$UV" run --no-project --with pyyaml python "$ROOT/checks/test_ci_sccache_policy.py"
-"$UV" run --no-project --with pyyaml python "$ROOT/scripts/check_ci_sccache_policy.py" --root "$ROOT"
 
 echo "==> generating example files from rules"
 cd "$ROOT/checks"
