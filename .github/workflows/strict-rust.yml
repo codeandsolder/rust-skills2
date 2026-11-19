@@ -76,7 +76,7 @@ jobs:
         uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@f48869d35452af442aa70c6dcc64de5cfa91eca4 # main
 
       - name: Enforce canonical Rust CI caching
-        uses: codeandsolder/ci-workflows/.github/actions/rust-ci-sccache-policy@aa55d594e01e0d6f527afdc57481cd6608c2f971 # main
+        uses: codeandsolder/ci-workflows/.github/actions/rust-ci-sccache-policy@108f9de3893da7e4f6c59b4d8e3842e37096b0be # main
         with:
           strict-ref: ${{ job.workflow_sha }}
 
