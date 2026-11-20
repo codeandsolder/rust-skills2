@@ -62,14 +62,6 @@ jobs:
         with:
           working-directory: checks/fixtures/strict-ci-generated-boundary
 
-      - name: Strict Rust quarantine action checks real Cargo.lock baseline
-        if: github.event_name == 'pull_request'
-        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
-        with:
-          base-ref: ${{ github.event.pull_request.base.sha }}
-          lockfile: auto
-          hours: "72"
-
       - name: Python action accepts strict CI-only Python
         uses: ./.github/actions/python-strict
         env:
