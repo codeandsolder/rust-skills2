@@ -23,14 +23,14 @@ jobs:
           version: latest-known
           enable-cache: false
       - name: Enforce PR workflow supersession across all caller workflows
-        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@f48869d35452af442aa70c6dcc64de5cfa91eca4 # main
+        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
 
       # Toolchain/target are pinned by checks/rust-toolchain.toml (Rust 1.100.0).
       - uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: x86_64-unknown-linux-gnu
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@4b748f18ffb855f167486cb978187ea1c08fbcbb # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
         with:
           rust-toolchain: "1.100.0"
           rustflags: ""
@@ -46,7 +46,7 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@4b748f18ffb855f167486cb978187ea1c08fbcbb # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
 
   strict-gate-self-test:
     name: Strict reusable gate self-test
@@ -64,7 +64,7 @@ jobs:
 
       - name: Strict Rust quarantine action checks real Cargo.lock baseline
         if: github.event_name == 'pull_request'
-        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@4b748f18ffb855f167486cb978187ea1c08fbcbb # main
+        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
         with:
           base-ref: ${{ github.event.pull_request.base.sha }}
           lockfile: auto
@@ -149,7 +149,7 @@ jobs:
           echo "Python gate correctly rejected a ty violation"
 
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@4b748f18ffb855f167486cb978187ea1c08fbcbb # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
         with:
           rust-toolchain: nightly
           rustflags: ""
@@ -524,5 +524,5 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@4b748f18ffb855f167486cb978187ea1c08fbcbb # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
 
