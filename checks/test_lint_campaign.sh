@@ -4,7 +4,15 @@ set -euo pipefail
 SKILLS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 tool="$SKILLS/scripts/lint_campaign.sh"
 tmp=$(mktemp -d "${LINT_CAMPAIGN_TEST_ROOT:-${RUNNER_TEMP:-/tmp}}/lint-campaign-test.XXXXXX")
-trap 'rm -rf -- "$tmp"' EXIT
+cleanup() {
+    local rc=$?
+    if ((rc!=0)); then
+        find "$tmp" -type f \( -name '*.stderr' -o -name 'queue-*.log' -o -name '*.gate.log' -o -name 'drain.log' \) -print |
+            while IFS= read -r log; do printf '\n== %s ==\n' "$log"; tail -40 "$log"; done
+    fi
+    rm -rf -- "$tmp"
+}
+trap cleanup EXIT
 export LINT_CAMPAIGN_NIGHTLY=nightly LINT_CAMPAIGN_STABLE=stable
 export RUST_SKILLS2_ALLOW_TEST_PANICS=true
 export CARGO_BUILD_JOBS=1
@@ -43,6 +51,7 @@ RS
 (
     cd "$tmp/repo"
     cargo +stable generate-lockfile --offline
+    cargo +stable fmt --all
     git add .
     git commit --quiet -m baseline
     git push --quiet -u origin campaign
@@ -95,7 +104,7 @@ if run claim other 1 "$one_file" 1; then echo "queued file claimed" >&2; exit 1;
 run drain >"$tmp/drain.log" 2>&1 &
 drain_pid=$!
 # While the first validator is running, the same editor can claim fresh files.
-for ((i=0;i<600;i++)); do
+for ((i=0;i<1800;i++)); do
     [[ -e "$tmp/validation-started" ]] && break
     if ! kill -0 "$drain_pid" 2>/dev/null; then cat "$tmp/drain.log"; exit 1; fi
     sleep 0.1

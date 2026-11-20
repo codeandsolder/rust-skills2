@@ -336,6 +336,7 @@ smoke=$(jq -er .smoke "$config"); nightly=$(jq -er .nightly "$config")
 stable=$(jq -er .stable "$config"); nightly_version=$(jq -er .nightly_version "$config")
 stable_version=$(jq -er .stable_version "$config"); skills_revision=$(jq -er .skills_revision "$config")
 allow_test_panics=$(jq -er .allow_test_panics "$config")
+if [[ "$action" == serve && ! -e "$registry" && ( -f "$state/finished" || -f "$state/stopped" ) ]]; then exit 0; fi
 [[ -f "$registry" && "$(cat "$registry")" == "$state" ]] || die "campaign not active"
 if [[ "$action" != upgrade && -e "$state/migrating" ]]; then die "campaign migration in progress"; fi
 case "$action" in
