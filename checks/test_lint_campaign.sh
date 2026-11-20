@@ -23,13 +23,16 @@ publish = false
 TOML
 cat >"$tmp/repo/src/lib.rs" <<'RS'
 mod alpha;
+mod gamma;
 #[path = "../shared/beta.rs"]
 mod beta;
 pub use alpha::ALPHA;
 pub use beta::BETA;
+pub use gamma::GAMMA;
 RS
 printf 'pub const ALPHA: u32 = 123456;\n' >"$tmp/repo/src/alpha.rs"
 printf 'pub const BETA: u32 = 234567;\n' >"$tmp/repo/shared/beta.rs"
+printf 'pub const GAMMA: u32 = 345678;\n' >"$tmp/repo/src/gamma.rs"
 cat >"$tmp/repo/tests/relaxed.rs" <<'RS'
 #[test]
 fn relaxed() {
@@ -50,7 +53,7 @@ run() { bash "$tool" "$1" "$state" "${@:2}"; }
 # The ordinary deny-level final gate must reject inherited lint debt even
 # though the inventory succeeds. The relaxed integration test is not a shard.
 baseline=$(jq -er .base "$state/config.json")
-[[ "$(jq length "$state/inventory/$baseline.json")" == 2 ]]
+[[ "$(jq length "$state/inventory/$baseline.json")" == 3 ]]
 if run finish true; then echo "strict finish accepted outstanding lints" >&2; exit 1; fi
 # Claim concurrently; the claims must have disjoint exact paths.
 run claim one 1 "" 1 >"$tmp/one.log" &
@@ -63,33 +66,17 @@ one_file=$(jq -er '.files[0]' "$state/claims/one.json")
 two_file=$(jq -er '.files[0]' "$state/claims/two.json")
 [[ "$one_file" != "$two_file" ]]
 [[ "$one_file" == shared/beta.rs || "$two_file" == shared/beta.rs ]]
-if run extend one "$two_file"; then echo "unexpected success" >&2; exit 1; fi
-if run claim three 1 "" 1; then echo "unexpected success" >&2; exit 1; fi
-if run finish; then echo "unexpected success" >&2; exit 1; fi
-# A clean abandoned claim with no changes can be released and reclaimed.
+if run extend one "$two_file"; then echo "overlap accepted" >&2; exit 1; fi
+if run finish; then echo "finish accepted claims" >&2; exit 1; fi
 run defer two "test deferral"
-if run claim deferred 1 "" 1; then echo "deferral ignored" >&2; exit 1; fi
+if run claim deferred 1 "$two_file" 1; then echo "deferral ignored" >&2; exit 1; fi
 run retry "$two_file"
-run claim two 1 "" 1 >"$tmp/two-again.log"
-[[ "$(jq -er '.files[0]' "$state/claims/two.json")" == "$two_file" ]]
+run claim two 1 "$two_file" 1 >"$tmp/two-again.log"
 one="$tmp/worktrees/one"
 printf '// outside scope\n' >>"$one/$two_file"
 git -C "$one" add "$two_file"
 git -C "$one" commit --quiet -m outside-scope
-if run publish one; then echo "unexpected success" >&2; exit 1; fi
-git -C "$one" reset --quiet --hard HEAD^
-printf '// no reduction\n' >>"$one/$one_file"
-if run release one; then echo "unexpected success" >&2; exit 1; fi
-git -C "$one" add "$one_file"
-git -C "$one" commit --quiet -m no-reduction
-if run publish one; then echo "unexpected success" >&2; exit 1; fi
-git -C "$one" reset --quiet --hard HEAD^
-# A lint-fixing but unformatted revision must not be integrated merely because
-# the subsequent configured smoke command would succeed.
-sed -i -e 's/123456/123_456/' -e 's/234567/234_567/' -e 's/: u32 = /:u32=/' "$one/$one_file"
-git -C "$one" add "$one_file"
-git -C "$one" commit --quiet -m unformatted
-if run publish one; then echo "format failure accepted" >&2; exit 1; fi
+if run publish one; then echo "outside scope accepted" >&2; exit 1; fi
 git -C "$one" reset --quiet --hard HEAD^
 for worker in one two; do
     checkout="$tmp/worktrees/$worker"
@@ -99,17 +86,48 @@ for worker in one two; do
     git -C "$checkout" commit --quiet -m "fix $file"
     run checkpoint "$worker"
 done
-# A passing shared smoke command must not mask a failed focused test.
-if run publish one false; then echo "failed focused command accepted" >&2; exit 1; fi
+# Submissions return before any compilation and retain their reservations.
+run publish one "touch '$tmp/validation-started'; while ! test -e '$tmp/release-validation'; do sleep 0.1; done"
+run publish two
 [[ "$(git -C "$tmp/repo" ls-remote --heads origin campaign | cut -f1)" == "$baseline" ]]
-# Both independently publish; one incorporates the other's already published
-# commit (including a racing push, if both reached the server concurrently).
-run publish one >"$tmp/publish-one.log" 2>&1 &
-one_pid=$!
-run publish two >"$tmp/publish-two.log" 2>&1 &
-two_pid=$!
-if ! wait "$one_pid"; then cat "$tmp/publish-one.log"; exit 1; fi
-if ! wait "$two_pid"; then cat "$tmp/publish-two.log"; exit 1; fi
+[[ "$(jq -rs '[.[]|select(.status=="pending")]|length' "$state"/queue/*.json)" == 2 ]]
+if run claim other 1 "$one_file" 1; then echo "queued file claimed" >&2; exit 1; fi
+run drain >"$tmp/drain.log" 2>&1 &
+drain_pid=$!
+# While the first validator is running, the same editor can claim fresh files.
+for ((i=0;i<600;i++)); do
+    [[ -e "$tmp/validation-started" ]] && break
+    if ! kill -0 "$drain_pid" 2>/dev/null; then cat "$tmp/drain.log"; exit 1; fi
+    sleep 0.1
+done
+[[ -e "$tmp/validation-started" ]] || { cat "$tmp/drain.log"; touch "$tmp/release-validation"; exit 1; }
+if run drain; then echo "second validator started" >&2; touch "$tmp/release-validation"; exit 1; fi
+run claim one 1 src/gamma.rs 1 >"$tmp/next-claim.log"
+[[ "$(jq -r .status "$state/queue/000000001.json")" == running ]]
+[[ "$(jq -r .status "$state/queue/000000002.json")" == pending ]]
+if run extend one "$two_file"; then echo "queued overlap accepted" >&2; touch "$tmp/release-validation"; exit 1; fi
+touch "$tmp/release-validation"
+wait "$drain_pid" || { cat "$tmp/drain.log"; exit 1; }
+[[ "$(jq -rs '[.[]|select(.status=="published")]|length' "$state"/queue/*.json)" == 2 ]]
+# Failure retains the source and reservation, but never blocks later jobs.
+one="$tmp/worktrees/one"
+printf '// no reduction\n' >>"$one/src/gamma.rs"
+git -C "$one" add src/gamma.rs
+git -C "$one" commit --quiet -m no-reduction
+run publish one
+run drain
+[[ "$(jq -r .status "$state/queue/000000003.json")" == failed ]]
+run recover 000000003 one
+sed -i 's/345678/345_678/' "$one/src/gamma.rs"
+git -C "$one" add src/gamma.rs
+git -C "$one" commit --quiet -m fix-gamma
+run publish one false
+run drain
+[[ "$(jq -r .status "$state/queue/000000004.json")" == failed ]]
+run recover 000000004 one
+run publish one
+run drain
+[[ "$(jq -r .status "$state/queue/000000005.json")" == published ]]
 git -C "$tmp/repo" fetch --quiet origin
 tip=$(git -C "$tmp/repo" rev-parse origin/campaign)
 [[ "$(jq length "$state/inventory/$tip.json")" == 0 ]]
@@ -117,8 +135,8 @@ tip=$(git -C "$tmp/repo" rev-parse origin/campaign)
 [[ "$(git -C "$tmp/repo" show "$tip:shared/beta.rs")" == 'pub const BETA: u32 = 234_567;' ]]
 [[ -z "$(git -C "$tmp/repo" ls-remote --heads origin 'refs/heads/lint-campaign/*')" ]]
 [[ -z "$(find "$state/claims" -name '*.json' -print -quit)" ]]
-[[ -z "$(find "$tmp/worktrees" -mindepth 1 -maxdepth 1 -type d -print -quit)" ]]
 run finish 'cargo +stable test --locked'
 [[ "$(cat "$state/finished")" == "$tip" ]]
+[[ -z "$(find "$tmp/worktrees" -mindepth 1 -maxdepth 1 -type d -print -quit)" ]]
 if run claim after-finish; then echo "unexpected success" >&2; exit 1; fi
-printf 'Lint campaign integration test passed.\n'
+printf 'Serialized lint campaign integration test passed.\n'

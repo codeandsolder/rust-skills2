@@ -14,7 +14,12 @@ Usage:
   lint_campaign.sh claim STATE WORKER [LINT_BUDGET=20] [PATH_PREFIX] [MAX_FILES=4]
   lint_campaign.sh extend STATE WORKER FILE...
   lint_campaign.sh checkpoint STATE WORKER
-  lint_campaign.sh publish STATE WORKER [FOCUSED_TEST_COMMAND]
+  lint_campaign.sh publish STATE WORKER [FOCUSED_TEST_COMMAND]  # enqueue only
+  lint_campaign.sh serve STATE                                # one validator
+  lint_campaign.sh drain STATE                                # drain once
+  lint_campaign.sh results STATE [WORKER]
+  lint_campaign.sh recover STATE JOB WORKER
+  lint_campaign.sh upgrade STATE
   lint_campaign.sh release STATE WORKER
   lint_campaign.sh defer STATE WORKER REASON
   lint_campaign.sh retry STATE FILE...
@@ -72,7 +77,7 @@ clean_at() {
 clean_policy() {
     local status
     status=$(git -C "$SKILLS" status --porcelain --untracked-files=all -- \
-        scripts/lint_campaign.sh scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
+        scripts/lint_campaign.sh scripts/lint_campaign_queue.sh scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
         scripts/workspace_test_policy.py .github/actions/rust-strict) || die "cannot inspect policy checkout"
     [[ -z "$status" ]] || die "campaign tool or policy files have uncommitted edits"
 }
@@ -212,7 +217,7 @@ compare_inventory() {
     ' || die "lint progress/regression check failed"
 }
 validate() {
-    local revision=$1 dir="$state/build/$worker"
+    local revision=$1 dir="$state/build/validator"
     clean_at "$work"
     (
         cd "$work" || exit
@@ -259,6 +264,8 @@ remove_claim() {
     rm -rf -- "$state/build/$worker"
     unlock_claims
 }
+# shellcheck source=scripts/lint_campaign_queue.sh
+source "$SKILLS/scripts/lint_campaign_queue.sh"
 if [[ "$action" == init ]]; then
     [[ $# -ge 2 && $# -le 3 ]] || die "init requires TARGET WORKTREE_ROOT [SMOKE_COMMAND]"
     target=$1; workroot=$2; smoke=${3:-cargo +stable test --workspace --locked}
@@ -304,7 +311,7 @@ if [[ "$action" == init ]]; then
     [[ ! -e "$state" && ! -e "$workroot" ]] || die "use new state and worktree directories"
     git_repo fetch --quiet --no-tags --no-write-fetch-head origin "refs/heads/$target:refs/remotes/origin/$target"
     base=$(git_repo rev-parse "refs/remotes/origin/$target")
-    mkdir -p "$state"/{claims,deferred,inventory,logs,locks,build} "$workroot"
+    mkdir -p "$state"/{claims,deferred,inventory,logs,locks,build,queue} "$workroot"
     jq -n --arg repo "$repo" --arg target "$target" --arg base "$base" \
         --arg workroot "$workroot" --arg id "$id" --arg registry "$registry" \
         --arg smoke "$smoke" --arg skills "$skills_revision" \
@@ -330,12 +337,63 @@ stable=$(jq -er .stable "$config"); nightly_version=$(jq -er .nightly_version "$
 stable_version=$(jq -er .stable_version "$config"); skills_revision=$(jq -er .skills_revision "$config")
 allow_test_panics=$(jq -er .allow_test_panics "$config")
 [[ -f "$registry" && "$(cat "$registry")" == "$state" ]] || die "campaign not active"
+if [[ "$action" != upgrade && -e "$state/migrating" ]]; then die "campaign migration in progress"; fi
 case "$action" in
+    upgrade)
+        [[ $# -eq 0 ]] || die "upgrade takes no arguments"
+        clean_policy
+        git -C "$SKILLS" diff --quiet "$skills_revision" HEAD -- \
+            scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
+            scripts/workspace_test_policy.py .github/actions/rust-strict ||
+            die "lint policy changed; cannot reuse existing inventories"
+        lock_claims
+        mkdir -p "$state/queue"
+        jq --arg rev "$(git -C "$SKILLS" rev-parse HEAD)" '.skills_revision=$rev' "$config" >"$config.tmp"
+        mv "$config.tmp" "$config"
+        rm -f "$state/migrating"
+        unlock_claims
+        say "upgraded campaign in place; claims preserved"
+        ;;
+    results)
+        [[ $# -le 1 ]] || die "results accepts optional WORKER"
+        queue_records | jq --arg worker "${1:-}" \
+          '[.[]|select($worker=="" or .worker==$worker)|{job,worker,status,files,source,detail}]'
+        ;;
+    serve|drain)
+        [[ $# -eq 0 ]] || die "unexpected validator arguments"
+        check_tools
+        while [[ -f "$registry" && ! -e "$state/migrating" ]]; do
+            validator_lock
+            drain_queue
+            validator_unlock
+            [[ "$action" == serve ]] || break
+            sleep 2
+        done
+        ;;
+    recover)
+        [[ $# -eq 2 && "$1" =~ ^[0-9]{9}$ ]] || die "recover requires JOB WORKER"
+        job=$1; worker=$2; lock_worker; check_tools
+        record="$state/queue/$job.json"
+        lock_claims
+        [[ -f "$record" && "$(jq -er .status "$record")" == failed ]] || die "job not failed"
+        claim="$state/claims/$worker.json"
+        [[ ! -e "$claim" ]] || die "worker has active claim"
+        work="$workroot/$worker"
+        topic="lint-campaign/${id:0:12}/$worker-$(date +%s%N)"
+        source=$(jq -er .source "$record")
+        git_repo worktree add --quiet -b "$topic" "$work" "$source"
+        jq --arg worker "$worker" --arg work "$work" --arg topic "$topic" \
+           '{worker:$worker,base,worktree:$work,branch:$topic,files,cleanup_refs}' "$record" >"$claim.tmp"
+        mv "$claim.tmp" "$claim"
+        queue_update "$record" recovered "reassigned to $worker"
+        unlock_claims
+        cat "$claim"
+        ;;
     refresh|status)
         [[ $# -eq 0 ]] || die "unexpected arguments"
         check_tools
         tip=$(remote_tip)
-        inventory_tip "$tip"
+        [[ -f "$state/inventory/$tip.json" ]] || die "target inventory not cached; serial validator will refresh it"
         printf 'Target %s at %s: %s distinct findings\n' "$target" "$tip" "$(jq length "$state/inventory/$tip.json")"
         jq 'group_by(.file) | map({file:.[0].file,findings:length}) |
             sort_by(-.findings,.file)' "$state/inventory/$tip.json"
@@ -346,6 +404,8 @@ case "$action" in
         printf 'Deferred files (automatically eligible if their blob changes):\n'
         deferred=("$state/deferred/"*.json)
         if (("${#deferred[@]}" > 0)); then jq -s '.' "${deferred[@]}"; else printf '[]\n'; fi
+        printf 'Submission queue:\n'
+        queue_records | jq 'map({job,worker,status,files,detail})'
         unlock_claims
         ;;
     claim)
@@ -356,10 +416,11 @@ case "$action" in
             die "invalid budget or maximum files"
         check_tools
         for attempt in 1 2 3 4; do
-            tip=$(remote_tip); inventory_tip "$tip"
+            tip=$(remote_tip)
+            [[ -f "$state/inventory/$tip.json" ]] || die "target inventory not cached; retry after validator refresh"
             lock_claims
             [[ -f "$registry" && "$(cat "$registry")" == "$state" ]] || die "campaign closed during claim"
-            [[ "$(remote_tip)" != "$tip" ]] || break
+            [[ "$(git_repo rev-parse "refs/remotes/origin/$target")" != "$tip" ]] || break
             unlock_claims
             [[ "$attempt" != 4 ]] || die "target kept advancing; retry claim"
         done
@@ -367,8 +428,10 @@ case "$action" in
         [[ ! -e "$claim" ]] || die "worker already owns a claim: $claim"
         shopt -s nullglob
         claims=("$state/claims/"*.json)
-        occupied='[]'
-        if (("${#claims[@]}" > 0)); then occupied=$(jq -s '[.[].files[]]' "${claims[@]}"); fi
+        occupied=$(reserved_queue)
+        if (("${#claims[@]}" > 0)); then
+            occupied=$(jq -s --argjson queued "$occupied" '[.[].files[]]+$queued' "${claims[@]}")
+        fi
         for deferred in "$state/deferred/"*.json; do
             file=$(jq -er .file "$deferred")
             if blob=$(git_repo rev-parse "$tip:$file" 2>/dev/null) &&
@@ -397,7 +460,7 @@ case "$action" in
             valid_file "$file"
             git_repo cat-file -e "$tip:$file" || die "diagnostic file is not tracked: $file"
         done < <(jq -r '.[]' <<<"$files")
-        topic="lint-campaign/${id:0:12}/$worker"
+        topic="lint-campaign/${id:0:12}/$worker-$(date +%s%N)"
         work="$workroot/$worker"
         git_repo worktree add --quiet -b "$topic" "$work" "$tip"
         jq -n --arg worker "$worker" --arg base "$tip" --arg work "$work" --arg topic "$topic" \
@@ -415,8 +478,8 @@ case "$action" in
         lock_claims
         shopt -s nullglob
         claims=("$state/claims/"*.json)
-        jq -es --arg worker "$worker" --argjson extra "$extra" '
-            [.[]|select(.worker!=$worker)|.files[]] as $other |
+        jq -es --arg worker "$worker" --argjson extra "$extra" --argjson queued "$(reserved_queue)" '
+            ([.[]|select(.worker!=$worker)|.files[]]+$queued) as $other |
             all($extra[]; . as $f | ($other|index($f))==null)
         ' "${claims[@]}" >/dev/null || die "file already claimed by another worker"
         jq --argjson extra "$extra" '.files=(.files+$extra|unique)' "$claim" >"$claim.tmp"
@@ -436,34 +499,7 @@ case "$action" in
         [[ $# -ge 1 && $# -le 2 ]] || die "publish requires WORKER [FOCUSED_TEST_COMMAND]"
         focused=${2:-:}
         load_worker "$1"; check_tools; clean_at "$work"
-        for attempt in 1 2 3 4; do
-            tip=$(remote_tip)
-            revision=$(git_work rev-parse HEAD)
-            if git_repo merge-base --is-ancestor "$revision" "$tip"; then
-                remove_claim "$tip"; say "already integrated: $revision"; exit 0
-            fi
-            shared=$(git_repo merge-base "$tip" "$revision")
-            scope_diff "$shared" "$revision"
-            # Preserve both workers' commits, without rewriting checkpoint history.
-            git_work merge --no-edit "$tip" || die "resolve merge conflict in $work before retrying"
-            revision=$(git_work rev-parse HEAD)
-            scope_diff "$tip" "$revision"
-            inventory_tip "$tip"
-            inventory "$work" "$revision" "$state/build/$worker"
-            compare_inventory "$tip" "$revision"
-            git_work diff --no-color -U0 "$tip" "$revision" >"$state/logs/$revision.patch"
-            validate "$revision"
-            # No force, no lease override: the destination must fast-forward.
-            if git_work push origin "$revision:refs/heads/$target"; then
-                remove_claim "$revision"
-                say "published $revision to $target"
-                exit 0
-            fi
-            newer=$(remote_tip)
-            [[ "$newer" != "$tip" ]] || die "push failed without target advancement; inspect Git output"
-            say "target advanced; incorporate $newer and revalidate (attempt $attempt)"
-        done
-        die "target kept advancing; retain claim and retry publish"
+        enqueue
         ;;
     release)
         [[ $# -eq 1 ]] || die "release requires WORKER"
@@ -485,12 +521,16 @@ case "$action" in
         ;;
     stop)
         [[ $# -eq 0 ]] || die "stop takes no additional arguments"
+        validator_lock
         lock_claims
+        require_empty_queue
         shopt -s nullglob
         claims=("$state/claims/"*.json)
         (("${#claims[@]}" == 0)) || die "active claims remain"
         tip=$(remote_tip)
         printf '%s\n' "$tip" >"$state/stopped"
+        if [[ -d "$workroot/.validator" ]]; then git_repo worktree remove "$workroot/.validator"; fi
+        rm -rf -- "$state/build/validator"
         rm -- "$registry"
         unlock_claims
         say "stopped without declaring strict success; evidence retained in $state"
@@ -498,9 +538,10 @@ case "$action" in
     finish)
         [[ $# -le 1 ]] || die "finish accepts an optional full test command"
         check_tools
-        # Hold claims lock during finish: no new work may be assigned while
-        # proving the final state. All existing claims must be released.
+        # Exclude the serial validator and assignments during final checks.
+        validator_lock
         lock_claims
+        require_empty_queue
         shopt -s nullglob
         claims=("$state/claims/"*.json)
         (("${#claims[@]}" == 0)) || die "active claims remain"
@@ -521,6 +562,8 @@ case "$action" in
         ) >"$state/logs/$tip.final.log" 2>&1 || die "final strict gate failed: $state/logs/$tip.final.log"
         [[ "$(remote_tip)" == "$tip" ]] || die "target advanced during final verification"
         printf '%s\n' "$tip" >"$state/finished"
+        if [[ -d "$workroot/.validator" ]]; then git_repo worktree remove "$workroot/.validator"; fi
+        rm -rf -- "$state/build/validator"
         rm -- "$registry"
         unlock_claims
         say "finished $tip; logs retained in $state"
