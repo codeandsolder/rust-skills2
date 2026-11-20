@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Explicit diagnostic-only entry point. Ordinary CI callers pass no arguments
+# and retain the exact deny-level gate. Inventory stdout contains Cargo JSON.
+INVENTORY=false
+case $# in
+    0) ;;
+    1)
+        if [[ "$1" != --inventory ]]; then
+            echo "rust-skills2: unknown argument: $1" >&2
+            exit 2
+        fi
+        INVENTORY=true
+        exec 3>&1
+        exec 1>&2
+        ;;
+    *) echo "rust-skills2: unexpected arguments" >&2; exit 2 ;;
+esac
+
 ROOT="${GITHUB_WORKSPACE:-$(pwd)}"
 WORKDIR="${RUST_SKILLS2_WORKING_DIRECTORY:-.}"
 ACTION_DIR="${RUST_SKILLS2_ACTION_DIR:-}"
@@ -95,7 +112,13 @@ uv run --no-project python "$SOURCE_POLICY_SCRIPT"
 # clippy.toml may contain useful developer preferences, but it must not be able
 # to weaken the central CI policy (for example by allowing unwrap in consts).
 export CLIPPY_CONF_DIR="$ACTION_DIR"
-export CARGO_BUILD_WARNINGS=deny
+if [[ "$INVENTORY" == true ]]; then
+    # Do not stop Cargo at inherited style debt; real compiler and safety
+    # failures are still fatal. This is NOT the CI acceptance gate.
+    unset CARGO_BUILD_WARNINGS
+else
+    export CARGO_BUILD_WARNINGS=deny
+fi
 
 # CI compilation is required to run through the centrally configured sccache.
 # The private strict-CI backend is intentionally local-only so clippy-driver can
@@ -170,7 +193,25 @@ run_clippy() {
     printf ' --'
     printf ' %q' "${lint_args_ref[@]}"
     printf '\n'
-    cargo +nightly clippy "${cargo_args_ref[@]}" -- "${lint_args_ref[@]}"
+    if [[ "$INVENTORY" == true ]]; then
+        local -a inventory_args=()
+        local arg
+        for arg in "${lint_args_ref[@]}"; do
+            case "$arg" in
+                -Dclippy::correctness|-Dclippy::suspicious|-Dclippy::perf|-Dunsafe_op_in_unsafe_fn)
+                    inventory_args+=("$arg")
+                    ;;
+                -D*) inventory_args+=("-W${arg#-D}") ;;
+                *) inventory_args+=("$arg") ;;
+            esac
+        done
+        local -a inventory_cargo_args=("${cargo_args_ref[@]}")
+        if ! has_cargo_arg --keep-going; then inventory_cargo_args+=(--keep-going); fi
+        cargo +nightly clippy "${inventory_cargo_args[@]}" --message-format=json -- \
+            "${inventory_args[@]}" -Dclippy::suspicious_operation_groupings >&3
+    else
+        cargo +nightly clippy "${cargo_args_ref[@]}" -- "${lint_args_ref[@]}"
+    fi
 }
 
 has_cargo_arg() {

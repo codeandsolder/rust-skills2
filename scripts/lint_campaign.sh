@@ -16,6 +16,8 @@ Usage:
   lint_campaign.sh checkpoint STATE WORKER
   lint_campaign.sh publish STATE WORKER
   lint_campaign.sh release STATE WORKER
+  lint_campaign.sh defer STATE WORKER REASON
+  lint_campaign.sh retry STATE FILE...
   lint_campaign.sh finish STATE [FINAL_TEST_COMMAND]
 
 STATE and WORKTREE_ROOT must be absolute, outside repository worktrees.
@@ -68,7 +70,8 @@ clean_at() {
 }
 check_tools() {
     need_cache
-    [[ "$(rustc "+$nightly" --version)" == "$nightly_version" ]] ||
+    [[ "$(rustc "+$nightly" --version)" == "$nightly_version" &&
+       "$(rustc +nightly --version)" == "$nightly_version" ]] ||
         die "nightly compiler drift; start a new campaign"
     [[ "$(rustc "+$stable" --version)" == "$stable_version" ]] ||
         die "stable compiler drift; start a new campaign"
@@ -78,8 +81,16 @@ check_tools() {
 }
 remote_tip() {
     # Isolate fetch of the target ref; do not touch the checked-out local branch.
-    local tip
-    git_repo fetch --quiet --no-tags --no-write-fetch-head origin "refs/heads/$target:refs/remotes/origin/$target" || die "target fetch failed"
+    local tip attempt
+    # Worktree pushes and fetches share the tracking ref. A short retry
+    # tolerates a competing successful fast-forward without hiding failures.
+    for attempt in 1 2 3; do
+        if git_repo fetch --quiet --no-tags --no-write-fetch-head origin "refs/heads/$target:refs/remotes/origin/$target"; then
+            break
+        fi
+        [[ "$attempt" != 3 ]] || die "target fetch failed"
+        sleep 1
+    done
     tip=$(git_repo rev-parse "refs/remotes/origin/$target") || die "target ref missing"
     git_repo merge-base --is-ancestor "$base" "$tip" ||
         die "campaign target no longer descends from its initial revision"
@@ -99,20 +110,20 @@ inventory() {
         mkdir -p "$dir"
         say "inventory $revision"
         (
-            cd "$checkout"
+            cd "$checkout" || exit
             export CARGO_TARGET_DIR="$dir/target" CARGO_INCREMENTAL=0
-            export CLIPPY_CONF_DIR="$SKILLS/.github/actions/rust-strict"
-            cargo "+$nightly" clippy --locked --workspace --all-targets --keep-going --message-format=json -- \
-                -W clippy::pedantic -W clippy::nursery \
-                -D clippy::correctness -D clippy::suspicious -D clippy::perf \
-                -D clippy::suspicious_operation_groupings
+            export GITHUB_WORKSPACE="$checkout" RUST_SKILLS2_WORKING_DIRECTORY=.
+            export RUST_SKILLS2_ACTION_DIR="$SKILLS/.github/actions/rust-strict"
+            export RUST_SKILLS2_CARGO_ARGS="--locked --workspace --all-targets"
+            export RUST_SKILLS2_ALLOW_TEST_PANICS="$allow_test_panics"
+            bash "$SKILLS/scripts/strict_clippy.sh" --inventory
         ) >"$state/logs/$revision.clippy.jsonl" 2>"$state/logs/$revision.clippy.stderr" ||
             die "inventory failed; see $state/logs/$revision.clippy.stderr and .jsonl"
         clean_at "$checkout"
         [[ "$(git -C "$checkout" rev-parse HEAD)" == "$revision" ]] || die "inventory checkout moved"
         snapshot=$(mktemp "$state/inventory/.snapshot.XXXXXX")
         jq -se --arg root "$checkout/" '
-          if any(.[]; .reason == "build-finished" and .success == true) then
+          if ([.[] | select(.reason == "build-finished")] | length > 0 and all(.[]; .success == true)) then
             [.[] | select(.reason == "compiler-message") | .message as $m |
               select($m.level == "warning") |
               ([ $m.spans[]? | select(.is_primary) ] |
@@ -173,20 +184,26 @@ compare_inventory() {
       ($old[0] | map(select(owned($paths)|not)) | buckets) as $outside_before |
       ($new[0] | map(select(owned($paths)|not)) | buckets) as $outside_after |
       [$outside_after | to_entries[] | select(.value > ($outside_before[.key] // 0))] as $regressions |
-      {owned_before:$n_before, owned_after:$n_after, outside_increases:$regressions} |
-      if $n_after >= $n_before or ($regressions|length)>0 then
+      def owned_codes: map(select(owned($paths))) | group_by([.file,.code]) |
+          map({key:([.[0].file,.[0].code]|tojson),value:length}) | from_entries;
+      ($old[0]|owned_codes) as $old_codes |
+      ($new[0]|owned_codes) as $new_codes |
+      [$new_codes|to_entries[]|select(.value>($old_codes[.key]//0))] as $owned_increases |
+      {owned_before:$n_before, owned_after:$n_after, outside_increases:$regressions,
+       owned_category_increases:$owned_increases} |
+      if $n_after >= $n_before or ($regressions|length)>0 or ($owned_increases|length)>0 then
         error(tojson) else . end
-    ' || die "no owned lint reduction, or new diagnostics outside claim"
+    ' || die "lint progress/regression check failed"
 }
 validate() {
     local revision=$1 dir="$state/build/$worker"
     clean_at "$work"
     (
-        cd "$work"
+        cd "$work" || exit
         export CARGO_TARGET_DIR="$dir/target" CARGO_INCREMENTAL=0
-        cargo "+$stable" fmt --all -- --check
-        cargo "+$stable" clippy --workspace --all-targets --locked -- -D warnings
-        uv run --no-project python "$SKILLS/scripts/check_source_lint_policy.py"
+        cargo "+$stable" fmt --all -- --check || exit
+        cargo "+$stable" clippy --workspace --all-targets --locked -- -D warnings || exit
+        uv run --no-project python "$SKILLS/scripts/check_source_lint_policy.py" || exit
         bash -euo pipefail -c "$smoke"
     ) >"$state/logs/$revision.gate.log" 2>&1 ||
         die "regression gate failed; see $state/logs/$revision.gate.log"
@@ -194,7 +211,7 @@ validate() {
     [[ "$(git_work rev-parse HEAD)" == "$revision" ]] || die "worker changed during checks"
 }
 remove_claim() {
-    local tip=$1 revision checkpoint_ref remote_checkpoint
+    local tip=$1 revision checkpoint_ref remote_checkpoint reason=${2:-} file blob key
     revision=$(git_work rev-parse HEAD)
     clean_at "$work"
     git_repo merge-base --is-ancestor "$revision" "$tip" ||
@@ -208,6 +225,15 @@ remove_claim() {
     fi
     # Keep the claim until its worktree has successfully been removed.
     lock_claims
+    if [[ -n "$reason" ]]; then
+        while IFS= read -r file; do
+            if ! blob=$(git_repo rev-parse "$tip:$file" 2>/dev/null); then continue; fi
+            key=$(printf '%s' "$file" | git hash-object --stdin)
+            jq -n --arg file "$file" --arg blob "$blob" --arg reason "$reason" --arg tip "$tip" \
+                '{file:$file,blob:$blob,reason:$reason,revision:$tip}' >"$state/deferred/$key.tmp"
+            mv -- "$state/deferred/$key.tmp" "$state/deferred/$key.json"
+        done < <(jq -r '.files[]' "$claim")
+    fi
     git_repo worktree remove "$work"
     git_repo update-ref -d "refs/heads/$topic" "$revision"
     rm -- "$claim"
@@ -222,6 +248,10 @@ if [[ "$action" == init ]]; then
     [[ "$target" != main && "$target" != master && "$target" != HEAD ]] ||
         die "use a temporary integration/topic branch"
     git check-ref-format "refs/heads/$target" >/dev/null || die "invalid target branch"
+    default_ref=$(git_repo ls-remote --symref origin HEAD) || die "cannot inspect remote default"
+    if [[ "$default_ref" == "ref: refs/heads/$target"$'\t'HEAD* ]]; then
+        die "use a temporary integration/topic branch, not the remote default"
+    fi
     [[ "$workroot" == /* ]] || die "WORKTREE_ROOT must be absolute"
     state=$(realpath -m "$state"); workroot=$(realpath -m "$workroot")
     if ! outside "$state" "$repo" || ! outside "$workroot" "$repo" || ! outside "$workroot" "$state" ||
@@ -238,6 +268,11 @@ if [[ "$action" == init ]]; then
     nightly=${LINT_CAMPAIGN_NIGHTLY:-nightly}
     stable=${LINT_CAMPAIGN_STABLE:-stable}
     nightly_version=$(rustc "+$nightly" --version)
+    [[ "$(rustc +nightly --version)" == "$nightly_version" ]] ||
+        die "central nightly alias must match the campaign compiler"
+    allow_test_panics=${RUST_SKILLS2_ALLOW_TEST_PANICS:-false}
+    [[ "$allow_test_panics" == true || "$allow_test_panics" == false ]] ||
+        die "RUST_SKILLS2_ALLOW_TEST_PANICS must be true or false"
     stable_version=$(rustc "+$stable" --version)
     skills_revision=$(git -C "$SKILLS" rev-parse HEAD)
     clean_at "$SKILLS"
@@ -250,15 +285,15 @@ if [[ "$action" == init ]]; then
     [[ ! -e "$state" && ! -e "$workroot" ]] || die "use new state and worktree directories"
     git_repo fetch --quiet --no-tags --no-write-fetch-head origin "refs/heads/$target:refs/remotes/origin/$target"
     base=$(git_repo rev-parse "refs/remotes/origin/$target")
-    mkdir -p "$state"/{claims,inventory,logs,locks,build} "$workroot"
+    mkdir -p "$state"/{claims,deferred,inventory,logs,locks,build} "$workroot"
     jq -n --arg repo "$repo" --arg target "$target" --arg base "$base" \
         --arg workroot "$workroot" --arg id "$id" --arg registry "$registry" \
         --arg smoke "$smoke" --arg skills "$skills_revision" \
-        --arg nightly "$nightly" --arg stable "$stable" \
+        --arg nightly "$nightly" --arg stable "$stable" --arg test_panics "$allow_test_panics" \
         --arg nv "$nightly_version" --arg sv "$stable_version" \
         '{repo:$repo,target:$target,base:$base,workroot:$workroot,id:$id,registry:$registry,
           smoke:$smoke,skills_revision:$skills,nightly:$nightly,stable:$stable,
-          nightly_version:$nv,stable_version:$sv}' >"$state/config.json"
+          nightly_version:$nv,stable_version:$sv,allow_test_panics:$test_panics}' >"$state/config.json"
     printf '%s\n' "$state" >"$registry"
     flock -u "$reg_fd"; exec {reg_fd}>&-
     inventory_tip "$base"
@@ -274,6 +309,7 @@ workroot=$(jq -er .workroot "$config"); registry=$(jq -er .registry "$config")
 smoke=$(jq -er .smoke "$config"); nightly=$(jq -er .nightly "$config")
 stable=$(jq -er .stable "$config"); nightly_version=$(jq -er .nightly_version "$config")
 stable_version=$(jq -er .stable_version "$config"); skills_revision=$(jq -er .skills_revision "$config")
+allow_test_panics=$(jq -er .allow_test_panics "$config")
 [[ -f "$registry" && "$(cat "$registry")" == "$state" ]] || die "campaign not active"
 case "$action" in
     refresh|status)
@@ -281,13 +317,16 @@ case "$action" in
         check_tools
         tip=$(remote_tip)
         inventory_tip "$tip"
-        printf 'Target %s at %s\n' "$target" "$tip"
+        printf 'Target %s at %s: %s distinct findings\n' "$target" "$tip" "$(jq length "$state/inventory/$tip.json")"
         jq 'group_by(.file) | map({file:.[0].file,findings:length}) |
             sort_by(-.findings,.file)' "$state/inventory/$tip.json"
         lock_claims
         shopt -s nullglob
         claims=("$state/claims/"*.json)
         if (("${#claims[@]}" > 0)); then jq -s '.' "${claims[@]}"; else printf '[]\n'; fi
+        printf 'Deferred files (automatically eligible if their blob changes):\n'
+        deferred=("$state/deferred/"*.json)
+        if (("${#deferred[@]}" > 0)); then jq -s '.' "${deferred[@]}"; else printf '[]\n'; fi
         unlock_claims
         ;;
     claim)
@@ -297,20 +336,33 @@ case "$action" in
         [[ "$budget" =~ ^[1-9][0-9]{0,3}$ && "$max_files" =~ ^[1-9][0-9]{0,2}$ ]] ||
             die "invalid budget or maximum files"
         check_tools
-        tip=$(remote_tip); inventory_tip "$tip"
-        lock_claims
-        [[ -f "$registry" && "$(cat "$registry")" == "$state" ]] || die "campaign closed during claim"
+        for attempt in 1 2 3 4; do
+            tip=$(remote_tip); inventory_tip "$tip"
+            lock_claims
+            [[ -f "$registry" && "$(cat "$registry")" == "$state" ]] || die "campaign closed during claim"
+            [[ "$(remote_tip)" != "$tip" ]] || break
+            unlock_claims
+            [[ "$attempt" != 4 ]] || die "target kept advancing; retry claim"
+        done
         claim="$state/claims/$worker.json"
         [[ ! -e "$claim" ]] || die "worker already owns a claim: $claim"
         shopt -s nullglob
         claims=("$state/claims/"*.json)
         occupied='[]'
         if (("${#claims[@]}" > 0)); then occupied=$(jq -s '[.[].files[]]' "${claims[@]}"); fi
-        files=$(jq -c --argjson occupied "$occupied" --arg prefix "$prefix" \
+        for deferred in "$state/deferred/"*.json; do
+            file=$(jq -er .file "$deferred")
+            if blob=$(git_repo rev-parse "$tip:$file" 2>/dev/null) &&
+                [[ "$blob" == "$(jq -er .blob "$deferred")" ]]; then
+                occupied=$(jq -c --arg file "$file" '.+[$file]' <<<"$occupied")
+            fi
+        done
+        tracked=$(git_repo ls-tree -r -z --name-only "$tip" | jq -Rs 'split("\u0000") | map(select(length>0))')
+        files=$(jq -c --argjson occupied "$occupied" --argjson tracked "$tracked" --arg prefix "$prefix" \
             --argjson budget "$budget" --argjson max "$max_files" '
           group_by(.file) | map({file:.[0].file,n:length}) |
           map(select(.file|endswith(".rs") and startswith($prefix))) |
-          map(select(.file as $f | ($occupied|index($f))==null)) |
+          map(select(.file as $f | ($occupied|index($f))==null and ($tracked|index($f))!=null)) |
           reduce .[] as $f ({files:[],n:0,done:false};
               if .done then . elif (.files|length)==0 or
                  ((.n+$f.n)<=$budget and (.files|length)<$max)
@@ -393,6 +445,20 @@ case "$action" in
         [[ $# -eq 1 ]] || die "release requires WORKER"
         load_worker "$1"; tip=$(remote_tip); remove_claim "$tip"
         ;;
+    defer)
+        [[ $# -eq 2 && -n "$2" ]] || die "defer requires WORKER REASON"
+        load_worker "$1"; tip=$(remote_tip); remove_claim "$tip" "$2"
+        ;;
+    retry)
+        [[ $# -ge 1 ]] || die "retry requires FILE..."
+        lock_claims
+        for file in "$@"; do
+            valid_file "$file"
+            key=$(printf '%s' "$file" | git hash-object --stdin)
+            rm -f -- "$state/deferred/$key.json"
+        done
+        unlock_claims
+        ;;
     finish)
         [[ $# -le 1 ]] || die "finish accepts an optional full test command"
         check_tools
@@ -404,18 +470,19 @@ case "$action" in
         (("${#claims[@]}" == 0)) || die "active claims remain"
         tip=$(remote_tip)
         temporary=$(mktemp -d "$workroot/.finish.XXXXXX")
+        build=$(mktemp -d "$state/build/final.XXXXXX")
         (
-            trap 'git_repo worktree remove "$temporary" >/dev/null 2>&1 || true; rmdir "$temporary" 2>/dev/null || true' EXIT
-            git_repo worktree add --quiet --detach "$temporary" "$tip"
-            cd "$temporary"
-            export CARGO_TARGET_DIR="$state/build/final/target" CARGO_INCREMENTAL=0
-            # The central script explicitly uses +nightly; compare its compiler.
-            [[ "$(rustc +nightly --version)" == "$nightly_version" ]] ||
-                die "central gate nightly differs from campaign nightly"
-            bash "$SKILLS/scripts/strict_clippy.sh"
+            trap 'git_repo worktree remove "$temporary" >/dev/null 2>&1 || true; rmdir "$temporary" 2>/dev/null || true; rm -rf -- "$build"' EXIT
+            git_repo worktree add --quiet --detach "$temporary" "$tip" || exit
+            cd "$temporary" || exit
+            export CARGO_TARGET_DIR="$build/target" CARGO_INCREMENTAL=0
+            export GITHUB_WORKSPACE="$temporary" RUST_SKILLS2_WORKING_DIRECTORY=.
+            export RUST_SKILLS2_ACTION_DIR="$SKILLS/.github/actions/rust-strict"
+            export RUST_SKILLS2_CARGO_ARGS="--locked --workspace --all-targets"
+            export RUST_SKILLS2_ALLOW_TEST_PANICS="$allow_test_panics"
+            bash "$SKILLS/scripts/strict_clippy.sh" || exit
             bash -euo pipefail -c "${1:-cargo +stable test --workspace --locked}"
         ) >"$state/logs/$tip.final.log" 2>&1 || die "final strict gate failed: $state/logs/$tip.final.log"
-        rm -rf -- "$state/build/final"
         [[ "$(remote_tip)" == "$tip" ]] || die "target advanced during final verification"
         printf '%s\n' "$tip" >"$state/finished"
         rm -- "$registry"

@@ -6,14 +6,14 @@ tool="$SKILLS/scripts/lint_campaign.sh"
 tmp=$(mktemp -d "${LINT_CAMPAIGN_TEST_ROOT:-${RUNNER_TEMP:-/tmp}}/lint-campaign-test.XXXXXX")
 trap 'rm -rf -- "$tmp"' EXIT
 export LINT_CAMPAIGN_NIGHTLY=nightly LINT_CAMPAIGN_STABLE=stable
-export RUST_SKILLS2_ALLOW_TEST_PANICS=false
+export RUST_SKILLS2_ALLOW_TEST_PANICS=true
 export CARGO_BUILD_JOBS=1
 git init --quiet --bare "$tmp/origin.git"
 git init --quiet -b campaign "$tmp/repo"
 git -C "$tmp/repo" config user.name "Lint campaign test"
 git -C "$tmp/repo" config user.email "test@example.invalid"
 git -C "$tmp/repo" remote add origin "$tmp/origin.git"
-mkdir "$tmp/repo/src"
+mkdir "$tmp/repo/src" "$tmp/repo/tests"
 cat >"$tmp/repo/Cargo.toml" <<'TOML'
 [package]
 name = "campaign-fixture"
@@ -29,6 +29,13 @@ pub use beta::BETA;
 RS
 printf 'pub const ALPHA: u32 = 123456;\n' >"$tmp/repo/src/alpha.rs"
 printf 'pub const BETA: u32 = 234567;\n' >"$tmp/repo/src/beta.rs"
+cat >"$tmp/repo/tests/relaxed.rs" <<'RS'
+#[test]
+fn relaxed() {
+    let value: u32 = "123456".parse().unwrap();
+    assert_eq!(value, 123456);
+}
+RS
 (
     cd "$tmp/repo"
     cargo +stable generate-lockfile --offline
@@ -39,6 +46,11 @@ printf 'pub const BETA: u32 = 234567;\n' >"$tmp/repo/src/beta.rs"
 )
 state="$tmp/state"
 run() { bash "$tool" "$1" "$state" "${@:2}"; }
+# The ordinary deny-level final gate must reject inherited lint debt even
+# though the inventory succeeds. The relaxed integration test is not a shard.
+baseline=$(jq -er .base "$state/config.json")
+[[ "$(jq length "$state/inventory/$baseline.json")" == 2 ]]
+if run finish true; then echo "strict finish accepted outstanding lints" >&2; exit 1; fi
 # Claim concurrently; the claims must have disjoint exact paths.
 run claim one 1 src/ 1 >"$tmp/one.log" &
 one_pid=$!
@@ -53,7 +65,9 @@ if run extend one "$two_file"; then echo "unexpected success" >&2; exit 1; fi
 if run claim three 1 src/ 1; then echo "unexpected success" >&2; exit 1; fi
 if run finish; then echo "unexpected success" >&2; exit 1; fi
 # A clean abandoned claim with no changes can be released and reclaimed.
-run release two
+run defer two "test deferral"
+if run claim deferred 1 src/ 1; then echo "deferral ignored" >&2; exit 1; fi
+run retry "$two_file"
 run claim two 1 src/ 1 >"$tmp/two-again.log"
 [[ "$(jq -er '.files[0]' "$state/claims/two.json")" == "$two_file" ]]
 one="$tmp/worktrees/one"
@@ -67,6 +81,13 @@ if run release one; then echo "unexpected success" >&2; exit 1; fi
 git -C "$one" add "$one_file"
 git -C "$one" commit --quiet -m no-reduction
 if run publish one; then echo "unexpected success" >&2; exit 1; fi
+git -C "$one" reset --quiet --hard HEAD^
+# A lint-fixing but unformatted revision must not be integrated merely because
+# the subsequent configured smoke command would succeed.
+sed -i -e 's/123456/123_456/' -e 's/234567/234_567/' -e 's/: u32 = /:u32=/' "$one/$one_file"
+git -C "$one" add "$one_file"
+git -C "$one" commit --quiet -m unformatted
+if run publish one; then echo "format failure accepted" >&2; exit 1; fi
 git -C "$one" reset --quiet --hard HEAD^
 for worker in one two; do
     checkout="$tmp/worktrees/$worker"
