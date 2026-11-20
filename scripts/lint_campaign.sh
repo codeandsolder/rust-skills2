@@ -19,6 +19,7 @@ Usage:
   lint_campaign.sh defer STATE WORKER REASON
   lint_campaign.sh retry STATE FILE...
   lint_campaign.sh finish STATE [FINAL_TEST_COMMAND]
+  lint_campaign.sh stop STATE
 
 STATE and WORKTREE_ROOT must be absolute, outside repository worktrees.
 init runs inside the target Git repository. All workers use the same local
@@ -130,13 +131,21 @@ inventory() {
         [[ "$(git -C "$checkout" rev-parse HEAD)" == "$revision" ]] || die "inventory checkout moved"
         snapshot=$(mktemp "$state/inventory/.snapshot.XXXXXX")
         jq -se --arg root "$checkout/" '
+          def normalize_path:
+            (if startswith($root) then ltrimstr($root) else . end) |
+            if startswith("/") then . else
+              reduce (split("/")[]) as $part ([];
+                if $part=="" or $part=="." then .
+                elif $part==".." and length>0 and .[-1]!=".." then .[0:-1]
+                else .+[$part] end) | join("/")
+            end;
           if ([.[] | select(.reason == "build-finished")] | length > 0 and all(.[]; .success == true)) then
             [.[] | select(.reason == "compiler-message") | .message as $m |
               select($m.level == "warning") |
               ([ $m.spans[]? | select(.is_primary) ] |
                if length == 0 then [{file_name:"<unlocated>",line_start:0,column_start:0}]
                else . end)[] |
-              {file:(.file_name | if startswith($root) then ltrimstr($root) else . end),
+              {file:(.file_name | normalize_path),
                line:.line_start, column:.column_start,
                code:($m.code.code // "<uncoded>"), message:$m.message}]
             | unique_by([.file,.line,.column,.code,.message])
@@ -367,18 +376,22 @@ case "$action" in
                 occupied=$(jq -c --arg file "$file" '.+[$file]' <<<"$occupied")
             fi
         done
-        tracked=$(git_repo ls-tree -r -z --name-only "$tip" | jq -Rs 'split("\u0000") | map(select(length>0))')
-        files=$(jq -c --argjson occupied "$occupied" --argjson tracked "$tracked" --arg prefix "$prefix" \
+        # A large workspace's tracked-path list can exceed execve's
+        # per-argument size limit; read it from a per-claim temporary file.
+        tracked=$(mktemp "$state/inventory/.tracked.XXXXXX")
+        git_repo ls-tree -r -z --name-only "$tip" | jq -Rs 'split("\u0000") | map(select(length>0))' >"$tracked"
+        files=$(jq -c --argjson occupied "$occupied" --slurpfile tracked "$tracked" --arg prefix "$prefix" \
             --argjson budget "$budget" --argjson max "$max_files" '
           group_by(.file) | map({file:.[0].file,n:length}) |
           map(select(.file|endswith(".rs") and startswith($prefix))) |
-          map(select(.file as $f | ($occupied|index($f))==null and ($tracked|index($f))!=null)) |
+          map(select(.file as $f | ($occupied|index($f))==null and ($tracked[0]|index($f))!=null)) |
           reduce .[] as $f ({files:[],n:0,done:false};
               if .done then . elif (.files|length)==0 or
                  ((.n+$f.n)<=$budget and (.files|length)<$max)
               then .files += [$f.file] | .n += $f.n
               else .done=true end) | .files
         ' "$state/inventory/$tip.json")
+        rm -- "$tracked"
         [[ "$files" != '[]' ]] || die "no unclaimed Rust files matching prefix"
         while IFS= read -r file; do
             valid_file "$file"
@@ -469,6 +482,18 @@ case "$action" in
             rm -f -- "$state/deferred/$key.json"
         done
         unlock_claims
+        ;;
+    stop)
+        [[ $# -eq 0 ]] || die "stop takes no additional arguments"
+        lock_claims
+        shopt -s nullglob
+        claims=("$state/claims/"*.json)
+        (("${#claims[@]}" == 0)) || die "active claims remain"
+        tip=$(remote_tip)
+        printf '%s\n' "$tip" >"$state/stopped"
+        rm -- "$registry"
+        unlock_claims
+        say "stopped without declaring strict success; evidence retained in $state"
         ;;
     finish)
         [[ $# -le 1 ]] || die "finish accepts an optional full test command"

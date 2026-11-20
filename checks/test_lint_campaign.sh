@@ -13,7 +13,7 @@ git init --quiet -b campaign "$tmp/repo"
 git -C "$tmp/repo" config user.name "Lint campaign test"
 git -C "$tmp/repo" config user.email "test@example.invalid"
 git -C "$tmp/repo" remote add origin "$tmp/origin.git"
-mkdir "$tmp/repo/src" "$tmp/repo/tests"
+mkdir "$tmp/repo/src" "$tmp/repo/tests" "$tmp/repo/shared"
 cat >"$tmp/repo/Cargo.toml" <<'TOML'
 [package]
 name = "campaign-fixture"
@@ -23,12 +23,13 @@ publish = false
 TOML
 cat >"$tmp/repo/src/lib.rs" <<'RS'
 mod alpha;
+#[path = "../shared/beta.rs"]
 mod beta;
 pub use alpha::ALPHA;
 pub use beta::BETA;
 RS
 printf 'pub const ALPHA: u32 = 123456;\n' >"$tmp/repo/src/alpha.rs"
-printf 'pub const BETA: u32 = 234567;\n' >"$tmp/repo/src/beta.rs"
+printf 'pub const BETA: u32 = 234567;\n' >"$tmp/repo/shared/beta.rs"
 cat >"$tmp/repo/tests/relaxed.rs" <<'RS'
 #[test]
 fn relaxed() {
@@ -52,23 +53,24 @@ baseline=$(jq -er .base "$state/config.json")
 [[ "$(jq length "$state/inventory/$baseline.json")" == 2 ]]
 if run finish true; then echo "strict finish accepted outstanding lints" >&2; exit 1; fi
 # Claim concurrently; the claims must have disjoint exact paths.
-run claim one 1 src/ 1 >"$tmp/one.log" &
+run claim one 1 "" 1 >"$tmp/one.log" &
 one_pid=$!
-run claim two 1 src/ 1 >"$tmp/two.log" &
+run claim two 1 "" 1 >"$tmp/two.log" &
 two_pid=$!
 wait "$one_pid"
 wait "$two_pid"
 one_file=$(jq -er '.files[0]' "$state/claims/one.json")
 two_file=$(jq -er '.files[0]' "$state/claims/two.json")
 [[ "$one_file" != "$two_file" ]]
+[[ "$one_file" == shared/beta.rs || "$two_file" == shared/beta.rs ]]
 if run extend one "$two_file"; then echo "unexpected success" >&2; exit 1; fi
-if run claim three 1 src/ 1; then echo "unexpected success" >&2; exit 1; fi
+if run claim three 1 "" 1; then echo "unexpected success" >&2; exit 1; fi
 if run finish; then echo "unexpected success" >&2; exit 1; fi
 # A clean abandoned claim with no changes can be released and reclaimed.
 run defer two "test deferral"
-if run claim deferred 1 src/ 1; then echo "deferral ignored" >&2; exit 1; fi
+if run claim deferred 1 "" 1; then echo "deferral ignored" >&2; exit 1; fi
 run retry "$two_file"
-run claim two 1 src/ 1 >"$tmp/two-again.log"
+run claim two 1 "" 1 >"$tmp/two-again.log"
 [[ "$(jq -er '.files[0]' "$state/claims/two.json")" == "$two_file" ]]
 one="$tmp/worktrees/one"
 printf '// outside scope\n' >>"$one/$two_file"
@@ -112,7 +114,7 @@ git -C "$tmp/repo" fetch --quiet origin
 tip=$(git -C "$tmp/repo" rev-parse origin/campaign)
 [[ "$(jq length "$state/inventory/$tip.json")" == 0 ]]
 [[ "$(git -C "$tmp/repo" show "$tip:src/alpha.rs")" == 'pub const ALPHA: u32 = 123_456;' ]]
-[[ "$(git -C "$tmp/repo" show "$tip:src/beta.rs")" == 'pub const BETA: u32 = 234_567;' ]]
+[[ "$(git -C "$tmp/repo" show "$tip:shared/beta.rs")" == 'pub const BETA: u32 = 234_567;' ]]
 [[ -z "$(git -C "$tmp/repo" ls-remote --heads origin 'refs/heads/lint-campaign/*')" ]]
 [[ -z "$(find "$state/claims" -name '*.json' -print -quit)" ]]
 [[ -z "$(find "$tmp/worktrees" -mindepth 1 -maxdepth 1 -type d -print -quit)" ]]

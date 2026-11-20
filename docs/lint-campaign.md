@@ -137,7 +137,9 @@ project regression command on a clean detached checkout of the current
 remote tip. It rejects outstanding claims, failures or a changed target
 revision. Include project goldens, reference checks and other required tests
 in the final command. Successful completion unregisters the campaign while
-retaining its evidence; normal PR review/CI then proceeds as usual.
+retaining its evidence; normal PR review/CI then proceeds as usual. To abandon
+an unfinished campaign, release all clean claims and use `stop STATE`; it
+unregisters and archives evidence without representing the strict gate as passed.
 
 Use `bash checks/test_lint_campaign.sh` with managed sccache to exercise the
 real two-worker Git/Cargo fixture, conflict-free stale-base merge, claim
