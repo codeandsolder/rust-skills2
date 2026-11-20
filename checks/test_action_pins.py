@@ -97,8 +97,10 @@ quarantine_match = re.search(
 )
 if quarantine_match is None:
     raise SystemExit("strict Rust must pin the shared Cargo quarantine action")
-if "if: github.event_name == 'pull_request' && github.repository_owner != 'codeandsolder'" not in workflow:
-    raise SystemExit("codeandsolder repos must be exempt from the optional Cargo quarantine")
+quarantine_step = workflow[workflow.index("      - name: Quarantine newly introduced crates.io versions"):]
+quarantine_step = quarantine_step.split("\n      - name:", 1)[0]
+if "if: github.event_name == 'pull_request'\n" not in quarantine_step or "github.repository_owner" in quarantine_step:
+    raise SystemExit("external crate quarantine must run on every PR regardless of caller ownership")
 if "base-ref: ${{ github.event.pull_request.base.sha }}" not in workflow:
     raise SystemExit("Cargo quarantine must compare to the PR base")
 if "lockfile: auto" not in workflow:
