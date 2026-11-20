@@ -74,27 +74,50 @@ claim it **before** changing it:
 "$tool" publish "$state" agent-1 'cargo +stable test --locked --test regression'
 ```
 
-Publication requires a clean committed worktree, with an actual difference
-confined to the claimed paths. It merges the current target into that
-worker's branch, verifies the resulting diff, and scans the exact candidate.
-It requires a strict reduction in owned findings, rejects new per-file lint
-categories/counts inside the claim and new diagnostic buckets outside it,
-runs formatting, stable all-target Clippy, source policy, the campaign
-regression command and the optional additional focused command. Compiler and
-safety failures are fatal in the inventory itself. The gate also saves the
-exact patch for review of newly justified expectations. Do not manufacture
-progress with suppressions or change numeric tolerances. Use the project's
-normal, narrow reasoned expectations only where justified.
+Publication is now **submission**, not synchronous validation. It checks
+the clean commit and file scope, creates a durable queue checkpoint ref,
+transfers the file reservation to the queue, and removes the editor
+worktree. The same worker ID is immediately free to claim another set.
+No compiler runs in this path. Do not wait for the submitted job.
 
-The worker pushes the validated commit to the target using an ordinary
-fast-forward push. If another worker won the race, Git rejects the push; the
-worker incorporates the new tip and repeats validation. After four attempts
-the claim remains active for a later retry instead of discarding source.
-There is no central integrator or privileged merge API. Successful
-publication releases the claim, removes the isolated worktree/worker build
-directory, and deletes only the optional remote checkpoint ref whose verified
-commit is now contained in the target. It preserves the target's whole history.
-Repeat claim/edit/publish until no worthwhile files remain.
+Start exactly one long-lived validator on the shared host:
+
+```bash
+"$tool" serve "$state"
+```
+
+Run it as a managed user service for unattended campaigns, with the managed
+sccache wrapper, Cargo configuration and any project reference tools in
+its environment. For finite manual processing, use
+`"$tool" drain "$state"`; both commands share the same exclusive
+validator lock.
+
+The validator processes FIFO jobs in a dedicated reusable detached
+worktree. It incorporates the latest target, reuses the accepted tip's
+cached lint inventory, scans the exact candidate once, checks scope and
+lint delta, and runs formatting, stable all-target Clippy, source policy,
+shared and focused regressions. It alone pushes accepted candidates
+directly to the target. There is no designated integration agent, no
+competing validation loop, and no per-worker revalidation on each merge.
+A non-campaign external target update may cause a non-fast-forward push
+failure; the candidate is retained for recovery rather than force-pushed.
+
+Queue reservations remain disjoint from all editor reservations, including
+failed submissions. Each job has an immutable source checkpoint and a
+persistent status: staging, pending, running, published, failed, or
+recovered. Failed validation never stops subsequent jobs. Check results
+between batches, and recover a failed job into a free worker ID when ready:
+
+```bash
+"$tool" results "$state" agent-1
+"$tool" recover "$state" 000000001 agent-1
+```
+
+Inspect the queue job log and referenced gate log, fix its retained source,
+and submit again. A successful merge releases that job's reservations and
+cleans up its checkpoint refs when they are ancestors of the accepted tip.
+If the editor already has another claim, finish it first or recover using a
+different free worker ID.
 
 ## Progress and recovery
 
@@ -105,8 +128,9 @@ Repeat claim/edit/publish until no worthwhile files remain.
 "$tool" retry "$state" src/blocked.rs
 ```
 
-Status refreshes from the remote and shows all diagnostic file counts,
-active claims and deferred files. Claims are never silently stolen or timed
+Status uses the latest cached accepted inventory and shows file counts,
+active claims, queued submissions and deferred files. Only the serial
+validator refreshes a missing target inventory. Claims are never silently stolen or timed
 out: release/defer require an unchanged or already published clean checkout.
 Deferral is keyed to file content, so editing that file makes it eligible
 again; `retry` clears the deferral explicitly. Deferral does not make the
@@ -132,7 +156,7 @@ When claims are released and the target is ready:
 "$tool" finish "$state" 'cargo +stable test --workspace --locked'
 ```
 
-The final command runs the real, normal strict CI gate and the complete
+When the queue is empty, the final command excludes the validator and runs the real, normal strict CI gate and the complete
 project regression command on a clean detached checkout of the current
 remote tip. It rejects outstanding claims, failures or a changed target
 revision. Include project goldens, reference checks and other required tests
@@ -142,6 +166,7 @@ an unfinished campaign, release all clean claims and use `stop STATE`; it
 unregisters and archives evidence without representing the strict gate as passed.
 
 Use `bash checks/test_lint_campaign.sh` with managed sccache to exercise the
-real two-worker Git/Cargo fixture, conflict-free stale-base merge, claim
-overlap, no-progress and formatting rejection, failed focused checks,
-deferral, final strict rejection and final successful completion.
+real Git/Cargo fixture, exclusive serial validation, immediate reassignment
+while an earlier job is running, queued-file reservations, stale-base merge,
+no-progress and failed focused-check recovery, deferral, final strict
+rejection and final successful completion.
