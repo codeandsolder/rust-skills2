@@ -14,7 +14,7 @@ Usage:
   lint_campaign.sh claim STATE WORKER [LINT_BUDGET=20] [PATH_PREFIX] [MAX_FILES=4]
   lint_campaign.sh extend STATE WORKER FILE...
   lint_campaign.sh checkpoint STATE WORKER
-  lint_campaign.sh publish STATE WORKER
+  lint_campaign.sh publish STATE WORKER [FOCUSED_TEST_COMMAND]
   lint_campaign.sh release STATE WORKER
   lint_campaign.sh defer STATE WORKER REASON
   lint_campaign.sh retry STATE FILE...
@@ -68,6 +68,13 @@ clean_at() {
     status=$(git -C "$1" status --porcelain --untracked-files=all) || die "cannot inspect $1"
     [[ -z "$status" ]] || die "worktree has uncommitted files: $1"
 }
+clean_policy() {
+    local status
+    status=$(git -C "$SKILLS" status --porcelain --untracked-files=all -- \
+        scripts/lint_campaign.sh scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
+        scripts/workspace_test_policy.py .github/actions/rust-strict) || die "cannot inspect policy checkout"
+    [[ -z "$status" ]] || die "campaign tool or policy files have uncommitted edits"
+}
 check_tools() {
     need_cache
     [[ "$(rustc "+$nightly" --version)" == "$nightly_version" &&
@@ -77,7 +84,7 @@ check_tools() {
         die "stable compiler drift; start a new campaign"
     [[ "$(git -C "$SKILLS" rev-parse HEAD)" == "$skills_revision" ]] ||
         die "rust-skills2 revision changed; use the original checkout"
-    clean_at "$SKILLS"
+    clean_policy
 }
 remote_tip() {
     # Isolate fetch of the target ref; do not touch the checked-out local branch.
@@ -204,7 +211,10 @@ validate() {
         cargo "+$stable" fmt --all -- --check || exit
         cargo "+$stable" clippy --workspace --all-targets --locked -- -D warnings || exit
         uv run --no-project python "$SKILLS/scripts/check_source_lint_policy.py" || exit
-        bash -euo pipefail -c "$smoke"
+        printf 'Shared smoke command: %s\n' "$smoke"
+        bash -euo pipefail -c "$smoke" || exit
+        printf 'Worker focused command: %s\n' "$focused"
+        bash -euo pipefail -c "$focused"
     ) >"$state/logs/$revision.gate.log" 2>&1 ||
         die "regression gate failed; see $state/logs/$revision.gate.log"
     clean_at "$work"
@@ -275,7 +285,7 @@ if [[ "$action" == init ]]; then
         die "RUST_SKILLS2_ALLOW_TEST_PANICS must be true or false"
     stable_version=$(rustc "+$stable" --version)
     skills_revision=$(git -C "$SKILLS" rev-parse HEAD)
-    clean_at "$SKILLS"
+    clean_policy
     common=$(git_repo rev-parse --path-format=absolute --git-common-dir)
     id=$(printf '%s' "$target" | git hash-object --stdin)
     registry="$common/lint-campaigns/$id"
@@ -410,7 +420,8 @@ case "$action" in
         git_work push origin "$revision:refs/heads/$topic"
         ;;
     publish)
-        [[ $# -eq 1 ]] || die "publish requires WORKER"
+        [[ $# -ge 1 && $# -le 2 ]] || die "publish requires WORKER [FOCUSED_TEST_COMMAND]"
+        focused=${2:-:}
         load_worker "$1"; check_tools; clean_at "$work"
         for attempt in 1 2 3 4; do
             tip=$(remote_tip)

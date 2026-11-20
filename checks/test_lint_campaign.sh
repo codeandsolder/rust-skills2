@@ -97,6 +97,9 @@ for worker in one two; do
     git -C "$checkout" commit --quiet -m "fix $file"
     run checkpoint "$worker"
 done
+# A passing shared smoke command must not mask a failed focused test.
+if run publish one false; then echo "failed focused command accepted" >&2; exit 1; fi
+[[ "$(git -C "$tmp/repo" ls-remote --heads origin campaign | cut -f1)" == "$baseline" ]]
 # Both independently publish; one incorporates the other's already published
 # commit (including a racing push, if both reached the server concurrently).
 run publish one >"$tmp/publish-one.log" 2>&1 &
