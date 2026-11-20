@@ -1,0 +1,193 @@
+# Sourced by lint_campaign.sh. All paths/configuration belong to its campaign.
+# shellcheck shell=bash
+queue_records() {
+    local -a records
+    shopt -s nullglob
+    records=("$state/queue/"*.json)
+    if (("${#records[@]}")); then jq -s '.' "${records[@]}"; else printf '[]\n'; fi
+}
+reserved_queue() {
+    queue_records | jq -c '[.[] | select(.status=="staging" or .status=="pending" or .status=="running" or .status=="failed") | .files[]]'
+}
+queue_update() {
+    local record=$1 status=$2 detail=${3:-}
+    jq --arg status "$status" --arg detail "$detail" \
+        '.status=$status | .detail=$detail' "$record" >"$record.tmp"
+    mv -- "$record.tmp" "$record"
+}
+next_job() {
+    local n=0
+    if [[ -f "$state/sequence" ]]; then read -r n <"$state/sequence"; fi
+    n=$((n+1))
+    printf '%s\n' "$n" >"$state/sequence.tmp"
+    mv "$state/sequence.tmp" "$state/sequence"
+    printf '%09d' "$n"
+}
+enqueue() {
+    local revision tip shared job record queue_branch staging
+    revision=$(git_work rev-parse HEAD)
+    tip=$(remote_tip)
+    if git_repo merge-base --is-ancestor "$revision" "$tip"; then
+        remove_claim "$tip"
+        say "already integrated: $revision"
+        return
+    fi
+    shared=$(git_repo merge-base "$tip" "$revision")
+    scope_diff "$shared" "$revision"
+    lock_claims
+    staging=$(queue_records | jq -r --arg w "$worker" --arg r "$revision" \
+        'map(select(.status=="staging" and .worker==$w and .source==$r))|.[0].job // empty')
+    if [[ -n "$staging" ]]; then
+        job=$staging
+        record="$state/queue/$job.json"
+        queue_branch=$(jq -er .queue_branch "$record")
+    else
+        job=$(next_job)
+        record="$state/queue/$job.json"
+        queue_branch="lint-campaign/${id:0:12}/queue-$job"
+        git_repo update-ref "refs/heads/$queue_branch" "$revision" ""
+        jq --arg job "$job" --arg source "$revision" --arg branch "$queue_branch" \
+            --arg focused "$focused" --arg oracle "${NGSPICE_BIN:-}" \
+            '. + {job:$job,source:$source,queue_branch:$branch,focused:$focused,oracle:$oracle,status:"staging",
+              cleanup_refs:((.cleanup_refs // []) + [.branch,$branch] | unique),detail:""}' \
+            "$claim" >"$record.tmp"
+        mv "$record.tmp" "$record"
+    fi
+    unlock_claims
+    # Durable submission; no validation or target write in an editor process.
+    git_repo push origin "$revision:refs/heads/$queue_branch"
+    lock_claims
+    clean_at "$work"
+    [[ "$(git_work rev-parse HEAD)" == "$revision" ]] || die "claim changed during submission"
+    git_repo worktree remove "$work"
+    git_repo update-ref -d "refs/heads/$topic" "$revision"
+    rm -- "$claim"
+    queue_update "$record" pending "ready for serial validator"
+    unlock_claims
+    rm -rf -- "$state/build/$worker"
+    printf 'Queued %s (%s); worker %s is free to claim again.\n' "$job" "$revision" "$worker"
+}
+validator_lock() {
+    exec {validator_fd}>"$state/validator.lock"
+    flock -n "$validator_fd" || die "validator already active"
+}
+validator_unlock() {
+    flock -u "$validator_fd"
+    exec {validator_fd}>&-
+}
+validator_checkout() {
+    local revision=$1
+    work="$workroot/.validator"
+    if [[ -d "$work" ]]; then
+        # Only the exclusively locked validator owns this disposable checkout.
+        [[ -z "$(git_work symbolic-ref -q HEAD || true)" ]] || die "validator is not detached"
+        git_work reset --hard --quiet "$revision"
+        git_work clean -fd --quiet
+    else
+        git_repo worktree add --quiet --detach "$work" "$revision"
+    fi
+    clean_at "$work"
+}
+cleanup_submission_refs() {
+    local accepted=$1 branch ref found sha
+    while IFS= read -r branch; do
+        ref="refs/heads/$branch"
+        found=$(git_repo ls-remote --heads origin "$ref") || continue
+        if [[ -n "$found" ]]; then
+            sha=${found%%$'\t'*}
+            if git_repo merge-base --is-ancestor "$sha" "$accepted"; then
+                git_repo push --force-with-lease="$ref:$sha" origin ":$ref" ||
+                    say "retained remote checkpoint $ref"
+            fi
+        fi
+        if sha=$(git_repo rev-parse --verify "$ref" 2>/dev/null) &&
+            git_repo merge-base --is-ancestor "$sha" "$accepted"; then
+            git_repo update-ref -d "$ref" "$sha" || true
+        fi
+    done < <(jq -r '.cleanup_refs[]' "$claim")
+}
+validate_job() {
+    local record=$1 tip source revision shared oracle job
+    claim=$record
+    worker=$(jq -er .worker "$record")
+    job=$(jq -er .job "$record")
+    source=$(jq -er .source "$record")
+    focused=$(jq -er .focused "$record")
+    oracle=$(jq -r '.oracle // ""' "$record")
+    if [[ -n "$oracle" ]]; then export NGSPICE_BIN="$oracle"; fi
+    tip=$(remote_tip)
+    if git_repo merge-base --is-ancestor "$source" "$tip"; then
+        revision=$tip
+    else
+        validator_checkout "$tip"
+        shared=$(git_repo merge-base "$tip" "$source")
+        scope_diff "$shared" "$source"
+        inventory "$work" "$tip" "$state/build/validator"
+        git_work merge --no-edit "$source"
+        revision=$(git_work rev-parse HEAD)
+        scope_diff "$tip" "$revision"
+        inventory "$work" "$revision" "$state/build/validator"
+        compare_inventory "$tip" "$revision"
+        git_work diff --no-color -U0 "$tip" "$revision" >"$state/logs/$revision.patch"
+        validate "$revision"
+        # The sole validator is the only campaign writer. Never force-push.
+        git_work push origin "$revision:refs/heads/$target"
+    fi
+    printf '%s\n' "$revision" >"$state/queue/$job.merged.tmp"
+    mv "$state/queue/$job.merged.tmp" "$state/queue/$job.merged"
+    cleanup_submission_refs "$revision"
+}
+drain_queue() {
+    local job record rc tip staged old_claim original workpath source queue_ref
+    while [[ -f "$registry" && ! -e "$state/migrating" ]]; do
+        lock_claims
+        # Recover a crash after removing the editor worktree but before
+        # marking its durable submission pending.
+        while IFS= read -r staged; do
+            record="$state/queue/$staged.json"
+            workpath=$(jq -er .worktree "$record")
+            [[ ! -e "$workpath" ]] || continue
+            source=$(jq -er .source "$record")
+            queue_ref="refs/heads/$(jq -er .queue_branch "$record")"
+            [[ "$(git_repo rev-parse "$queue_ref")" == "$source" ]] || continue
+            old_claim="$state/claims/$(jq -er .worker "$record").json"
+            original=$(jq -er .branch "$record")
+            if [[ -f "$old_claim" && "$(jq -er .branch "$old_claim")" == "$original" ]]; then
+                git_repo update-ref -d "refs/heads/$original" "$source" || true
+                rm -- "$old_claim"
+            fi
+            queue_update "$record" pending "recovered interrupted submission"
+        done < <(queue_records | jq -r '.[]|select(.status=="staging")|.job')
+        # A crashed running job is retried, checking ancestry before rebuilding.
+        job=$(queue_records | jq -r 'map(select(.status=="pending" or .status=="running"))|sort_by(.job)|.[0].job // empty')
+        if [[ -z "$job" ]]; then
+            unlock_claims
+            tip=$(git_repo rev-parse "refs/remotes/origin/$target")
+            if [[ ! -f "$state/inventory/$tip.json" ]]; then
+                validator_checkout "$tip"
+                inventory "$work" "$tip" "$state/build/validator"
+            fi
+            return
+        fi
+        record="$state/queue/$job.json"
+        queue_update "$record" running "validating against latest target"
+        unlock_claims
+        say "validating queue job $job"
+        # An if-condition would disable errexit throughout the function.
+        set +e
+        (set -e; validate_job "$record") >>"$state/logs/queue-$job.log" 2>&1
+        rc=$?
+        set -e
+        lock_claims
+        if ((rc==0)); then
+            queue_update "$record" published "$(cat "$state/queue/$job.merged")"
+        else
+            queue_update "$record" failed "exit $rc; see $state/logs/queue-$job.log"
+        fi
+        unlock_claims
+        say "queue job $job $(jq -r .status "$record")"
+    done
+}
+require_empty_queue() {
+    [[ "$(reserved_queue)" == '[]' ]] || die "queued, running or failed submissions remain"
+}

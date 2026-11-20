@@ -40,6 +40,12 @@ lint boundary via package metadata; the generated file still runs through strict
 Clippy. See [docs/strict-ci.md](./docs/strict-ci.md) for the policy and
 customization points.
 
+For an existing repository with inherited strict lint debt, use the optional
+[temporary lint campaign](./docs/lint-campaign.md). Independent local agents
+claim small file sets, reduce diagnostics and queue commits for a single
+serial validation/fast-forward worker while continuing to edit. Regular CI policy is
+unchanged.
+
 Migrating a codebase? Start with [Rust 1.99 → 1.100](./docs/migration-rust-1.99-to-1.100.md) for the current stable upgrade, or the historical [Rust 1.88 → 1.99 guide](./docs/migration-rust-1.88-to-1.99.md).
 
 ## How to use it
