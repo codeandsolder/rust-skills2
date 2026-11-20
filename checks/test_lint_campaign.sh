@@ -150,3 +150,70 @@ run finish 'cargo +stable test --locked'
 [[ -z "$(find "$tmp/worktrees" -mindepth 1 -maxdepth 1 -type d -print -quit)" ]]
 if run claim after-finish; then echo "unexpected success" >&2; exit 1; fi
 printf 'Serialized lint campaign integration test passed.\n'
+
+cat >"$tmp/issues.json" <<'JSON'
+[
+    {"id":"101","title":"Refactor alpha","depends":[],"paths":["src/alpha.rs","NOTES.md"]},
+    {"id":"102","title":"Refactor beta","depends":[],"paths":["shared/"]},
+    {"id":"103","title":"Follow alpha","depends":["101"],"paths":["src/alpha.rs"]},
+    {"id":"104","title":"Join both results","depends":["102","103"],"paths":["src/gamma.rs"]}
+]
+JSON
+state="$tmp/issue-state"
+(
+    cd "$tmp/repo"
+    bash "$tool" init-issues "$state" campaign "$tmp/issue-worktrees" "$tmp/issues.json" 'cargo +stable test --locked'
+)
+[[ "$(run issues | jq -r 'map(.status)|join(",")')" == 'ready,ready,blocked,blocked' ]]
+run claim-issue one 101
+run claim-issue two 102
+if run claim-issue other 103; then echo "dependency bypass" >&2; exit 1; fi
+if run extend two src/alpha.rs; then echo "issue overlap accepted" >&2; exit 1; fi
+one="$tmp/issue-worktrees/one"
+two="$tmp/issue-worktrees/two"
+printf '# Refactor notes\n' >"$one/NOTES.md"
+printf '// Refactor alpha.\n' >>"$one/src/alpha.rs"
+git -C "$one" add NOTES.md src/alpha.rs
+git -C "$one" commit --quiet -m 'refactor alpha'
+if run publish one; then echo "missing focused gate accepted" >&2; exit 1; fi
+run publish one 'cargo +stable test --locked'
+if run claim-issue other 103; then echo "pending dependency accepted" >&2; exit 1; fi
+printf '// Refactor beta.\n' >>"$two/shared/beta.rs"
+git -C "$two" add shared/beta.rs
+git -C "$two" commit --quiet -m 'refactor beta'
+run publish two false
+run drain
+[[ "$(run issues | jq -r 'map(.status)|join(",")')" == 'published,failed,ready,blocked' ]]
+run recover 000000002 two
+[[ "$(jq -r .issue "$state/claims/two.json")" == 102 ]]
+run publish two 'cargo +stable test --locked'
+run drain
+run claim-issue one
+[[ "$(jq -r .issue "$state/claims/one.json")" == 103 ]]
+# An issue cannot introduce strict debt even when its focused tests would pass.
+sed -i 's/123_456/123456/' "$one/src/alpha.rs"
+git -C "$one" add src/alpha.rs
+git -C "$one" commit --quiet -m 'introduce lint regression'
+run publish one 'cargo +stable test --locked'
+run drain
+[[ "$(run issues | jq -r 'map(.status)|join(",")')" == 'published,published,failed,blocked' ]]
+run recover 000000004 one
+sed -i 's/123456/123_456/' "$one/src/alpha.rs"
+printf '// Follow-up alpha.\n' >>"$one/src/alpha.rs"
+git -C "$one" add src/alpha.rs
+git -C "$one" commit --quiet -m 'finish follow-up alpha'
+run publish one 'cargo +stable test --locked'
+run drain
+if run finish true; then echo "finish accepted incomplete issues" >&2; exit 1; fi
+run claim-issue one
+[[ "$(jq -r .issue "$state/claims/one.json")" == 104 ]]
+run extend one docs/example.md
+mkdir -p "$one/docs"
+printf '# Combined result\n' >"$one/docs/example.md"
+git -C "$one" add docs/example.md
+git -C "$one" commit --quiet -m 'document combined result'
+run publish one 'cargo +stable test --locked'
+run drain
+[[ "$(run issues | jq -r 'map(.status)|join(",")')" == 'published,published,published,published' ]]
+run finish 'cargo +stable test --locked'
+printf 'Dependency-aware issue campaign integration test passed.\n'
