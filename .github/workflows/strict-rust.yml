@@ -73,16 +73,16 @@ jobs:
           python-ci-paths: ${{ inputs.python-ci-paths }}
 
       - name: Enforce PR workflow supersession across all caller workflows
-        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@079cb96347f3dee5a628baaed46e63055c80efa5 # main
 
       - name: Enforce canonical Rust CI caching
-        uses: codeandsolder/ci-workflows/.github/actions/rust-ci-sccache-policy@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/rust-ci-sccache-policy@079cb96347f3dee5a628baaed46e63055c80efa5 # main
         with:
           strict-ref: ${{ job.workflow_sha }}
 
       - name: Quarantine newly introduced crates.io versions across all workspaces
         if: github.event_name == 'pull_request' && github.repository_owner != 'codeandsolder'
-        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@079cb96347f3dee5a628baaed46e63055c80efa5 # main
         with:
           base-ref: ${{ github.event.pull_request.base.sha }}
           lockfile: auto
@@ -105,7 +105,7 @@ jobs:
           components: clippy,rustfmt
 
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@079cb96347f3dee5a628baaed46e63055c80efa5 # main
         with:
           rust-toolchain: nightly
           rustflags: ""
@@ -136,4 +136,4 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@079cb96347f3dee5a628baaed46e63055c80efa5 # main

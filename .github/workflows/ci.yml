@@ -23,14 +23,14 @@ jobs:
           version: latest-known
           enable-cache: false
       - name: Enforce PR workflow supersession across all caller workflows
-        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@079cb96347f3dee5a628baaed46e63055c80efa5 # main
 
       # Toolchain/target are pinned by checks/rust-toolchain.toml (Rust 1.100.0).
       - uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: x86_64-unknown-linux-gnu
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@079cb96347f3dee5a628baaed46e63055c80efa5 # main
         with:
           rust-toolchain: "1.100.0"
           rustflags: ""
@@ -46,7 +46,7 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@079cb96347f3dee5a628baaed46e63055c80efa5 # main
 
   strict-gate-self-test:
     name: Strict reusable gate self-test
@@ -141,7 +141,7 @@ jobs:
           echo "Python gate correctly rejected a ty violation"
 
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@079cb96347f3dee5a628baaed46e63055c80efa5 # main
         with:
           rust-toolchain: nightly
           rustflags: ""
@@ -516,5 +516,5 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@079cb96347f3dee5a628baaed46e63055c80efa5 # main
 
