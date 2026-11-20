@@ -15,6 +15,7 @@ cleanup() {
 trap cleanup EXIT
 export LINT_CAMPAIGN_NIGHTLY=nightly LINT_CAMPAIGN_STABLE=stable
 export RUST_SKILLS2_ALLOW_TEST_PANICS=true
+# Deliberately supply an undersized inherited value: the campaign must clamp it.
 export CARGO_BUILD_JOBS=1
 git init --quiet --bare "$tmp/origin.git"
 git init --quiet -b campaign "$tmp/repo"
@@ -55,7 +56,7 @@ RS
     git add .
     git commit --quiet -m baseline
     git push --quiet -u origin campaign
-    bash "$tool" init "$tmp/state" campaign "$tmp/worktrees" 'cargo +stable test --locked'
+    bash "$tool" init "$tmp/state" campaign "$tmp/worktrees" 'test "$CARGO_BUILD_JOBS" -eq 16 && cargo +stable test --locked'
 )
 state="$tmp/state"
 run() { bash "$tool" "$1" "$state" "${@:2}"; }

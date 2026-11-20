@@ -32,6 +32,7 @@ Git common directory and STATE. Remote is origin; TARGET is an existing
 temporary topic branch, not main/master. Require the managed RUSTC_WRAPPER.
 LINT_CAMPAIGN_NIGHTLY (default nightly) and LINT_CAMPAIGN_STABLE (stable)
 are fixed at init, including actual rustc versions.
+Cargo compilation concurrency defaults to 32 and is clamped to at least 16.
 HELP
 }
 [[ $# -ge 1 ]] || { usage; exit 2; }
@@ -54,7 +55,19 @@ valid_file() {
 }
 git_repo() { git -C "$repo" "$@"; }
 git_work() { git -C "$work" "$@"; }
+# A serial validation queue must still feed the distributed compiler pool.
+# Clamp inherited settings (including CI/service defaults) before any build.
+configure_build_jobs() {
+    local jobs="${CARGO_BUILD_JOBS:-32}"
+    [[ "$jobs" =~ ^[1-9][0-9]{0,8}$ ]] || die "CARGO_BUILD_JOBS must be a positive integer"
+    if ((jobs < 16)); then
+        say "raising CARGO_BUILD_JOBS from $jobs to minimum 16"
+        jobs=16
+    fi
+    export CARGO_BUILD_JOBS="$jobs"
+}
 need_cache() {
+    configure_build_jobs
     [[ -n "${RUSTC_WRAPPER:-}" ]] || die "set the existing managed RUSTC_WRAPPER; no cache bypass"
     [[ -z "${RUSTC_WORKSPACE_WRAPPER:-}" ]] || die "unexpected workspace compiler wrapper"
     [[ -z "${RUSTFLAGS:-}${CARGO_ENCODED_RUSTFLAGS:-}${CARGO_BUILD_RUSTFLAGS:-}${CARGO_BUILD_WARNINGS:-}" ]] ||
@@ -363,6 +376,7 @@ case "$action" in
     serve|drain)
         [[ $# -eq 0 ]] || die "unexpected validator arguments"
         check_tools
+        say "validator Cargo compilation jobs: $CARGO_BUILD_JOBS (minimum 16)"
         while [[ -f "$registry" && ! -e "$state/migrating" ]]; do
             validator_lock
             drain_queue

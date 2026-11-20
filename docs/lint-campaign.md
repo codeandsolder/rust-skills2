@@ -80,7 +80,11 @@ transfers the file reservation to the queue, and removes the editor
 worktree. The same worker ID is immediately free to claim another set.
 No compiler runs in this path. Do not wait for the submitted job.
 
-Start exactly one long-lived validator on the shared host:
+Start exactly one long-lived validator on the shared host. Queue serialization
+does not serialize compilation: the campaign defaults to 32 Cargo jobs
+and clamps inherited positive job counts below 16 to 16. Do not add lower
+explicit job-count overrides to focused commands. The existing managed
+sccache and distributed worker configuration remain in use.
 
 ```bash
 "$tool" serve "$state"
