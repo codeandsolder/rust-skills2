@@ -174,3 +174,44 @@ real Git/Cargo fixture, exclusive serial validation, immediate reassignment
 while an earlier job is running, queued-file reservations, stale-base merge,
 no-progress and failed focused-check recovery, deferral, final strict
 rejection and final successful completion.
+
+## Issue queues after strict cleanup
+
+The same validator can coordinate larger, dependency-ordered refactors
+without requiring a lint count reduction. Initialize a fresh campaign only
+after the lint campaign has finished and the target inventory is empty:
+
+```bash
+"$tool" init-issues "$state" "$target" "$worktrees" /absolute/issue-plan.json \
+  'cargo +stable test --workspace --locked'
+"$tool" serve "$state"
+```
+
+The manifest is an ordered JSON array (dependencies must precede dependants).
+Each task has a unique string issue number, title, dependencies and starting
+scope. Exact repository-relative paths may include new files; directory
+prefixes ending in / expand to tracked files at claim time.
+
+```json
+[
+  {"id":"10","title":"Introduce checked handles","depends":[],"paths":["src/index.rs"]},
+  {"id":"11","title":"Use checked handles in solver","depends":["10"],"paths":["src/solver/"]}
+]
+```
+
+Workers use `issues STATE` to inspect readiness and `claim-issue STATE WORKER
+[ISSUE_ID]` to take the first ready task or an explicitly requested ready task.
+Only successfully published prerequisite tasks unblock dependants. Active,
+queued and failed tasks reserve their exact file scopes until publication,
+recovery or release. Extend a claim before editing additional files. The
+same publish/results/recover protocol applies; issue submissions require a
+focused regression command. Give the issue's acceptance evidence in the
+commits and link the accepted revision on GitHub after publication. A
+published receipt means the declared work passed the gates, not that the
+tool independently judged the entire issue's design complete. Do not close
+a GitHub issue merely because a partial implementation passed.
+
+Every accepted issue revision must keep the strict inventory empty; the
+shared and focused gates still run on the merged candidate. Finish refuses
+while any task remains unpublished. Use a new manifest for the next wave,
+rather than editing a live plan or manually overriding dependencies.

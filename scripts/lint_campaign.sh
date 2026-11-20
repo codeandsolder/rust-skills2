@@ -9,6 +9,9 @@ usage() {
     cat <<'HELP'
 Usage:
   lint_campaign.sh init STATE TARGET WORKTREE_ROOT [SMOKE_COMMAND]
+  lint_campaign.sh init-issues STATE TARGET WORKTREE_ROOT MANIFEST [SMOKE_COMMAND]
+  lint_campaign.sh claim-issue STATE WORKER [ISSUE_ID]
+  lint_campaign.sh issues STATE
   lint_campaign.sh refresh STATE
   lint_campaign.sh status STATE
   lint_campaign.sh claim STATE WORKER [LINT_BUDGET=20] [PATH_PREFIX] [MAX_FILES=4]
@@ -47,11 +50,15 @@ outside() {
     [[ "$candidate" != "$root" && "$candidate/" != "$root/"* ]]
 }
 valid_worker() { [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,47}$ ]] || die "invalid worker id: $1"; }
-valid_file() {
-    [[ "$1" == *.rs && "$1" != /* && "$1" != -* && "$1" != *$'\n'* &&
+valid_repo_path() {
+    [[ -n "$1" && "$1" != */ && "$1" != /* && "$1" != -* && "$1" != *$'\n'* &&
        "$1" != *$'\r'* && "$1" != *$'\t'* && "/$1/" != *'/../'* &&
-       "/$1/" != *'/./'* && "$1" != *'//'* && "$1" != .git/* ]] ||
-       die "claim only repository-relative Rust files: $1"
+       "/$1/" != *'/./'* && "$1" != *'//'* && "$1" != .git && "$1" != .git/* ]] ||
+       die "claim only safe repository-relative file paths: $1"
+}
+valid_file() {
+    valid_repo_path "$1"
+    [[ -f "$state/issues.json" || "$1" == *.rs ]] || die "lint claims may only contain Rust files"
 }
 git_repo() { git -C "$repo" "$@"; }
 git_work() { git -C "$work" "$@"; }
@@ -90,7 +97,7 @@ clean_at() {
 clean_policy() {
     local status
     status=$(git -C "$SKILLS" status --porcelain --untracked-files=all -- \
-        scripts/lint_campaign.sh scripts/lint_campaign_queue.sh scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
+        scripts/lint_campaign.sh scripts/lint_campaign_queue.sh scripts/lint_campaign_issues.sh scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
         scripts/workspace_test_policy.py .github/actions/rust-strict) || die "cannot inspect policy checkout"
     [[ -z "$status" ]] || die "campaign tool or policy files have uncommitted edits"
 }
@@ -207,6 +214,12 @@ scope_diff() {
 }
 compare_inventory() {
     local before=$1 after=$2
+    if [[ -f "$state/issues.json" ]]; then
+        [[ "$(jq length "$state/inventory/$before.json")" == 0 &&
+           "$(jq length "$state/inventory/$after.json")" == 0 ]] ||
+            die "issue campaign must preserve clean strict inventory"
+        return
+    fi
     jq -ne --slurpfile old "$state/inventory/$before.json" \
            --slurpfile new "$state/inventory/$after.json" --slurpfile c "$claim" '
       def owned($paths): .file as $f | ($paths | index($f)) != null;
@@ -279,7 +292,16 @@ remove_claim() {
 }
 # shellcheck source=scripts/lint_campaign_queue.sh
 source "$SKILLS/scripts/lint_campaign_queue.sh"
-if [[ "$action" == init ]]; then
+# shellcheck source=scripts/lint_campaign_issues.sh
+source "$SKILLS/scripts/lint_campaign_issues.sh"
+if [[ "$action" == init || "$action" == init-issues ]]; then
+    manifest=''
+    if [[ "$action" == init-issues ]]; then
+        [[ $# -ge 3 && $# -le 4 ]] || die "init-issues requires TARGET WORKTREE_ROOT MANIFEST [SMOKE_COMMAND]"
+        manifest=$(realpath -e "$3")
+        validate_issue_manifest "$manifest"
+        set -- "$1" "$2" "${4:-cargo +stable test --workspace --locked}"
+    fi
     [[ $# -ge 2 && $# -le 3 ]] || die "init requires TARGET WORKTREE_ROOT [SMOKE_COMMAND]"
     target=$1; workroot=$2; smoke=${3:-cargo +stable test --workspace --locked}
     repo=$(git rev-parse --show-toplevel)
@@ -333,6 +355,15 @@ if [[ "$action" == init ]]; then
         '{repo:$repo,target:$target,base:$base,workroot:$workroot,id:$id,registry:$registry,
           smoke:$smoke,skills_revision:$skills,nightly:$nightly,stable:$stable,
           nightly_version:$nv,stable_version:$sv,allow_test_panics:$test_panics}' >"$state/config.json"
+    if [[ -n "$manifest" ]]; then
+        cp -- "$manifest" "$state/issues.json"
+        # Do not register an issue campaign on a nonzero strict baseline.
+        inventory_tip "$base"
+        if [[ "$(jq length "$state/inventory/$base.json")" != 0 ]]; then
+            printf '%s\n' "$base" >"$state/stopped"
+            die "issue campaign requires a clean strict baseline; retained diagnostic evidence in $state"
+        fi
+    fi
     printf '%s\n' "$state" >"$registry"
     flock -u "$reg_fd"; exec {reg_fd}>&-
     inventory_tip "$base"
@@ -368,10 +399,21 @@ case "$action" in
         unlock_claims
         say "upgraded campaign in place; claims preserved"
         ;;
+    issues)
+        [[ $# -eq 0 && -f "$state/issues.json" ]] || die "issues requires an issue campaign"
+        tip=$(remote_tip)
+        lock_claims
+        issue_status "$tip" | jq 'map(del(.files))'
+        unlock_claims
+        ;;
+    claim-issue)
+        [[ $# -ge 1 && $# -le 2 ]] || die "claim-issue requires WORKER [ISSUE_ID]"
+        claim_issue "${2:-}" "$1"
+        ;;
     results)
         [[ $# -le 1 ]] || die "results accepts optional WORKER"
         queue_records | jq --arg worker "${1:-}" \
-          '[.[]|select($worker=="" or .worker==$worker)|{job,worker,status,files,source,detail}]'
+          '[.[]|select($worker=="" or .worker==$worker)|{job,worker,issue,status,files,source,detail}]'
         ;;
     serve|drain)
         [[ $# -eq 0 ]] || die "unexpected validator arguments"
@@ -398,7 +440,7 @@ case "$action" in
         source=$(jq -er .source "$record")
         git_repo worktree add --quiet -b "$topic" "$work" "$source"
         jq --arg worker "$worker" --arg work "$work" --arg topic "$topic" \
-           '{worker:$worker,base,worktree:$work,branch:$topic,files,cleanup_refs}' "$record" >"$claim.tmp"
+            '{worker:$worker,base,worktree:$work,branch:$topic,files,cleanup_refs,issue,issue_title}'  "$record" >"$claim.tmp"
         mv "$claim.tmp" "$claim"
         queue_update "$record" recovered "reassigned to $worker"
         unlock_claims
@@ -424,6 +466,7 @@ case "$action" in
         unlock_claims
         ;;
     claim)
+        [[ ! -f "$state/issues.json" ]] || die "use claim-issue for issue campaigns"
         [[ $# -ge 1 && $# -le 4 ]] || die "claim requires WORKER [BUDGET] [PREFIX] [MAX_FILES]"
         worker=$1; lock_worker
         budget=${2:-20}; prefix=${3:-}; max_files=${4:-4}
@@ -513,6 +556,9 @@ case "$action" in
     publish)
         [[ $# -ge 1 && $# -le 2 ]] || die "publish requires WORKER [FOCUSED_TEST_COMMAND]"
         focused=${2:-:}
+        if [[ -f "$state/issues.json" ]]; then
+            [[ $# == 2 && -n "$focused" && "$focused" != : ]] || die "issue submission requires focused regression command"
+        fi
         load_worker "$1"; check_tools; clean_at "$work"
         enqueue
         ;;
@@ -521,6 +567,7 @@ case "$action" in
         load_worker "$1"; tip=$(remote_tip); remove_claim "$tip"
         ;;
     defer)
+        [[ ! -f "$state/issues.json" ]] || die "issue claims can be released, not deferred by file"
         [[ $# -eq 2 && -n "$2" ]] || die "defer requires WORKER REASON"
         load_worker "$1"; tip=$(remote_tip); remove_claim "$tip" "$2"
         ;;
@@ -560,6 +607,7 @@ case "$action" in
         shopt -s nullglob
         claims=("$state/claims/"*.json)
         (("${#claims[@]}" == 0)) || die "active claims remain"
+        require_finished_issues
         tip=$(remote_tip)
         temporary=$(mktemp -d "$workroot/.finish.XXXXXX")
         build=$(mktemp -d "$state/build/final.XXXXXX")
