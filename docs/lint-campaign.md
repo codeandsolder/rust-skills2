@@ -15,6 +15,24 @@ rust-skills2 revision. The tool is not a distributed lease service for separate
 clones. Keep that pinned rust-skills2 checkout available throughout a campaign.
 Do not use a moving toolchain or modify compiler flags during a campaign.
 
+For a long-lived campaign, provision a dedicated Rustup home with its
+`toolchains/nightly-<host>` and `toolchains/stable-<host>` aliases pointing
+to installed dated nightly and numbered stable toolchains, respectively.
+Do not point these aliases at the host's moving toolchains. Keep the
+installation available until the campaign is finished. Initialize with
+`LINT_CAMPAIGN_RUSTUP_HOME=/absolute/path/to/pinned-rustup`; the campaign
+persists that home and exports it for workers, validation and focused tests.
+
+To adopt the same isolation in an existing campaign, pause new commands
+with the state's `migrating` marker, stop the sole validator, and wait
+for any in-flight worker commands to exit. Run
+`lint_campaign.sh upgrade STATE /absolute/path/to/pinned-rustup` from the
+updated clean policy checkout, then restart the existing validator service.
+Upgrade checks both pinned compiler versions and preserves the lint policy,
+claims, and inventories. If a validator was interrupted while using a
+different compiler, discard any inventory computed with that compiler
+before restarting; the durable running queue job is retried automatically.
+
 From the **target repository**, with a published temporary branch:
 
 ```bash

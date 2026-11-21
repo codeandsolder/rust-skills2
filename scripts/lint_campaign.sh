@@ -22,7 +22,7 @@ Usage:
   lint_campaign.sh drain STATE                                # drain once
   lint_campaign.sh results STATE [WORKER]
   lint_campaign.sh recover STATE JOB WORKER
-  lint_campaign.sh upgrade STATE
+  lint_campaign.sh upgrade STATE [RUSTUP_HOME]
   lint_campaign.sh release STATE WORKER
   lint_campaign.sh defer STATE WORKER REASON
   lint_campaign.sh retry STATE FILE...
@@ -35,6 +35,9 @@ Git common directory and STATE. Remote is origin; TARGET is an existing
 temporary topic branch, not main/master. Require the managed RUSTC_WRAPPER.
 LINT_CAMPAIGN_NIGHTLY (default nightly) and LINT_CAMPAIGN_STABLE (stable)
 are fixed at init, including actual rustc versions.
+Set LINT_CAMPAIGN_RUSTUP_HOME to an isolated Rustup home to persist the
+compiler installation for every worker and validator. An active campaign
+can adopt an isolated home with upgrade, only if its compiler versions match.
 Cargo compilation concurrency defaults to 32 and is clamped to at least 16.
 HELP
 }
@@ -101,13 +104,27 @@ clean_policy() {
         scripts/workspace_test_policy.py .github/actions/rust-strict) || die "cannot inspect policy checkout"
     [[ -z "$status" ]] || die "campaign tool or policy files have uncommitted edits"
 }
-check_tools() {
-    need_cache
+use_campaign_rustup() {
+    if [[ -n "$rustup_home" ]]; then
+        [[ "$rustup_home" == /* && -d "$rustup_home/toolchains" ]] ||
+            die "campaign Rustup home missing or invalid: $rustup_home"
+        export RUSTUP_HOME="$rustup_home"
+    fi
+}
+check_compilers() {
     [[ "$(rustc "+$nightly" --version)" == "$nightly_version" &&
        "$(rustc +nightly --version)" == "$nightly_version" ]] ||
         die "nightly compiler drift; start a new campaign"
     [[ "$(rustc "+$stable" --version)" == "$stable_version" ]] ||
         die "stable compiler drift; start a new campaign"
+    if [[ -n "$rustup_home" ]]; then
+        [[ "$(rustc +stable --version)" == "$stable_version" ]] ||
+            die "stable alias differs from pinned compiler"
+    fi
+}
+check_tools() {
+    need_cache
+    check_compilers
     [[ "$(git -C "$SKILLS" rev-parse HEAD)" == "$skills_revision" ]] ||
         die "rust-skills2 revision changed; use the original checkout"
     clean_policy
@@ -328,6 +345,8 @@ if [[ "$action" == init || "$action" == init-issues ]]; then
     need_cache
     nightly=${LINT_CAMPAIGN_NIGHTLY:-nightly}
     stable=${LINT_CAMPAIGN_STABLE:-stable}
+    rustup_home=${LINT_CAMPAIGN_RUSTUP_HOME:-}
+    use_campaign_rustup
     nightly_version=$(rustc "+$nightly" --version)
     [[ "$(rustc +nightly --version)" == "$nightly_version" ]] ||
         die "central nightly alias must match the campaign compiler"
@@ -335,6 +354,7 @@ if [[ "$action" == init || "$action" == init-issues ]]; then
     [[ "$allow_test_panics" == true || "$allow_test_panics" == false ]] ||
         die "RUST_SKILLS2_ALLOW_TEST_PANICS must be true or false"
     stable_version=$(rustc "+$stable" --version)
+    check_compilers
     skills_revision=$(git -C "$SKILLS" rev-parse HEAD)
     clean_policy
     common=$(git_repo rev-parse --path-format=absolute --git-common-dir)
@@ -351,9 +371,9 @@ if [[ "$action" == init || "$action" == init-issues ]]; then
         --arg workroot "$workroot" --arg id "$id" --arg registry "$registry" \
         --arg smoke "$smoke" --arg skills "$skills_revision" \
         --arg nightly "$nightly" --arg stable "$stable" --arg test_panics "$allow_test_panics" \
-        --arg nv "$nightly_version" --arg sv "$stable_version" \
+        --arg nv "$nightly_version" --arg sv "$stable_version" --arg home "$rustup_home" \
         '{repo:$repo,target:$target,base:$base,workroot:$workroot,id:$id,registry:$registry,
-          smoke:$smoke,skills_revision:$skills,nightly:$nightly,stable:$stable,
+          smoke:$smoke,skills_revision:$skills,nightly:$nightly,stable:$stable,rustup_home:$home,
           nightly_version:$nv,stable_version:$sv,allow_test_panics:$test_panics}' >"$state/config.json"
     if [[ -n "$manifest" ]]; then
         cp -- "$manifest" "$state/issues.json"
@@ -380,12 +400,21 @@ smoke=$(jq -er .smoke "$config"); nightly=$(jq -er .nightly "$config")
 stable=$(jq -er .stable "$config"); nightly_version=$(jq -er .nightly_version "$config")
 stable_version=$(jq -er .stable_version "$config"); skills_revision=$(jq -er .skills_revision "$config")
 allow_test_panics=$(jq -er .allow_test_panics "$config")
+rustup_home=$(jq -r '.rustup_home // ""' "$config")
 if [[ "$action" == serve && ! -e "$registry" && ( -f "$state/finished" || -f "$state/stopped" ) ]]; then exit 0; fi
 [[ -f "$registry" && "$(cat "$registry")" == "$state" ]] || die "campaign not active"
 if [[ "$action" != upgrade && -e "$state/migrating" ]]; then die "campaign migration in progress"; fi
+if [[ "$action" != upgrade ]]; then use_campaign_rustup; fi
 case "$action" in
     upgrade)
-        [[ $# -eq 0 ]] || die "upgrade takes no arguments"
+        [[ $# -le 1 ]] || die "upgrade accepts an optional isolated Rustup home"
+        if [[ $# -eq 1 ]]; then
+            rustup_home=$1
+            [[ -n "$rustup_home" ]] || die "Rustup home must not be empty"
+            [[ -e "$state/migrating" ]] || die "pause the campaign before changing its Rustup home"
+        fi
+        use_campaign_rustup
+        if [[ -n "$rustup_home" ]]; then check_compilers; fi
         clean_policy
         git -C "$SKILLS" diff --quiet "$skills_revision" HEAD -- \
             scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
@@ -393,7 +422,8 @@ case "$action" in
             die "lint policy changed; cannot reuse existing inventories"
         lock_claims
         mkdir -p "$state/queue"
-        jq --arg rev "$(git -C "$SKILLS" rev-parse HEAD)" '.skills_revision=$rev' "$config" >"$config.tmp"
+        jq --arg rev "$(git -C "$SKILLS" rev-parse HEAD)" --arg home "$rustup_home" \
+            '.skills_revision=$rev | .rustup_home=$home' "$config" >"$config.tmp"
         mv "$config.tmp" "$config"
         rm -f "$state/migrating"
         unlock_claims

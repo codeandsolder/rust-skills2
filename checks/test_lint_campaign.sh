@@ -64,9 +64,28 @@ run() { bash "$tool" "$1" "$state" "${@:2}"; }
 # though the inventory succeeds. The relaxed integration test is not a shard.
 baseline=$(jq -er .base "$state/config.json")
 [[ "$(jq length "$state/inventory/$baseline.json")" == 3 ]]
+# A campaign can adopt a shared isolated Rustup home without changing
+# its baseline. The fixture links the current test toolchains (no updates).
+host=$(rustc +stable -vV | sed -n 's/^host: //p')
+pinned="$tmp/pinned-rustup"
+mkdir -p "$pinned/toolchains"
+for channel in nightly stable; do
+    compiler=$(rustup which --toolchain "$channel" rustc)
+    ln -s "$(dirname "$(dirname "$compiler")")" "$pinned/toolchains/$channel-$host"
+done
+if run upgrade "$pinned"; then echo "unpaused migration accepted" >&2; exit 1; fi
+touch "$state/migrating"
+if run upgrade "$tmp/absent"; then echo "missing Rustup home accepted" >&2; exit 1; fi
+[[ -e "$state/migrating" ]]
+run upgrade "$pinned"
+[[ "$(jq -r .rustup_home "$state/config.json")" == "$pinned" ]]
+[[ ! -e "$state/migrating" ]]
+[[ "$(jq length "$state/inventory/$baseline.json")" == 3 ]]
+# An invalid caller Rustup home must not override the campaign selection.
+RUSTUP_HOME="$tmp/absent" run status >/dev/null
 if run finish true; then echo "strict finish accepted outstanding lints" >&2; exit 1; fi
 # Claim concurrently; the claims must have disjoint exact paths.
-run claim one 1 "" 1 >"$tmp/one.log" &
+RUSTUP_HOME="$tmp/absent" run claim one 1 "" 1 >"$tmp/one.log" &
 one_pid=$!
 run claim two 1 "" 1 >"$tmp/two.log" &
 two_pid=$!
