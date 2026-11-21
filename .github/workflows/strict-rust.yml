@@ -81,7 +81,7 @@ jobs:
           strict-ref: ${{ job.workflow_sha }}
 
       - name: Quarantine newly introduced crates.io versions across all workspaces
-        if: github.event_name == 'pull_request' && github.repository_owner != 'codeandsolder'
+        if: github.event_name == 'pull_request'
         uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@079cb96347f3dee5a628baaed46e63055c80efa5 # main
         with:
           base-ref: ${{ github.event.pull_request.base.sha }}
