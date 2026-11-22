@@ -130,7 +130,7 @@ jobs:
           set -euo pipefail
           gate="$RUNNER_TEMP/sparse-rust-skills2-gate"
           git clone --shared --no-checkout "$GITHUB_WORKSPACE" "$gate"
-          awk '/^          sparse-checkout: \\|$/ { reading=1; next } reading && /^            / { sub(/^            /, ""); print; next } reading { exit }' .github/workflows/strict-rust.yml |
+          awk '$0 == "          sparse-checkout: |" { reading=1; next } reading && /^            / { sub(/^            /, ""); print; next } reading { exit }' .github/workflows/strict-rust.yml |
             git -C "$gate" sparse-checkout set --no-cone --stdin
           git -C "$gate" checkout --detach "$(git rev-parse HEAD)"
           test -f "$gate/scripts/strict_clippy.sh"
