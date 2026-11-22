@@ -242,5 +242,5 @@ Boilerplate reduction is useful only when the generated semantics are the semant
 - [type-newtype-ids](./type-newtype-ids.md) - ID newtypes
 - [type-newtype-validated](./type-newtype-validated.md) - Validated newtypes
 - [type-nutype-validated](./type-nutype-validated.md) - `nutype` for validation-oriented newtypes
-- [type-newtype-repr-transparent](./type-newtype-repr-transparent.md) - Representation transparency
+- [type-repr-transparent](./type-repr-transparent.md) - Representation transparency
 - [derive_more docs](https://docs.rs/derive_more/latest/derive_more/) - Current derive syntax and behavior

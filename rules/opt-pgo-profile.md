@@ -1,179 +1,80 @@
 # opt-pgo-profile
 
-> Use Profile-Guided Optimization (PGO) for maximum performance
+> Use representative profile-guided optimization when measured end-to-end gains justify its training and build costs
 
 ## Why It Matters
 
-PGO uses real runtime behavior to guide compiler optimization decisions. By profiling actual workloads, the compiler learns which code paths are hot, optimizing them aggressively while deprioritizing cold paths. This can yield 10-30% performance improvements beyond standard optimizations.
+Instrumentation-based PGO records execution counts and other information that LLVM can use to make better optimization decisions. The profile must reflect the deployed workload. Training on unrepresentative inputs can regress other paths or overfit a benchmark.
 
-## The PGO Process
+## Instrumentation Workflow
 
-1. **Instrument**: Build with profiling instrumentation
-2. **Profile**: Run representative workloads
-3. **Optimize**: Rebuild using collected profile data
+1. Build an instrumented release artifact with `-Cprofile-generate=ABSOLUTE_DIRECTORY`.
+2. Run representative workloads using that exact artifact and collect the generated raw profile files.
+3. Merge the raw files with the LLVM tool matching the compiler.
+4. Rebuild the same source, target, feature set and release configuration with `-Cprofile-use=ABSOLUTE_PROFILE_FILE` instead of the generation flag.
+5. Check correctness and compare the final artifact with a non-instrumented baseline on separately selected workloads.
 
-> **Step 0**: Install [`cargo-pgo`](https://crates.io/crates/cargo-pgo) — the recommended tool for managing PGO workflows:
-> ```bash
-> cargo install cargo-pgo
-> cargo pgo build  # Automates instrument → profile → optimize
-> ```
+Use `rustup component add llvm-tools-preview` for the selected compiler and find the matching `llvm-profdata` from its toolchain installation (e.g. via the compiler sysroot and host triple). Do not assume the distro's newest LLVM can read every rustc profile format.
 
-## Step-by-Step
+## Explicit Cargo Configuration
 
-```bash
-# Step 1: Build instrumented binary
-RUSTFLAGS="-Cprofile-generate=/tmp/pgo-data" \
-    cargo build --release
-
-# Step 2: Run representative workloads
-./target/release/my_app < test_data_1.txt
-./target/release/my_app < test_data_2.txt
-./target/release/my_app < typical_workload.txt
-
-# Step 3: Merge profile data
-llvm-profdata merge -o /tmp/pgo-data/merged.profdata /tmp/pgo-data
-
-# Step 4: Build optimized binary using profile
-RUSTFLAGS="-Cprofile-use=/tmp/pgo-data/merged.profdata" \
-    cargo build --release
-```
-
-## Cargo Configuration
+For a known target, create two configuration files in the project's dedicated build/profiling directory. These are illustrative absolute paths and target names; use the actual project locations:
 
 ```toml
-# Cargo.toml
-[profile.release]
-lto = "fat"
-codegen-units = 1
-opt-level = 3
-
-# PGO flags set via RUSTFLAGS environment variable
+# generate.toml
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "profile-generate=/absolute/build/pgo/raw"]
 ```
 
-## Build Script
+```toml
+# use.toml
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "profile-use=/absolute/build/pgo/merged.profdata"]
+```
+
+Integrate these flags with the project's effective Cargo configuration rather than accidentally replacing its target flags or adding duplicate flags. Pass the configuration explicitly and provide an explicit target so host build scripts and procedural macros do not receive target profiling flags:
 
 ```bash
-#!/bin/bash
-set -e
-
-PGO_DIR=/tmp/pgo-$(date +%s)
-
-# Clean
-cargo clean
-
-# Instrumented build
-echo "Building instrumented binary..."
-RUSTFLAGS="-Cprofile-generate=$PGO_DIR" cargo build --release
-
-# Run workloads
-echo "Collecting profile data..."
-./target/release/my_app --benchmark-mode
-./target/release/my_app < test_fixtures/typical.txt
-./target/release/my_app < test_fixtures/stress.txt
-
-# Merge profiles
-echo "Merging profile data..."
-llvm-profdata merge -o $PGO_DIR/merged.profdata $PGO_DIR
-
-# Optimized build
-echo "Building optimized binary..."
-RUSTFLAGS="-Cprofile-use=$PGO_DIR/merged.profdata" cargo build --release
-
-echo "Done! Optimized binary at target/release/my_app"
+cargo --config /absolute/build/pgo/generate.toml build --locked --release --target x86_64-unknown-linux-gnu
+# Run the resulting instrumented binary on representative inputs.
+# Merge the fresh *.profraw files with the matching tool.
+llvm-profdata merge /absolute/build/pgo/raw -o /absolute/build/pgo/merged.profdata
+cargo --config /absolute/build/pgo/use.toml build --locked --release --target x86_64-unknown-linux-gnu
 ```
 
-## Representative Workloads
+Use Cargo JSON artifact records to find each executable; do not assume both
+builds have the same layout or keep them in the same directory if they need
+to be compared. A tool like cargo-pgo can orchestrate this workflow if its
+version and cache behavior fit the project.
 
-```rust
-// Create benchmarks that match real usage patterns
+Keep raw and merged profiles within a bounded project-owned artifact
+directory. Use a fresh generation epoch rather than merging unrelated
+stale data; do not clean the shared build cache or bypass sccache.
 
-// Good: actual data samples
-fn profile_workload() {
-    for file in real_customer_data_samples() {
-        process_file(&file);
-    }
-}
+## Validate Generalization
 
-// Good: synthetic but realistic
-fn profile_synthetic() {
-    for _ in 0..10000 {
-        let data = generate_realistic_data();
-        process(&data);
-    }
-}
+- Train with representative branch probabilities, data distributions, event rates and concurrency, including relevant error paths.
+- Ensure the final profile corresponds to the source and compiler revision. Investigate mismatch/missing-profile diagnostics rather than assuming they are harmless.
+- Benchmark a separate validation workload, not just training inputs.
+- Compare release semantics, end-to-end speed, tail latency, binary size and compilation cost. There is no universal expected percentage gain.
+- Recollect profiles when meaningful changes alter the workload or invalidate profile compatibility.
 
-// Bad: artificial microbenchmarks
-fn profile_bad() {
-    for _ in 0..1000000 {
-        small_operation();  // Doesn't reflect real hot paths
-    }
-}
-```
+## Alternatives
 
-## BOLT Post-Link Optimization
+Sample-based profiling is a separate mode supported by modern rustc
+(`-Cprofile-sample-use`; stable since Rust 1.100). It requires a compatible
+LLVM sample profile, not arbitrary raw perf data. See
+[opt-sample-profile](./opt-sample-profile.md).
 
-For even more gains, combine PGO with BOLT (Linux-only — ELF binaries):
-
-```bash
-# After PGO build, apply BOLT
-llvm-bolt target/release/my_app \
-    -o target/release/my_app.bolt \
-    -data=perf.data \
-    -reorder-blocks=ext-tsp \
-    -reorder-functions=hfsort
-
-# BOLT can add another 5-15% on top of PGO
-```
-
-## CI/CD Integration
-
-```yaml
-# GitHub Actions example
-jobs:
-  pgo-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install LLVM tools
-        run: sudo apt-get install llvm
-      
-      - name: Instrumented build
-        run: RUSTFLAGS="-Cprofile-generate=/tmp/pgo" cargo build --release
-      
-      - name: Run profiling workloads
-        run: ./scripts/run_profiling_workloads.sh
-      
-      - name: Merge profiles
-        run: llvm-profdata merge -o /tmp/pgo/merged.profdata /tmp/pgo
-      
-      - name: Optimized build
-        run: RUSTFLAGS="-Cprofile-use=/tmp/pgo/merged.profdata" cargo build --release
-      
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: optimized-binary
-          path: target/release/my_app
-```
-
-## When to Use PGO
-
-| Use PGO | Skip PGO |
-|---------|----------|
-| Production deployments | Development builds |
-| Performance-critical apps | Libraries (users can PGO; not distributable with `cargo install`) |
-| Stable workload patterns | Highly variable workloads |
-| Sufficient profiling data | Quick iteration cycles |
-
-## Limitations
-
-- **AutoFDO** (automatic feedback-directed optimization) is **not supported for Rust** ([tracking issue #64892](https://github.com/rust-lang/rust/issues/64892)).
-- PGO cannot be used for `cargo install` — distributed crates cannot ship profile data.
-- PGO is used to optimize the rustc compiler itself: ThinLTO + PGO on AArch64 (since Rust 1.86) gives ~30% faster compiles.
+Post-link optimizers such as LLVM BOLT also have specific executable-format,
+symbol, relocation and profile-conversion requirements. Consult the chosen
+tool's instructions; they are not generic commands applicable to every
+Rust binary.
 
 ## See Also
 
-- [opt-lto-release](./opt-lto-release.md) - LTO works well with PGO
-- [opt-codegen-units](./opt-codegen-units.md) - Single codegen unit for PGO
-- [perf-profile-first](./perf-profile-first.md) - Profiling basics
+- [opt-sample-profile](./opt-sample-profile.md)
+- [opt-lto-release](./opt-lto-release.md)
+- [perf-benchmark-regression](./perf-benchmark-regression.md)
+- [proj-cargo-artifact-layout](./proj-cargo-artifact-layout.md)
+- [rustc book: profile-guided optimization](https://doc.rust-lang.org/rustc/profile-guided-optimization.html)
