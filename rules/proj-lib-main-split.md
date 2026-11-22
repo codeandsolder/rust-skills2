@@ -198,8 +198,13 @@ This lets internal file/module organization evolve without forcing callers to de
 | Need end-to-end CLI behavior tests | Test the binary via `CARGO_BIN_EXE_<name>` |
 | Need both direct logic tests and CLI tests | Library API plus a small binary boundary |
 
+## Explicit Startup and Ownership
+
+Keep configuration parsing, initialization of process-global facilities where necessary, resource ownership and shutdown explicit. Avoid hidden pre-main side effects or library-triggered registration when explicit construction fits.
+
 ## See Also
 
+- [proj-explicit-startup](./proj-explicit-startup.md)
 - [proj-bin-dir](./proj-bin-dir.md) - Multiple binaries in `src/bin/`
 - [proj-mod-by-feature](./proj-mod-by-feature.md) - Module organization
 - [test-integration-dir](./test-integration-dir.md) - Cargo integration tests

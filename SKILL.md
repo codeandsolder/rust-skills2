@@ -1,7 +1,7 @@
 ---
 name: rust-skills
 description: >
-  Comprehensive Rust coding guidelines with 341 rules across 26 categories.
+  Comprehensive Rust coding guidelines with 354 rules across 26 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
@@ -23,7 +23,7 @@ metadata:
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 341 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.100 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 354 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.100 (2024 edition).
 
 ## When to Apply
 
@@ -44,13 +44,13 @@ Reference these guidelines when:
 | 1 | Ownership & Borrowing | CRITICAL | `own-` | 16 |
 | 2 | Error Handling | CRITICAL | `err-` | 17 |
 | 3 | Memory Optimization | CRITICAL | `mem-` | 25 |
-| 4 | Unsafe Code | CRITICAL | `unsafe-` | 10 |
+| 4 | Unsafe Code | CRITICAL | `unsafe-` | 13 |
 | 5 | API Design | HIGH | `api-` | 21 |
-| 6 | Async/Await | HIGH | `async-` | 21 |
+| 6 | Async/Await | HIGH | `async-` | 23 |
 | 7 | Concurrency | HIGH | `conc-` | 4 |
 | 8 | Compiler Optimization | HIGH | `opt-` | 15 |
 | 9 | Numeric & Arithmetic Safety | HIGH | `num-` | 5 |
-| 10 | Type Safety | MEDIUM | `type-` | 17 |
+| 10 | Type Safety | MEDIUM | `type-` | 18 |
 | 11 | Trait & Generics Design | MEDIUM | `trait-` | 7 |
 | 12 | Conversions | MEDIUM | `conv-` | 3 |
 | 13 | Const & Compile-Time | MEDIUM | `const-` | 4 |
@@ -60,11 +60,11 @@ Reference these guidelines when:
 | 17 | Closures | MEDIUM | `closure-` | 6 |
 | 18 | Collections | MEDIUM | `coll-` | 6 |
 | 19 | Naming Conventions | MEDIUM | `name-` | 18 |
-| 20 | Testing | MEDIUM | `test-` | 21 |
-| 21 | Documentation | MEDIUM | `doc-` | 16 |
-| 22 | Observability | MEDIUM | `obs-` | 7 |
-| 23 | Performance Patterns | MEDIUM | `perf-` | 18 |
-| 24 | Project Structure | LOW | `proj-` | 22 |
+| 20 | Testing | MEDIUM | `test-` | 23 |
+| 21 | Documentation | MEDIUM | `doc-` | 17 |
+| 22 | Observability | MEDIUM | `obs-` | 8 |
+| 23 | Performance Patterns | MEDIUM | `perf-` | 19 |
+| 24 | Project Structure | LOW | `proj-` | 24 |
 | 25 | Clippy & Linting | LOW | `lint-` | 20 |
 | 26 | Anti-patterns | REFERENCE | `anti-` | 21 |
 
@@ -80,7 +80,7 @@ Reference these guidelines when:
 - [`own-arc-shared`](rules/own-arc-shared.md) - Use `Arc<T>` when multiple owners may cross thread boundaries; add synchronization only for mutation that actually requires it
 - [`own-rc-single-thread`](rules/own-rc-single-thread.md) - Use `Rc<T>` for shared ownership that is confined to one thread
 - [`own-refcell-interior`](rules/own-refcell-interior.md) - Use `RefCell<T>` when thread-local shared access genuinely needs runtime-checked interior mutability
-- [`own-mutex-interior`](rules/own-mutex-interior.md) - Use the right `Mutex<T>` for the execution model: `std`/`parking_lot` for synchronous code, `tokio::sync::Mutex` for async code
+- [`own-mutex-interior`](rules/own-mutex-interior.md) - Choose locking from critical-section semantics and contention; handle poisoning explicitly and keep synchronous locks out of suspension points
 - [`own-rwlock-readers`](rules/own-rwlock-readers.md) - Choose `RwLock<T>` when concurrent readers materially help the measured workload, not from a fixed read/write ratio
 - [`own-copy-small`](rules/own-copy-small.md) - Implement `Copy` for small, simple types
 - [`own-clone-explicit`](rules/own-clone-explicit.md) - Use `Clone` to make non-`Copy` duplication explicit, but do not infer a universal allocation or cost model from `.clone()`
@@ -142,8 +142,8 @@ Reference these guidelines when:
 ### 4. Unsafe Code (CRITICAL)
 
 - [`unsafe-safety-comment`](rules/unsafe-safety-comment.md) - Write a `// SAFETY:` comment above every `unsafe` block and a `# Safety` section in every `unsafe fn`.
-- [`unsafe-minimize-scope`](rules/unsafe-minimize-scope.md) - Keep `unsafe` blocks as small as possible — mark only the operation that requires unsafety, not the surrounding safe code.
-- [`unsafe-miri-ci`](rules/unsafe-miri-ci.md) - Run `cargo miri test` in CI for every crate that contains `unsafe` code.
+- [`unsafe-minimize-scope`](rules/unsafe-minimize-scope.md) - Keep unsafe operations local, but make the safe boundary enforce every precondition; small unsafe blocks alone do not establish soundness
+- [`unsafe-miri-ci`](rules/unsafe-miri-ci.md) - Exercise unsafe abstractions and their safe callers with Miri; combine dynamic checks with invariant review and native integration tests
 - [`unsafe-maybeuninit`](rules/unsafe-maybeuninit.md) - Use `MaybeUninit<T>` for uninitialized memory; never use `mem::uninitialized()` or `mem::zeroed()` for types with validity invariants.
 - [`unsafe-extern-block`](rules/unsafe-extern-block.md) - In Rust 2024, use `unsafe extern { }` blocks and mark an item `safe` only when every safe Rust caller can satisfy its contract.
 - [`unsafe-send-sync-manual`](rules/unsafe-send-sync-manual.md) - Justify manual `Send`/`Sync` from invariants enforced by the type and its dependencies, not from hoped-for caller behavior
@@ -151,6 +151,9 @@ Reference these guidelines when:
 - [`unsafe-strict-provenance`](rules/unsafe-strict-provenance.md) - Prefer strict provenance APIs (`ptr.addr()`, `ptr.map_addr()`, `ptr.with_addr()`) over integer-pointer round-tripping (`as usize` / `as *const T`); prefer raw borrow syntax (`&raw const x` / `&raw mut x`) over `addr_of!` / `addr_of_mut!`.
 - [`unsafe-cell-access`](rules/unsafe-cell-access.md) - Treat Rust 1.100 `UnsafeCell` accessors as explicit aliasing contracts, not as permission to manufacture simultaneous references
 - [`unsafe-conjure-zst`](rules/unsafe-conjure-zst.md) - Use Rust 1.100 `mem::conjure_zst` only when constructing an inhabited zero-sized value is proven sound
+- [`unsafe-ffi-boundary`](rules/unsafe-ffi-boundary.md) - Keep foreign ABI conversion and ownership contracts at a narrow adapter boundary; expose normal Rust domain types behind it
+- [`unsafe-untrusted-safe-code`](rules/unsafe-untrusted-safe-code.md) - Never make memory safety depend on the correctness of a safe trait implementation, callback, or other caller-controlled safe behavior
+- [`unsafe-unwind-safety`](rules/unsafe-unwind-safety.md) - Preserve memory safety and ownership invariants at every unwind, early return, cancellation and safe-leak boundary
 
 ### 5. API Design (HIGH)
 
@@ -199,6 +202,8 @@ Reference these guidelines when:
 - [`async-blocking-detection`](rules/async-blocking-detection.md) - Detect async worker stalls with latency/console instrumentation; treat blocking-pool metrics as pool pressure, not proof that async workers are blocked
 - [`async-runtime-metrics`](rules/async-runtime-metrics.md) - Use Tokio runtime metrics as scheduler telemetry, and distinguish stable metrics from `tokio_unstable` instrumentation
 - [`async-structured-concurrency`](rules/async-structured-concurrency.md) - Combine `JoinSet` + `CancellationToken` + `select!` for structured async task management
+- [`async-cooperative-budget`](rules/async-cooperative-budget.md) - Bound work per async scheduling turn and batch ready operations when it improves throughput without violating latency or cancellation requirements
+- [`async-future-layout`](rules/async-future-layout.md) - Measure hot future state size and retain only the data needed across suspension points; preserve laziness, lifetime, and cancellation semantics
 
 ### 7. Concurrency (HIGH)
 
@@ -252,6 +257,7 @@ Reference these guidelines when:
 - [`type-newtype-repr-transparent`](rules/type-newtype-repr-transparent.md) - Use `#[repr(transparent)]` only when a newtype intentionally promises the wrapped field's layout or ABI
 - [`type-nonzero-intrinsics`](rules/type-nonzero-intrinsics.md) - Use `NonZero<T>` when zero is invalid, and use only operations whose result semantics preserve that invariant
 - [`type-nutype-validated`](rules/type-nutype-validated.md) - Use validated newtypes to make invalid states unrepresentable; `nutype` is useful when generated constructors and invariant-preserving trait impls justify a proc macro
+- [`type-named-fields`](rules/type-named-fields.md) - Name domain-record fields and distinct semantic values; use tuples for small local structural groupings or genuine newtypes
 
 ### 11. Trait & Generics Design (MEDIUM)
 
@@ -368,6 +374,8 @@ Reference these guidelines when:
 - [`test-insta-snapshot`](rules/test-insta-snapshot.md) - Use `insta` for snapshot/approval testing
 - [`test-nextest-workflow`](rules/test-nextest-workflow.md) - Use `cargo-nextest` for faster execution and CI partitioning
 - [`test-rstest-fixtures`](rules/test-rstest-fixtures.md) - Use `rstest` for parameterized tests, fixtures, and async test setup
+- [`test-independent-oracle`](rules/test-independent-oracle.md) - Derive expected behavior from an independent specification, reference implementation, known result, or meaningful property rather than duplicating the implementation under test
+- [`test-mutation-testing`](rules/test-mutation-testing.md) - Use focused mutation testing to discover semantic test gaps; investigate surviving meaningful mutants instead of maximizing a score
 
 ### 21. Documentation (MEDIUM)
 
@@ -387,6 +395,7 @@ Reference these guidelines when:
 - [`doc-hidden-public`](rules/doc-hidden-public.md) - Use `#[doc(hidden)]` only when a public item must remain callable but should be omitted from normal generated documentation
 - [`doc-include-str`](rules/doc-include-str.md) - Use `#[doc = include_str!("...")]` when an external text file is intentionally part of an item's generated documentation
 - [`doc-test-edition-2024`](rules/doc-test-edition-2024.md) - Account for Edition 2024 rustdoc doctest merging, `standalone_crate`, and source-relative nested includes
+- [`doc-current-contract`](rules/doc-current-contract.md) - Document current observable behavior, prerequisites, invariants, and non-obvious reasons; keep obsolete implementation history out of authoritative guidance
 
 ### 22. Observability (MEDIUM)
 
@@ -397,6 +406,7 @@ Reference these guidelines when:
 - [`obs-levels-filter`](rules/obs-levels-filter.md) - Use log levels meaningfully and filter with `EnvFilter` / `RUST_LOG`
 - [`obs-error-chain`](rules/obs-error-chain.md) - Log errors with their full source chain, and log each error exactly once
 - [`obs-no-sensitive-data`](rules/obs-no-sensitive-data.md) - Never log secrets or PII; redact or skip them
+- [`obs-hotpath-overhead`](rules/obs-hotpath-overhead.md) - Measure both enabled and disabled telemetry costs; aggregate bounded, high-rate observations without hiding necessary diagnostic or audit information
 
 ### 23. Performance Patterns (MEDIUM)
 
@@ -418,6 +428,7 @@ Reference these guidelines when:
 - [`perf-copy-range`](rules/perf-copy-range.md) - Treat `Copy` ranges as an ownership and ergonomics choice, not an automatic performance optimization
 - [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` when matching elements should be removed while their ownership is yielded to the caller.
 - [`perf-hint-apis`](rules/perf-hint-apis.md) - Use compiler hint APIs only when their semantics match a measured hot path; they are advisory optimizations, not code-generation guarantees
+- [`perf-benchmark-regression`](rules/perf-benchmark-regression.md) - Define representative performance contracts and detect regressions using reproducible, complementary measurements rather than a single timing or arbitrary threshold
 
 ### 24. Project Structure (LOW)
 
@@ -443,6 +454,8 @@ Reference these guidelines when:
 - [`proj-explicit-configuration`](rules/proj-explicit-configuration.md) - Parse configuration at application boundaries and pass typed values explicitly; never use the process environment as a hidden library or algorithm parameter.
 - [`proj-native-build-orchestration`](rules/proj-native-build-orchestration.md) - Prefer native Cargo build, test and artifact-discovery interfaces; express nontrivial orchestration as typed programs instead of Makefile or shell-based application logic.
 - [`proj-nightly-features`](rules/proj-nightly-features.md) - Use a dated nightly when a specific unstable feature earns its maintenance cost; track feature gates and remove them when the required API stabilizes
+- [`proj-explicit-startup`](rules/proj-explicit-startup.md) - Initialize application state and register services explicitly at the owning application boundary, not as hidden pre-main or library side effects
+- [`proj-rust-native-porting`](rules/proj-rust-native-porting.md) - Preserve the source program's intended algorithmic and domain contracts while redesigning ownership, failure channels, and architecture for Rust
 
 ### 25. Clippy & Linting (LOW)
 

@@ -257,8 +257,13 @@ fn send_data<T: Default, const SIZE: usize>(
 }
 ```
 
+## Performance Contracts
+
+Benchmark the intended operation and state what setup/teardown is included. Use repeatable baselines, representative input shapes, and suitable complementary metrics such as instruction count, allocation count, throughput and tail latency. A statistical microbenchmark alone is not an application regression budget.
+
 ## See Also
 
+- [perf-benchmark-regression](./perf-benchmark-regression.md)
 - [perf-profile-first](perf-profile-first.md) - Profile before optimizing
 - [perf-black-box-bench](perf-black-box-bench.md) - Use black_box in benchmarks
 - [Divan](https://github.com/nvzqz/divan) — Simpler benchmarking

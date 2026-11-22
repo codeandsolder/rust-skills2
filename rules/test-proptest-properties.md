@@ -233,8 +233,14 @@ proptest! {
 }
 ```
 
+## Independent Properties
+
+A generator and an assertion based on the implementation can share the same defect. Derive properties from the external contract, include boundary values, and use independent reference computations for optimized implementations. Roundtrip alone can hide paired codec defects.
+
 ## See Also
 
+- [test-independent-oracle](./test-independent-oracle.md)
+- [test-mutation-testing](./test-mutation-testing.md)
 - [test-assert-matches](./test-assert-matches.md) - Pattern-based assertions
 - [test-criterion-bench](./test-criterion-bench.md) - Benchmarking
 - [test-mockall-mocking](./test-mockall-mocking.md) - Mocking

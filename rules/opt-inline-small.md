@@ -100,6 +100,8 @@ Link-time optimization can expose more cross-crate code to the optimizer. If a p
 
 Measure the release configuration you actually ship.
 
+Fallible functions can introduce additional control flow or inhibit particular inlining decisions. Keep their semantics intact; inspect generated code and move validation outside hot loops where possible rather than replacing a failure channel with a panic or unchecked access.
+
 ## Verify the Result
 
 Useful checks include:
@@ -112,6 +114,8 @@ Useful checks include:
 Do not infer success from the mere presence of the attribute.
 
 ## See Also
+
+- [perf-benchmark-regression](./perf-benchmark-regression.md)
 
 - [opt-inline-always-rare](./opt-inline-always-rare.md) - Stronger inline hints
 - [opt-inline-never-cold](./opt-inline-never-cold.md) - Keeping cold code separate

@@ -85,6 +85,8 @@ Do not add this attribute where the configured audit is not run regularly: it mu
 
 ## See Also
 
+- [proj-explicit-startup](./proj-explicit-startup.md)
+
 - [proj-lib-main-split](./proj-lib-main-split.md) - Application and library boundaries
 - [proj-build-rs-minimal](./proj-build-rs-minimal.md) - Declared build inputs
 - [obs-tracing-over-log](./obs-tracing-over-log.md) - Structured diagnostics

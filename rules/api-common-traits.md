@@ -136,6 +136,8 @@ Serialization traits are also public behavior. Derive them when the serialized r
 
 ## See Also
 
+- [type-named-fields](./type-named-fields.md)
+
 - [own-copy-small](./own-copy-small.md) - When to implement Copy
 - [api-default-impl](./api-default-impl.md) - Implementing Default
 - [doc-examples-section](./doc-examples-section.md) - Documenting trait implementations

@@ -37,6 +37,12 @@ let items = unsafe { MaybeUninit::<[u32; 4]>::from(items).assume_init() };
 assert_eq!(items, [0, 1, 2, 3]);
 ```
 
+For types with destructors, prefer a safe owner that tracks initialization
+(such as `Vec`), or a guard that records each successful write before
+potentially panicking work. Array slots represented by `MaybeUninit<T>` do
+not automatically drop initialized `T` values. See
+[unsafe-unwind-safety](./unsafe-unwind-safety.md) for failure injection.
+
 ## FFI and Partial Initialization
 
 When C or another unsafe producer initializes an object, prove that all fields/parts required by `T`'s validity invariant have been initialized before calling `assume_init`. A function that merely writes some bytes is not enough.

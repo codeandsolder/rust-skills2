@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-A span groups all events emitted during a logical operation (an HTTP request, a database call, a background job) and attaches structured context to every event within it. Without spans, log lines from concurrent async tasks interleave with no way to correlate them. The `#[tracing::instrument]` attribute creates a span automatically from the function's arguments as fields. There is one critical async pitfall: holding a span *entry guard* (`let _g = span.enter()`) across an `.await` point attaches the span to the wrong task when the executor resumes on a different thread — use `.instrument(span)` on the future instead.
+A span groups all events emitted during a logical operation (an HTTP request, a database call, a background job) and attaches structured context to every event within it. Without spans, log lines from concurrent async tasks interleave with no way to correlate them. The `#[tracing::instrument]` attribute creates a span automatically from the function's arguments as fields. There is one critical async pitfall: holding a span *entry guard* (`let _g = span.enter()`) across an `.await` point can leave the span entered while another task runs, even on a single thread, or cross thread boundaries — use `.instrument(span)` on the future instead.
 
 ## Bad
 
@@ -40,7 +40,7 @@ async fn fetch_user(user_id: u64, db: &DbPool) -> Result<String, DbError> {
     Ok(user.name)
 }
 
-// GOOD: manual span + .instrument() for dynamic span names
+// GOOD: manual span + .instrument() for dynamic fields
 async fn process_job(job_id: &str) {
     let span = info_span!("process_job", job.id = job_id);
     async move {
@@ -68,13 +68,17 @@ impl DbPool {
 
 ## Key Points
 
-- **`#[instrument]`** is the preferred way to instrument async functions — it wraps the whole future in `.instrument(span)` under the hood.
+- **`#[instrument]`** instruments async functions so the span is entered during polling, not held across suspension.
 - Use `skip(arg)` or `skip_all` to exclude large types (e.g., database pools, byte buffers) and sensitive values from auto-captured fields.
 - Use `fields(key = value)` inside `#[instrument]` to add or rename fields beyond the auto-captured args.
 - For manual spans, always attach with `.instrument(span).await`, never hold a guard across `.await`.
 - Spans nest automatically: entering a child span inside a parent records the parent's context in traces, enabling waterfall views in tools like Jaeger or Tempo.
 
+For hot paths, avoid eagerly preparing expensive diagnostic fields; measure with the actual subscriber and event volume. Prefer useful aggregate observations over extraneous per-item spans.
+
 ## See Also
+
+- [obs-hotpath-overhead](./obs-hotpath-overhead.md)
 
 - [obs-structured-fields](obs-structured-fields.md) - structured fields within span events
 - [obs-no-sensitive-data](obs-no-sensitive-data.md) - use `skip` to prevent secrets leaking into spans
