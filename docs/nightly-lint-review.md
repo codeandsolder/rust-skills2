@@ -35,7 +35,7 @@ and [rustc lint documentation](https://doc.rust-lang.org/nightly/rustc/lints/lis
 | `try_from_instead_of_from_str` | style | Already enabled |
 | `unnecessary_as_slice` | complexity | Already enabled |
 | `deprecated_attributes_without_note` | restriction | Explicitly denied; requires intentional deprecation guidance |
-| `must_use_without_reason` | restriction | Explicitly denied; requires an explanatory reason for must-use attributes |
+| `must_use_without_reason` | restriction | Explicitly denied; diagnoses bare function attributes on this nightly, not the tested struct and trait attributes |
 
 The description of `extend_with_drain` also broadens from vectors to collections.
 
@@ -46,7 +46,7 @@ unsuppressible except explicitly documented exceptions. Pedantic/nursery
 (including `use_self`) are fatal but permit narrow reasoned expectations.
 Both new restriction lints are explicitly denied (including relaxed tests)
 and non-suppressible in handwritten source. Existing generated-code
-boundaries still apply. Do not enable the entire restriction group.
+boundaries still apply. Both restriction lints check the supported attribute forms, not the semantic quality of a supplied string. Direct probes found the must-use restriction does not diagnose bare struct or trait attributes and the deprecation-note restriction accepts an empty note. The API rules require meaningful messages regardless. Do not enable the entire restriction group.
 
 For current unstable feature guidance see
 [proj-nightly-features](../rules/proj-nightly-features.md).

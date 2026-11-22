@@ -130,7 +130,7 @@ return_self_not_must_use = "warn"
 must_use_without_reason = "deny"
 ```
 
-These are review aids, not substitutes for deciding whether ignoring the value is actually erroneous for that API.
+The shared gate already enables these lints. The restriction checks function attributes on the reviewed nightly; a bare struct attribute is not necessarily diagnosed. Supply meaningful reasons on builder types too, and decide whether ignoring the value is genuinely erroneous.
 
 ## See Also
 

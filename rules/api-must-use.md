@@ -138,7 +138,7 @@ fn main() {
 }
 ```
 
-The strict nightly gate denies `clippy::must_use_without_reason`; every handwritten must-use attribute needs an explanatory string. Prefer a message that tells the caller why discarding the value is suspicious. Repeating “must use this value” adds little beyond the lint itself.
+The strict nightly gate denies `clippy::must_use_without_reason`. On the reviewed Clippy 1.102 nightly, it diagnoses bare function attributes but does not diagnose the bare struct and trait attributes tested; it does not judge the explanatory quality of the string. For handwritten APIs, supply a meaningful message on type, trait and function attributes regardless of whether the compiler diagnoses the omission. Explain why discarding the value is suspicious. Repeating “must use this value” adds little beyond the lint itself.
 
 ## Lint Policy
 
