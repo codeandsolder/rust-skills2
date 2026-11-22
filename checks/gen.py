@@ -38,15 +38,6 @@ import pathlib
 import re
 
 HERE = pathlib.Path(__file__).resolve().parent
-RULES = (HERE.parent / "rules").resolve()
-FIXTURES = HERE / "fixtures"
-OUT = HERE / "examples"
-NIGHTLY_OUT = HERE / "nightly" / "examples"
-for output in (OUT, NIGHTLY_OUT):
-    output.mkdir(exist_ok=True)
-    for f in output.glob("*.rs"):
-        f.unlink()
-
 MARKER = re.compile(
     r"^<!--\s*rust-check:\s*"
     r"(compile|run|fragment|compile_fail|ignore|nightly(?:\([^)]*\))?|fixture\([A-Za-z0-9_-]+\))"
@@ -61,7 +52,7 @@ HEADER = (
 )
 
 
-def explicit_marker(lines, fence_index):
+def explicit_marker(lines, fence_index, fixtures):
     i = fence_index - 1
     while i >= 0 and not lines[i].strip():
         i -= 1
@@ -78,7 +69,7 @@ def explicit_marker(lines, fence_index):
             reason = f"requires nightly feature {feature}"
     elif raw.startswith("fixture("):
         fixture = raw[len("fixture("):-1]
-        fixture_dir = FIXTURES / fixture
+        fixture_dir = fixtures / fixture
         if not (fixture_dir / "Cargo.toml").is_file():
             raise SystemExit(
                 f"fixture {fixture!r} before line {fence_index + 1} has no Cargo.toml"
@@ -129,8 +120,8 @@ def native_fence_expectation(fence_match, *, file, line):
     return None
 
 
-def resolve_expectation(lines, fence_index, fence_match, block, section, md_name):
-    marker = explicit_marker(lines, fence_index)
+def resolve_expectation(lines, fence_index, fence_match, block, section, md_name, fixtures):
+    marker = explicit_marker(lines, fence_index, fixtures)
     native = native_fence_expectation(
         fence_match, file=md_name, line=fence_index + 1
     )
@@ -171,76 +162,88 @@ def wrap(block):
     )
 
 
-manifest = {}
-scanned = generated = 0
-for md in sorted(RULES.glob("*.md")):
-    lines = md.read_text(encoding="utf-8").splitlines()
-    section = ""
-    file_index = 0
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        m = re.match(r"^#{2,}\s+(.*)", line)
-        if m:
-            section = m.group(1).strip()
-        fence_match = FENCE.match(line.strip())
-        if fence_match:
-            start = i + 1
-            j = start
-            while j < len(lines) and lines[j].strip() != "```":
-                j += 1
-            block = "\n".join(lines[start:j])
-            expect, reason = resolve_expectation(
-                lines, i, fence_match, block, section, md.name
-            )
-            if (
-                "#![feature" in block
-                and expect not in {"nightly", "compile_fail"}
-                and not expect.startswith("fixture:")
-            ):
-                raise SystemExit(f"{md.name}:{start + 1}: nightly feature gate needs an explicit contract")
-            attrs = {
-                part.strip()
-                for part in (fence_match.group("attrs") or "").strip().lstrip(",").split(",")
-            }
-            has_main = re.search(r"\bfn\s+main\s*\(", block) is not None
-            stable_run = expect == "run"
-            if stable_run:
-                if not has_main or {"no_run", "should_panic"} & attrs:
-                    raise SystemExit(f"{md.name}:{start + 1}: run contract requires a runnable main")
-                expect = "compile"
-            name = f"{md.stem.replace('-', '_')}__{file_index}"
-            generated_expectation = (
-                expect not in {"ignore", "nightly"}
-                and not expect.startswith("fixture:")
-            )
-            info = {
-                "file": md.name,
-                "line": start + 1,
-                "section": section,
-                "expect": expect,
-                "reason": reason,
-                "generated": generated_expectation,
-            }
-            if stable_run:
-                info["stable_run"] = True
-            if expect == "nightly":
-                info["nightly_run"] = has_main and not {"no_run", "should_panic"} & attrs
-                (NIGHTLY_OUT / f"{name}.rs").write_text(
-                    wrap(block), encoding="utf-8"
-                )
-            manifest[name] = info
-            if info["generated"]:
-                (OUT / f"{name}.rs").write_text(wrap(block), encoding="utf-8")
-                generated += 1
-            scanned += 1
-            file_index += 1
-            i = j
-        i += 1
+def generate(rules, checks, fixtures):
+    examples = checks / "examples"
+    nightly = checks / "nightly" / "examples"
+    for output in (examples, nightly):
+        output.mkdir(parents=True, exist_ok=True)
+        for f in output.glob("*.rs"):
+            f.unlink()
 
-(HERE / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-print(f"generated {generated} example files (scanned {scanned} rust blocks)")
-counts = {}
-for info in manifest.values():
-    counts[info["expect"]] = counts.get(info["expect"], 0) + 1
-print("expectations: " + ", ".join(f"{k}={counts[k]}" for k in sorted(counts)))
+    manifest = {}
+    scanned = generated = 0
+    for md in sorted(rules.glob("*.md")):
+        lines = md.read_text(encoding="utf-8").splitlines()
+        section = ""
+        file_index = 0
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            m = re.match(r"^#{2,}\s+(.*)", line)
+            if m:
+                section = m.group(1).strip()
+            fence_match = FENCE.match(line.strip())
+            if fence_match:
+                start = i + 1
+                j = start
+                while j < len(lines) and lines[j].strip() != "```":
+                    j += 1
+                block = "\n".join(lines[start:j])
+                expect, reason = resolve_expectation(
+                    lines, i, fence_match, block, section, md.name, fixtures
+                )
+                if (
+                    "#![feature" in block
+                    and expect not in {"nightly", "compile_fail"}
+                    and not expect.startswith("fixture:")
+                ):
+                    raise SystemExit(f"{md.name}:{start + 1}: nightly feature gate needs an explicit contract")
+                attrs = {
+                    part.strip()
+                    for part in (fence_match.group("attrs") or "").strip().lstrip(",").split(",")
+                }
+                has_main = re.search(r"\bfn\s+main\s*\(", block) is not None
+                stable_run = expect == "run"
+                if stable_run:
+                    if not has_main or {"no_run", "should_panic"} & attrs:
+                        raise SystemExit(f"{md.name}:{start + 1}: run contract requires a runnable main")
+                    expect = "compile"
+                name = f"{md.stem.replace('-', '_')}__{file_index}"
+                generated_expectation = (
+                    expect not in {"ignore", "nightly"}
+                    and not expect.startswith("fixture:")
+                )
+                info = {
+                    "file": md.name,
+                    "line": start + 1,
+                    "section": section,
+                    "expect": expect,
+                    "reason": reason,
+                    "generated": generated_expectation,
+                }
+                if stable_run:
+                    info["stable_run"] = True
+                if expect == "nightly":
+                    info["nightly_run"] = has_main and not {"no_run", "should_panic"} & attrs
+                    (nightly / f"{name}.rs").write_text(
+                        wrap(block), encoding="utf-8"
+                    )
+                manifest[name] = info
+                if info["generated"]:
+                    (examples / f"{name}.rs").write_text(wrap(block), encoding="utf-8")
+                    generated += 1
+                scanned += 1
+                file_index += 1
+                i = j
+            i += 1
+
+    (checks / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    print(f"generated {generated} example files (scanned {scanned} rust blocks)")
+    counts = {}
+    for info in manifest.values():
+        counts[info["expect"]] = counts.get(info["expect"], 0) + 1
+    print("expectations: " + ", ".join(f"{k}={counts[k]}" for k in sorted(counts)))
+
+
+if __name__ == "__main__":
+    generate(HERE.parent / "rules", HERE, HERE / "fixtures")

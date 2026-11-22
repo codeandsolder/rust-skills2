@@ -20,7 +20,6 @@ import pathlib
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
-manifest = {}
 
 RES_CODES = {"E0432", "E0433", "E0412", "E0425", "E0405", "E0531", "E0422",
              "E0423", "E0573", "E0463", "E0583"}
@@ -61,41 +60,40 @@ def token(d):
     return "P:" + " ".join(words[:5])
 
 
-def parse(path):
+def parse(lines, manifest, source_dir):
     errors = collections.defaultdict(list)
     compiled = set()
     finished = []
-    with open(path) as fh:
-        for line, raw in enumerate(fh, 1):
-            raw = raw.strip()
-            if not raw.startswith("{"):
-                continue
-            try:
-                rec = json.loads(raw)
-            except json.JSONDecodeError as exc:
-                raise SystemExit(f"invalid Cargo JSON at line {line}: {exc}") from exc
-            if rec.get("reason") == "build-finished":
-                finished.append(rec.get("success"))
-                continue
-            target = rec.get("target") or {}
-            name = target.get("name")
-            is_example = (
-                name in manifest
-                and "example" in target.get("kind", [])
-                and pathlib.Path(target.get("src_path", "")).resolve()
-                == (HERE / "examples" / f"{name}.rs").resolve()
-            )
-            if rec.get("reason") == "compiler-artifact" and is_example:
-                compiled.add(name)
-                continue
-            if rec.get("reason") != "compiler-message":
-                continue
-            msg = rec.get("message", {})
-            if msg.get("level") != "error":
-                continue
-            if not is_example:
-                raise SystemExit(f"error outside generated examples: {name}: {msg.get('message')}")
-            errors[name].append(msg)
+    for line, raw in enumerate(lines, 1):
+        raw = raw.strip()
+        if not raw.startswith("{"):
+            continue
+        try:
+            rec = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise SystemExit(f"invalid Cargo JSON at line {line}: {exc}") from exc
+        if rec.get("reason") == "build-finished":
+            finished.append(rec.get("success"))
+            continue
+        target = rec.get("target") or {}
+        name = target.get("name")
+        is_example = (
+            name in manifest
+            and "example" in target.get("kind", [])
+            and pathlib.Path(target.get("src_path", "")).resolve()
+            == (source_dir / f"{name}.rs").resolve()
+        )
+        if rec.get("reason") == "compiler-artifact" and is_example:
+            compiled.add(name)
+            continue
+        if rec.get("reason") != "compiler-message":
+            continue
+        msg = rec.get("message", {})
+        if msg.get("level") != "error":
+            continue
+        if not is_example:
+            raise SystemExit(f"error outside generated examples: {name}: {msg.get('message')}")
+        errors[name].append(msg)
     if len(finished) != 1 or not isinstance(finished[0], bool):
         raise SystemExit("Cargo output must contain exactly one valid build-finished record")
     missing = {
@@ -121,23 +119,13 @@ def block_ordinal(ex):
         return "?"
 
 
-def legacy_signature(ex, diags):
-    """Exact migration signature for one legacy `auto` block."""
+def signature(ex, diags, manifest):
+    """Identify one exact extracted block and its diagnostic shape."""
     info = manifest.get(ex, {})
     return (
         f"{info.get('file', '?')} :: {info.get('section', '?')} :: "
         f"block {block_ordinal(ex)} :: {diagnostic_tokens(diags)}"
     )
-
-
-def strict_signature(ex, diags):
-    """Identify one exact extracted strict block and its diagnostic shape."""
-    info = manifest.get(ex, {})
-    return (
-        f"{info.get('file', '?')} :: {info.get('section', '?')} :: "
-        f"block {block_ordinal(ex)} :: {diagnostic_tokens(diags)}"
-    )
-
 
 def legacy_classify(diags):
     nonres = [d for d in diags if not is_resolution(d)]
@@ -195,7 +183,7 @@ def load_good_exceptions(path):
     return out
 
 
-def collect(errors):
+def collect(errors, manifest):
     auto_suspects = {}
     violations = {}
     stats = collections.Counter()
@@ -226,15 +214,16 @@ def collect(errors):
 
 
 def main():
-    global manifest
     manifest = json.loads((HERE / "manifest.json").read_text())
     args = sys.argv[1:]
     path = next((a for a in args if not a.startswith("--")), "check.json")
-    errors = parse(path)
-    auto_suspects, violations, stats = collect(errors)
-    auto_sigs = sorted({legacy_signature(ex, d) for ex, d in auto_suspects.items()})
+    source_dir = pathlib.Path(args[args.index("--source-dir") + 1]) if "--source-dir" in args else HERE / "examples"
+    with open(path) as records:
+        errors = parse(records, manifest, source_dir)
+    auto_suspects, violations, stats = collect(errors, manifest)
+    auto_sigs = sorted({signature(ex, d, manifest) for ex, d in auto_suspects.items()})
     violation_sigs = {
-        strict_signature(ex, d): (ex, why, d)
+        signature(ex, d, manifest): (ex, why, d)
         for ex, (why, d) in violations.items()
     }
 

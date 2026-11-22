@@ -1,16 +1,15 @@
 """Check actual Clippy diagnostics against the semantic inventory contract."""
 
 import json
-import sys
 from pathlib import Path
 
-source = Path(sys.argv[1])
+source = Path("checks/fixtures/ambient-config-advisory/src/lib.rs")
 expected = {
     number for number, line in enumerate(source.read_text().splitlines(), start=1)
     if line.endswith("// audit")
 }
 observed: set[int] = set()
-for line in sys.stdin:
+for line in Path("compiler-evidence.jsonl").read_text().splitlines():
     item = json.loads(line)
     if item.get("reason") != "compiler-message":
         continue

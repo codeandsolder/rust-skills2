@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Execute the actual recommended cancellation example against in-memory I/O."""
-import os
 from pathlib import Path
 import re
-import subprocess
-import tempfile
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = r'''
@@ -60,21 +58,9 @@ def main():
     example = re.search(r"```rust\n(.*?)\n```", section, re.DOTALL)
     if example is None:
         raise SystemExit("missing recommended cancellation example")
-    tests_dir = ROOT / "checks/tests"
-    created_dir = not tests_dir.exists()
-    tests_dir.mkdir(exist_ok=True)
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", prefix="cancel_contract_", suffix=".rs", dir=tests_dir) as test:
-            test.write(example.group(1) + "\n" + TESTS)
-            test.flush()
-            subprocess.run(
-                ["cargo", "test", "--locked", "--test", Path(test.name).stem,
-                 "--target", os.environ.get("RUST_SKILLS_TARGET", "x86_64-unknown-linux-gnu")],
-                cwd=ROOT / "checks", check=True,
-            )
-    finally:
-        if created_dir:
-            tests_dir.rmdir()
+    output = Path(sys.argv[1])
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(example.group(1) + "\n" + TESTS, encoding="utf-8")
 
 
 if __name__ == "__main__":

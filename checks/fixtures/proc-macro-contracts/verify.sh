@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${RUST_SKILLS_ROOT:?RUST_SKILLS_ROOT is required}"
-TARGET="${RUST_SKILLS_TARGET:?RUST_SKILLS_TARGET is required}"
+ROOT="${1:?root required}"
+TARGET="${2:?target required}"
 MANIFEST="$ROOT/checks/fixtures/proc-macro-contracts/Cargo.toml"
 TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/checks/target}/proc-macro-contracts"
 
