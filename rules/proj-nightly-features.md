@@ -1,10 +1,10 @@
 # proj-nightly-features
 
-> Use a dated nightly when a specific unstable feature earns its maintenance cost; track feature gates and remove them when the required API stabilizes
+> Use the fleet-approved dated nightly for maintained projects; track feature gates and remove them when the required API stabilizes
 
 ## Why It Matters
 
-Nightly can eliminate substantial bespoke code (portable SIMD, typed const computation, local try contexts, specialized low-level APIs). It is not a compatibility layer: unstable semantics, standard-library APIs, and compiler diagnostics can change between builds. Keep the stable baseline separate from the nightly compiler used by CI; a future stabilization recorded in nightly source is not available on the current stable release.
+Nightly can eliminate substantial bespoke code (portable SIMD, typed const computation, local try contexts, specialized low-level APIs). It is not a compatibility layer: unstable semantics, standard-library APIs, and compiler diagnostics can change between builds. Use the same centrally approved compiler for development, production builds, tests and Clippy. A separate stable lane is justified only by a real downstream compatibility contract; a future stabilization recorded in nightly source is not available on an older stable release.
 
 ## Current feature guide
 
@@ -176,10 +176,10 @@ fn main() {
 
 ## Toolchain and verification
 
-- Pin a dated nightly in `rust-toolchain.toml` when a project actually uses unstable features. Install the needed targets/components; validate on that same compiler in CI.
+- Pin the centrally approved dated nightly in `rust-toolchain.toml` for maintained projects, even when they do not yet use unstable features. Install the needed targets/components and validate on that exact compiler in CI.
 - Enable only the gates the code requires. Do not use `RUSTC_BOOTSTRAP` to pretend a stable toolchain supports them.
 - Check new, accepted and removed compiler features at the exact rustc commit; inspect library stability attributes and the actual rustdoc method signature. Gate names in a historical example are not proof of current availability.
-- Keep nightly examples separate from stable compile contracts; compile and exercise nightly-only behavior with the pinned nightly before using it.
+- Distinguish examples requiring unstable gates from ordinary examples, but compile and exercise both on the same approved nightly. Promote a replacement only after 72 elapsed hours and successful cohort tests; retain the old pin on failure. Do not use upstream issue labels as a substitute for testing.
 - Review the [Unstable Book](https://doc.rust-lang.org/nightly/unstable-book/) and [nightly standard library](https://doc.rust-lang.org/nightly/std/) and their linked tracking issues; internal features are not general-purpose public APIs.
 
 ## See Also

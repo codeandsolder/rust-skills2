@@ -3,7 +3,7 @@
 #
 #     bash checks/check.sh
 #
-# Toolchain/target are pinned by checks/rust-toolchain.toml (Rust 1.100.0) and
+# Toolchain/target are pinned by rust-toolchain.toml and
 # x86_64-unknown-linux-gnu. `cargo check` type-checks without linking.
 set -euo pipefail
 
@@ -74,8 +74,11 @@ run_python analyze.py check.json \
 echo "==> fixture-backed contracts"
 run_python run_fixture_contracts.py "$TARGET"
 
-echo "==> stable example runtime contracts"
+echo "==> ordinary example runtime contracts"
 run_python run_example_contracts.py stable --target "$TARGET"
+
+echo "==> nightly example runtime contracts"
+run_python run_example_contracts.py nightly --target "$TARGET"
 
 echo "==> cancellation example runtime contracts"
 run_python test_async_cancel_safety.py

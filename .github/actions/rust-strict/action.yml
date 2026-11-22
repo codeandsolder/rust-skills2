@@ -15,9 +15,9 @@ inputs:
     required: false
     default: "false"
   rust-toolchain:
-    description: Nightly channel or dated nightly toolchain.
+    description: Dated nightly candidate; defaults to the gate pin.
     required: false
-    default: "nightly"
+    default: ""
   install-toolchain:
     description: Install selected nightly Clippy and rustfmt before running. Set false when the caller already installed them.
     required: false
@@ -26,11 +26,17 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Resolve one quarantined compiler
+      id: compiler
+      uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@d7135459ef21e0edd32a725fa9334e0c57c9cd70 # main
+      with:
+        rust-toolchain: ${{ inputs.rust-toolchain }}
+
     - name: Install selected nightly Rust tools
       if: ${{ inputs.install-toolchain == 'true' }}
       uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
       with:
-        toolchain: ${{ inputs.rust-toolchain }}
+        toolchain: ${{ steps.compiler.outputs.channel }}
         components: clippy,rustfmt
 
     - name: Install uv
@@ -42,7 +48,7 @@ runs:
     - name: Show nightly toolchain
       shell: bash
       env:
-        STRICT_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+        STRICT_TOOLCHAIN: ${{ steps.compiler.outputs.channel }}
       run: |
         rustc "+$STRICT_TOOLCHAIN" --version
         cargo "+$STRICT_TOOLCHAIN" --version
@@ -53,7 +59,7 @@ runs:
     - name: Run rust-skills2 strict policy
       shell: bash
       env:
-        STRICT_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+        STRICT_TOOLCHAIN: ${{ steps.compiler.outputs.channel }}
         RUST_SKILLS2_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         RUST_SKILLS2_CARGO_ARGS: ${{ inputs.cargo-args }}
         RUST_SKILLS2_ALLOW_TEST_PANICS: ${{ inputs.allow-test-panics }}

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TOOLCHAIN=nightly
+TOOLCHAIN=$(bash "$(dirname "${BASH_SOURCE[0]}")/toolchain-pin.sh")
 if [[ ${1:-} == --toolchain && $# == 2 ]]; then
     TOOLCHAIN=$2
 elif (( $# != 0 )); then
-    echo "usage: strict_clippy.sh [--toolchain nightly[-YYYY-MM-DD]]" >&2
+    echo "usage: strict_clippy.sh [--toolchain nightly-YYYY-MM-DD]" >&2
     exit 2
 fi
-[[ "$TOOLCHAIN" =~ ^nightly(-[0-9]{4}-[0-9]{2}-[0-9]{2})?$ ]] || {
+[[ "$TOOLCHAIN" =~ ^nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || {
     echo "rust-skills2: expected a nightly toolchain" >&2
     exit 2
 }

@@ -23,8 +23,7 @@ That's it. The CLI figures out which agents you have and installs the skill to t
 
 ## Enforce it in CI
 
-For AI-maintained Rust, the repository also provides a strict nightly Rust
-gate. Import it as one GitHub Actions job:
+For AI-maintained Rust, normal builds, tests, Clippy and rustfmt share the fleet-approved dated nightly in the repository's native toolchain manifest. The repository also provides a strict nightly Rust gate. Import it as one GitHub Actions job:
 
 ```yaml
 jobs:

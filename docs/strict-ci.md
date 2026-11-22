@@ -32,8 +32,8 @@ Pin the reusable workflow to an immutable full commit SHA and keep the tracked b
 The default gate runs:
 
 ```text
-cargo +nightly fmt --all --check
-cargo +nightly clippy --locked --workspace --all-targets -- <strict policy>
+cargo fmt --all --check
+cargo clippy --locked --workspace --all-targets -- <strict policy>
 ```
 
 Projects that deliberately use panic-style test assertions can opt in to a
@@ -222,7 +222,7 @@ Handwritten source and compiler configuration are checked before Clippy runs:
   `--force-warn`, both of which can turn a command-line deny into a
   non-failing warning.
 
-The checker obtains group membership from `clippy-driver +nightly -W help` at
+The checker obtains group membership from `clippy-driver -W help` at
 runtime instead of maintaining a stale copied list. This closes the suppression
 gap left by keeping whole groups at `deny` for proc-macro compatibility.
 

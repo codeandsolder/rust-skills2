@@ -25,7 +25,7 @@ def main():
         generated = {path.stem for path in (package / "examples").glob("*.rs")}
         if set(examples) != generated:
             raise SystemExit("nightly example inventory differs from generated sources")
-        command = ["cargo", "+nightly", "build", "--examples", "--all-features"]
+        command = ["cargo", "build", "--examples", "--all-features"]
     else:
         package = HERE
         examples = {name: info for name, info in manifest.items() if info.get("stable_run")}

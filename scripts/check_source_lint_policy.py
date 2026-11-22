@@ -618,10 +618,10 @@ def lint_attributes(text: str) -> list[tuple[str, list[str], bool, int]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--toolchain", default="nightly")
+    parser.add_argument("--toolchain", default=tomllib.loads((Path(__file__).resolve().parents[1] / "rust-toolchain.toml").read_text())["toolchain"]["channel"])
     args = parser.parse_args()
     toolchain = args.toolchain
-    if not re.fullmatch(r"nightly(?:-\d{4}-\d{2}-\d{2})?", toolchain):
+    if not re.fullmatch(r"nightly-\d{4}-\d{2}-\d{2}", toolchain):
         parser.error("expected a nightly toolchain")
     violations = check_compiler_flag_policy(toolchain)
     group_names, groups = clippy_groups(toolchain)
