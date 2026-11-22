@@ -37,6 +37,7 @@ The controller owns validation, scheduling, subprocess exit handling, cancellati
 - Use a typed CLI for test/benchmark matrices, dependency graphs, retries, process supervision and report generation. Do not substitute a new shell script with the same untyped protocol.
 - Preserve necessary small shell adapters to foreign tools and established upstream build systems, including kernel Kbuild, OpenWrt, CMake and vendor firmware builds. Do not rewrite inherited build systems merely because they use Make.
 - Respect toolchain contracts, explicit target directories, compiler cache configuration, and foreign build requirements. Do not clear wrappers, start unmanaged caches, or assume a target directory's internal layout.
+- Keep resource ownership through subprocess completion. A shell that owns a temporary directory through an EXIT trap must not replace itself with the benchmark process using `exec`, because the trap will not run. Direct `exec` is appropriate for adapters that own no cleanup.
 - Avoid preserving superseded entrypoints as compatibility wrappers unless real consumers require them; update callers together.
 
 ## See Also
