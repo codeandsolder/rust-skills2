@@ -199,8 +199,13 @@ Conversely, keeping implementation modules private from the start preserves more
 | Dependency should remain swappable | Own a wrapper/trait boundary |
 | Crate is intentionally a facade | Broader re-exports can be appropriate |
 
+## One Intentional Public Path
+
+Expose a canonical path for each public item. Delete obsolete forwarding aliases unless an actual downstream or foreign-interface contract requires them. Intentional facades, selective convenience preludes and macro support paths are distinct documented use cases, not a requirement to preserve every old path.
+
 ## See Also
 
+- [doc-current-contract](./doc-current-contract.md)
 - [proj-prelude-module](./proj-prelude-module.md) - Optional convenience imports
 - [proj-pub-crate-internal](./proj-pub-crate-internal.md) - Internal visibility
 - [api-non-exhaustive](./api-non-exhaustive.md) - Future-proof public types

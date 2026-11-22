@@ -63,10 +63,11 @@ fn handle_request(req: &Request, status: u16) {
 - Prefer `%` over `?` for values that have a clean `Display` (e.g., `%id`, `%path`) — JSON backends quote Debug output inconsistently.
 - Use namespaced field names like `user.id`, `http.status`, `db.query` when aligning to OpenTelemetry semantic conventions.
 - Avoid placing the same data in both the message and a field (redundant and noisy).
-- Structured fields avoid the allocation cost of `format!()` interpolation — prefer `info!(user_id, items, elapsed_ms, "batch processed")` over `info!("processed {items} items for user {user_id}")`. The message string is a `&'static str` reference, while fields are typed and trivially cheap to skip when the level is disabled. This matters in hot-path and per-item loops.
+- Structured fields can avoid the cost of separately allocating a `format!()` string — prefer `info!(user_id, items, elapsed_ms, "batch processed")` over `info!("processed {items} items for user {user_id}")`. Values can be recorded without allocating a separate formatted message. Formatting arguments do not themselves imply a heap allocation, and enabled subscribers can still allocate, lock or perform I/O. Avoid eagerly preparing diagnostic-only fields and measure high-rate instrumentation.
 
 ## See Also
 
+- [obs-hotpath-overhead](./obs-hotpath-overhead.md)
 - [obs-tracing-over-log](obs-tracing-over-log.md) - foundational setup for `tracing`
 - [obs-no-sensitive-data](obs-no-sensitive-data.md) - never put secrets or PII in structured fields
 - [obs-error-chain](obs-error-chain.md) - log errors as structured fields with full source chain

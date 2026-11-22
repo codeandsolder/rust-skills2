@@ -50,20 +50,21 @@ This is a real policy decision: the code accepts possibly tainted state. The `un
 
 ### Repair and clear poison
 
-If the program can restore a known-good invariant, repair before continuing:
+If the program can restore a known-good invariant, repair before continuing. Here the cache is reset only when poisoned; a healthy cache is not modified:
 
 ```rust
 use std::sync::Mutex;
 
 fn reset_after_poison(state: &Mutex<Vec<u8>>) {
-    let mut guard = state.lock().unwrap_or_else(|mut poisoned| {
-        poisoned.get_mut().clear();
+    if let Err(poisoned) = state.lock() {
+        let mut guard = poisoned.into_inner();
+        guard.clear();
         state.clear_poison();
-        poisoned.into_inner()
-    });
-    guard.clear();
+    }
 }
 ```
+
+Poisoning is advisory and cannot be used to establish memory safety.
 
 ### Propagate or translate
 

@@ -1,15 +1,15 @@
 # own-mutex-interior
 
-> Use the right `Mutex<T>` for the execution model: `std`/`parking_lot` for synchronous code, `tokio::sync::Mutex` for async code
+> Choose locking from critical-section semantics and contention; handle poisoning explicitly and keep synchronous locks out of suspension points
 
 ## Why It Matters
 
-When you need shared mutable state across threads, `Mutex<T>` provides safe interior mutability with synchronization. Unlike `RefCell`, `Mutex` is `Send + Sync` and ensures only one task or thread mutates the data at a time.
+When you need shared mutable state across threads, `Mutex<T>` provides safe interior mutability with synchronization. Unlike `RefCell`, a `Mutex<T>` with appropriate `T: Send` supports synchronized shared mutation across threads.
 
 The lock choice depends on where the data is used:
 
 - `std::sync::Mutex` or `parking_lot::Mutex` for synchronous code
-- `tokio::sync::Mutex` for async code that must acquire the lock from async tasks
+- `tokio::sync::Mutex` when waiting must be asynchronous or the operation genuinely requires a guard across suspension (prefer restructuring when possible)
 
 ## Bad
 
@@ -28,52 +28,77 @@ std::thread::spawn({
 });
 ```
 
-## Good
+## Good: Keep a Short Critical Section and Handle Failure
 
+<!-- rust-check: run -->
 ```rust
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
-let shared = Arc::new(Mutex::new(vec![]));
-
-let handles: Vec<_> = (0..10).map(|i| {
-    let shared = shared.clone();
-    std::thread::spawn(move || {
-        let mut data = shared.lock().unwrap();
-        data.push(i);
-    })
-}).collect();
-
-for handle in handles {
-    handle.join().unwrap();
+fn increment(value: &Mutex<u32>) -> Result<(), &'static str> {
+    let mut guard = value.lock().map_err(|_| "counter poisoned")?;
+    *guard = guard.checked_add(1).ok_or("counter overflow")?;
+    Ok(())
 }
 
-println!("{:?}", shared.lock().unwrap()); // All values present
+fn main() {
+    let value = Mutex::new(0);
+    assert_eq!(increment(&value), Ok(()));
+    assert_eq!(value.into_inner().ok(), Some(1));
+}
 ```
 
 ## Mutex Poisoning
 
-If a thread panics while holding a lock, the mutex becomes "poisoned":
+Poisoning of a standard mutex is an advisory indication that an unwind may
+have interrupted mutation. It is not a soundness guarantee and panic
+detection can be skipped in some contexts. A guard obtained through
+`PoisonError::into_inner` still provides locking, but its contents may
+violate application invariants.
 
+Choose one explicit policy: propagate the failure, continue if state is
+independently known to be usable, or repair while holding the guard and
+then clear poison. In this example an expendable cache can be reset.
+
+<!-- rust-check: run -->
 ```rust
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
-let mutex = Arc::new(Mutex::new(0));
-
-// Handle poisoning gracefully
-match mutex.lock() {
-    Ok(guard) => println!("Value: {}", *guard),
-    Err(poisoned) => {
-        // Recover the data anyway
-        let guard = poisoned.into_inner();
-        println!("Recovered value: {}", *guard);
-    }
+fn repair_cache(cache: &Mutex<Vec<u8>>) -> usize {
+    let guard = match cache.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            let mut guard = poisoned.into_inner();
+            guard.clear();
+            cache.clear_poison();
+            guard
+        }
+    };
+    guard.len()
 }
 
-// Or ignore poisoning (use with caution)
-let guard = mutex.lock().unwrap_or_else(|e| e.into_inner());
+fn main() {
+    let cache = Mutex::new(vec![1_u8]);
+    std::thread::scope(|scope| {
+        let result = scope.spawn(|| {
+            if let Ok(mut guard) = cache.lock() {
+                guard.push(2);
+                assert_eq!(guard.len(), 0); // deliberate test fault
+            }
+        }).join();
+        assert!(result.is_err());
+    });
+    assert!(cache.is_poisoned());
+    assert_eq!(repair_cache(&cache), 0);
+    assert!(!cache.is_poisoned());
+    assert_eq!(cache.into_inner().ok(), Some(vec![]));
+}
 ```
 
-## Async code needs tokio::sync::Mutex
+This repair is valid for an expendable byte cache, not for arbitrary
+application state. Neither a non-poisoning mutex nor advisory poisoning
+removes the need for unwind-safe mutation.
+
+## Async vs Synchronous Locks
 
 ```rust
 use std::sync::Arc;
@@ -85,13 +110,13 @@ struct State {
 
 async fn increment(state: Arc<Mutex<State>>) {
     let mut guard = state.lock().await;
-    guard.counter += 1;
+    guard.counter = guard.counter.saturating_add(1);
 }
 ```
 
-Do not default to `std::sync::Mutex` or `parking_lot::Mutex` in async code unless the critical section is tiny, fully synchronous, and you are sure no `.await` can occur while the guard is live.
+Prefer ordinary synchronous locks for short nonblocking critical sections that do not cross an await; if lock acquisition may block a runtime worker substantially, redesign contention or use an async-aware mutex.
 
-Note: `std::sync::Mutex` has improved significantly, but the general rule remains — prefer `tokio::sync::Mutex` when the guard will span `.await` boundaries.
+If the critical section genuinely spans a suspension, an async mutex supports that operation. The shared policy still rejects holding guards of the diagnosed lock types across await; prefer separating the state update from asynchronous I/O.
 
 ## parking_lot::Mutex for synchronous code
 
@@ -111,8 +136,8 @@ data.push(42);
 
 Benefits of `parking_lot` in synchronous code:
 - No poisoning (returns guard directly)
-- Smaller size (1 byte vs 40+ bytes)
-- Better performance under contention
+- Compact implementation on supported targets (size is platform/version dependent)
+- Potentially different contention performance
 - Fair locking option available
 
 **Note:** The performance gap between `std::sync::Mutex` and `parking_lot::Mutex` has narrowed significantly in recent Rust versions. For most synchronous code, `std::sync::Mutex` is sufficient. Consider `parking_lot` only when profiling shows contention is a bottleneck.
@@ -153,7 +178,7 @@ let safe = AssertUnwindSafe::from(mutex);  // Cleaner than wrapping
 
 - `std::sync::Mutex` locks block the current thread. Never hold these across `.await`.
 - `tokio::sync::Mutex` locks are async — they yield the task instead of blocking. Use when the guard spans `.await`.
-- For short, synchronous critical sections that do not cross `.await`, `std::sync::Mutex` is faster even in async code.
+- For short synchronous critical sections that do not cross `.await`, an ordinary mutex is often cheaper; measure contention and latency.
 
 ## When to Use What
 
@@ -167,6 +192,8 @@ let safe = AssertUnwindSafe::from(mutex);  // Cleaner than wrapping
 
 ## See Also
 
+- [unsafe-unwind-safety](./unsafe-unwind-safety.md)
+- [err-clippy-unwrap-types](./err-clippy-unwrap-types.md)
 - [own-rwlock-readers](./own-rwlock-readers.md) - When reads dominate writes
 - [own-refcell-interior](./own-refcell-interior.md) - Single-threaded alternative
 - [async-no-lock-await](./async-no-lock-await.md) - Avoiding locks across await points

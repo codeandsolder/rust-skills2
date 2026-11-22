@@ -65,8 +65,18 @@ fn process(slice: &[u8]) -> Option<u8> {
 - When an unsafe block spans multiple operations, write one `// SAFETY:` comment that addresses each distinct invariant, or split into multiple smaller blocks (see `unsafe-minimize-scope`).
 - In an `unsafe fn`, the body still requires `// SAFETY:` comments for each inner `unsafe {}` block under the 2024 edition's `unsafe_op_in_unsafe_fn` lint.
 
+## Prove the Whole Abstraction, Not Just the Local Operation
+
+A small safety comment does not excuse an unsound safe entry point.
+Trace every safe constructor, mutation, callback, destructor and error
+path that can establish or invalidate the stated invariant. A safe trait
+implementation can lie or panic; a guard can be forgotten. Do not rely on
+mutex poisoning, debug assertions or eventual cleanup as the proof.
+
 ## See Also
 
+- [unsafe-untrusted-safe-code](./unsafe-untrusted-safe-code.md)
+- [unsafe-unwind-safety](./unsafe-unwind-safety.md)
 - [unsafe-minimize-scope](unsafe-minimize-scope.md) - keep unsafe blocks as small as possible
 - [lint-unsafe-doc](lint-unsafe-doc.md) - enable `clippy::undocumented_unsafe_blocks`
 - [doc-safety-section](doc-safety-section.md) - include `# Safety` sections in public unsafe fns

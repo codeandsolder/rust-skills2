@@ -15,7 +15,7 @@ Items remain unsafe by default. Marking an item `safe` is a much stronger promis
 // Rust 2021 style — forbidden in the 2024 edition
 extern "C" {
     fn strlen(s: *const std::ffi::c_char) -> usize;
-    fn memcpy(dst: *mut u8, src: *const u8, n: usize) -> *mut u8;
+    fn memcpy(dst: *mut std::ffi::c_void, src: *const std::ffi::c_void, n: usize) -> *mut std::ffi::c_void;
 }
 ```
 
@@ -23,7 +23,7 @@ extern "C" {
 // UNSOUND: safe Rust callers can pass null, dangling, overlapping,
 // or otherwise invalid pointers.
 unsafe extern "C" {
-    pub safe fn memcpy(dst: *mut u8, src: *const u8, n: usize) -> *mut u8;
+    pub safe fn memcpy(dst: *mut std::ffi::c_void, src: *const std::ffi::c_void, n: usize) -> *mut std::ffi::c_void;
 }
 ```
 
@@ -35,7 +35,7 @@ unsafe extern "C" {
     pub unsafe fn strlen(s: *const std::ffi::c_char) -> usize;
 
     // Caller must provide valid, non-overlapping regions of at least n bytes.
-    pub unsafe fn memcpy(dst: *mut u8, src: *const u8, n: usize) -> *mut u8;
+    pub unsafe fn memcpy(dst: *mut std::ffi::c_void, src: *const std::ffi::c_void, n: usize) -> *mut std::ffi::c_void;
 
     // Hypothetical function whose complete contract really is represented by
     // its Rust signature. Only such items should be declared `safe`.
@@ -43,27 +43,35 @@ unsafe extern "C" {
 
     // Access to an extern static may rely on initialization, validity,
     // synchronization, mutability, and other foreign-code invariants.
-    pub unsafe static errno: std::ffi::c_int;
+    pub unsafe static FOREIGN_STATUS: std::ffi::c_int;
 }
 
 // If the Rust API accepts raw pointers, preserve the caller-side contract.
 /// Copies `n` bytes from `src` to `dst`.
 ///
 /// # Safety
-/// `src` and `dst` must each be valid for `n` bytes and must not overlap.
+/// For nonzero n, src must be valid for n initialized byte reads, dst for
+/// n byte writes; the ranges must not overlap or conflict with concurrent
+/// accesses, and both allocations must remain live for the call.
 unsafe fn copy_bytes(dst: *mut u8, src: *const u8, n: usize) {
-    // SAFETY: forwarded directly from this function's documented preconditions.
-    unsafe { memcpy(dst, src, n) };
+    if n == 0 {
+        return;
+    }
+    // SAFETY: the caller guarantees the two valid disjoint regions.
+    unsafe { memcpy(dst.cast(), src.cast(), n) };
 }
 
 // Prefer a genuinely safe wrapper when Rust types can establish the contract.
 fn copy_slice(dst: &mut [u8], src: &[u8]) {
     assert_eq!(dst.len(), src.len());
-    // Distinct Rust borrows establish valid, non-overlapping regions.
-    unsafe { memcpy(dst.as_mut_ptr(), src.as_ptr(), src.len()) };
+    // SAFETY: distinct Rust borrows establish valid non-overlapping regions.
+    // copy_bytes also handles an empty slice without calling C memcpy.
+    unsafe { copy_bytes(dst.as_mut_ptr(), src.as_ptr(), src.len()) };
 }
 ```
 
+
+For an actual slice-to-slice copy, use the safe standard-library `copy_from_slice` instead. The example illustrates establishing a foreign contract, not a faster implementation of copying.
 
 ## Rust 1.99+: Defining C-Variadic Functions
 
@@ -115,7 +123,12 @@ Run `cargo fix --edition` for the mechanical syntax migration, then review every
 - Raw pointers in a signature are not automatically unsafe, but any unchecked validity, aliasing, lifetime, initialization, or provenance requirement is a strong sign that the item must remain `unsafe`.
 - Extern statics require the same careful invariant analysis; data races are only one possible source of unsoundness.
 
+## Boundary Architecture
+
+Validate and translate foreign arguments in a narrow adapter and call ordinary Rust domain logic. Null/length checks alone cannot prove pointer validity. Document ownership and matching release operations, callback lifecycle, ABI and unwinding rules.
+
 ## See Also
 
+- [unsafe-ffi-boundary](./unsafe-ffi-boundary.md)
 - [unsafe-no-mangle-unsafe](unsafe-no-mangle-unsafe.md) - mark `#[no_mangle]` as `#[unsafe(no_mangle)]` in Rust 2024
 - [type-repr-transparent](type-repr-transparent.md) - layout guarantees for intentional transparent wrappers

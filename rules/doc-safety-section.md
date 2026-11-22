@@ -53,7 +53,7 @@ fn main() {
 }
 ```
 
-A public `# Safety` section would be misleading here because callers have no unsafe obligation.
+A public `# Safety` section would be misleading here because callers have no unsafe obligation. This demonstrates a local proof; for actual slice indexing, prefer `slice.get(index)` unless measurement justifies otherwise.
 
 ## Unsafe Traits Document Implementor Obligations
 
@@ -92,8 +92,15 @@ Edition 2024 requires **external declaration blocks** to be written `unsafe exte
 use core::ffi::{c_char, c_int};
 
 unsafe extern "C" {
-    /// Absolute value from the C runtime.
-    pub safe fn abs(value: c_int) -> c_int;
+    /// C absolute value. The minimum signed integer is not representable
+    /// as a positive c_int, so this must not be declared safe.
+    ///
+    /// # Safety
+    /// value must not be c_int::MIN.
+    pub unsafe fn abs(value: c_int) -> c_int;
+
+    // Hypothetical foreign version query with no caller obligations.
+    pub safe fn protocol_version() -> u32;
 
     /// Returns the length of a NUL-terminated C string.
     ///
@@ -105,7 +112,7 @@ unsafe extern "C" {
 }
 ```
 
-Items in an unsafe extern block are unsafe to call by default. Edition 2024 also allows an item whose declaration is genuinely safe for all Rust values to be marked `safe`, as with `abs` above.
+Items in an unsafe extern block are unsafe to call by default. Edition 2024 also allows an item whose declaration is genuinely safe for all Rust values to be marked `safe`, as with the hypothetical version query above. C `abs` is not such a function: the minimum signed value is outside its defined domain.
 
 This is separate from defining a Rust function with a foreign ABI:
 
