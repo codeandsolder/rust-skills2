@@ -87,7 +87,7 @@
     ]
   },
   "ambient": {
-    "entry": "checks/fixtures/ambient-config-advisory/verify.py",
+    "entry": "checks/check_ambient_config.py",
     "read": [
       "checks/fixtures/ambient-config-advisory/src/lib.rs"
     ],
