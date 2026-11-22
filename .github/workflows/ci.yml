@@ -164,6 +164,7 @@ jobs:
       - name: Attribute reasons remain mandatory in strict and relaxed tests
         shell: bash
         env:
+          CARGO_TERM_COLOR: never
           RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-attribute-reasons
           RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
           RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
@@ -175,10 +176,10 @@ jobs:
               exit 1
             fi
             printf '%s\n' "$output"
-            rg -q '^error:.*deprecated.*note' <<< "$output"
-            rg -q '^error:.*must_use.*reason' <<< "$output"
-            rg -q 'requested on the command line with .*clippy::deprecated-attributes-without-note' <<< "$output"
-            rg -q 'requested on the command line with .*clippy::must-use-without-reason' <<< "$output"
+            [[ "$output" == *'error: `deprecated` attribute without note'* ]]
+            [[ "$output" == *'error: `#[must_use]` attribute without a reason'* ]]
+            [[ "$output" == *'requested on the command line with `-D clippy::deprecated-attributes-without-note`'* ]]
+            [[ "$output" == *'requested on the command line with `-D clippy::must-use-without-reason`'* ]]
           done
 
       - name: Both attribute reason expectations are rejected
@@ -193,8 +194,8 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$output"
-          rg -q 'suppressing clippy::deprecated_attributes_without_note would weaken suppression policy' <<< "$output"
-          rg -q 'suppressing clippy::must_use_without_reason would weaken suppression policy' <<< "$output"
+          [[ "$output" == *'suppressing clippy::deprecated_attributes_without_note would weaken suppression policy'* ]]
+          [[ "$output" == *'suppressing clippy::must_use_without_reason would weaken suppression policy'* ]]
 
       - name: Passing fixture
         uses: ./.github/actions/rust-strict

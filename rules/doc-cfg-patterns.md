@@ -169,7 +169,7 @@ fn main() {
 
 The same principle applies to methods, trait impls, modules, variants, and other conditionally compiled public items: write the real `cfg` first and let documentation tooling derive it when possible.
 
-## Direct `#[doc(cfg(...))]` Is Nightly-Only on Rust 1.98
+## Direct `#[doc(cfg(...))]` Is Nightly-Only on Rust 1.100
 
 The direct attribute and `doc(auto_cfg)` are part of the unstable `doc_cfg` feature. Do not present this as stable source that can be enabled on stable Rust:
 
