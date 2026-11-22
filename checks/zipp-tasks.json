@@ -1,0 +1,96 @@
+{
+  "structure": {
+    "entry": "checks/validate.py",
+    "read": [
+      "rules/*.md",
+      "SKILL.md"
+    ]
+  },
+  "index": {
+    "entry": "checks/gen_index.py",
+    "read": [
+      "rules/*.md",
+      "SKILL.md",
+      "README.md"
+    ],
+    "write": [
+      "SKILL.md",
+      "README.md"
+    ]
+  },
+  "pins": {
+    "entry": "checks/check_action_pins.py",
+    "read": [
+      ".github/workflows/strict-rust.yml",
+      ".github/actions/rust-strict/action.yml",
+      ".github/actions/python-strict/action.yml",
+      ".github/actions/source-lint-policy/action.yml"
+    ]
+  },
+  "generate": {
+    "entry": "checks/gen.py",
+    "read": [
+      "rules/*.md",
+      "checks/fixtures/*/Cargo.toml",
+      "checks/fixtures/*/verify.sh"
+    ],
+    "optional": [
+      "checks/examples/*.rs",
+      "checks/nightly/examples/*.rs",
+      "checks/manifest.json"
+    ],
+    "write": [
+      "checks/examples/*.rs",
+      "checks/nightly/examples/*.rs",
+      "checks/manifest.json"
+    ]
+  },
+  "inventory": {
+    "entry": "checks/check_contract_inventory.py",
+    "read": [
+      "checks/manifest.json"
+    ]
+  },
+  "analyze": {
+    "entry": "checks/analyze.py",
+    "read": [
+      "checks/manifest.json",
+      "checks/check.json",
+      "checks/baseline.txt",
+      "checks/good-exceptions.txt"
+    ]
+  },
+  "metadata": {
+    "entry": "checks/check_gen_metadata.py",
+    "read": [
+      "checks/gen.py",
+      "checks/fixtures/feature-additive/Cargo.toml",
+      "checks/fixtures/feature-additive/verify.sh"
+    ],
+    "scratch": [
+      "checks/generator-test/**"
+    ]
+  },
+  "evidence": {
+    "entry": "checks/check_analyze.py",
+    "read": [
+      "checks/analyze.py"
+    ]
+  },
+  "cancellation": {
+    "entry": "checks/generate_cancel_contract.py",
+    "read": [
+      "rules/async-cancel-safety.md"
+    ],
+    "write": [
+      "checks/tests/cancel_contract_*.rs"
+    ]
+  },
+  "ambient": {
+    "entry": "checks/check_ambient_config.py",
+    "read": [
+      "checks/fixtures/ambient-config-advisory/src/lib.rs"
+    ],
+    "stdin": "compiler-evidence.jsonl"
+  }
+}

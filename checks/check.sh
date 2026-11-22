@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One command that reproduces CI locally. Run from anywhere:
 #
-#     bash checks/check.sh
+#     bash checks/check.sh ../ci-workflows/zipp-python/run.mjs
 #
 # Toolchain/target are pinned by rust-toolchain.toml and
 # x86_64-unknown-linux-gnu. `cargo check` type-checks without linking.
@@ -9,8 +9,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET="x86_64-unknown-linux-gnu"
-UV="${UV:-uv}"
-export PYTHONDONTWRITEBYTECODE=1
+ZIPP_RUNNER="$(realpath "${1:?usage: bash checks/check.sh ZIPP_RUNNER}")"
 
 # Cargo resolves an environment-provided relative target directory from each
 # process's current working directory. This script deliberately changes cwd,
@@ -38,46 +37,20 @@ if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
     }
 fi
 
-run_python() {
-    "$UV" run --no-project python "$@"
-}
+echo "==> documentation and compiler-evidence preparation in Zipp"
+node "$ROOT/checks/run_zipp.mjs" "$ZIPP_RUNNER" pre
 
-echo "==> structure, links, and index parity"
-run_python "$ROOT/checks/validate.py"
-run_python "$ROOT/checks/gen_index.py" --check
-
-echo "==> verifier metadata regression tests"
-run_python "$ROOT/checks/test_gen_metadata.py"
-
-echo "==> compiler evidence and source-policy regression tests"
-run_python "$ROOT/checks/test_analyze.py"
-run_python "$ROOT/checks/test_source_lint_policy.py"
-run_python "$ROOT/checks/test_action_pins.py"
-
-echo "==> generating example files from rules"
-cd "$ROOT/checks"
-run_python gen.py
-run_python check_contract_inventory.py
+echo "==> independent CPython source-policy oracle"
+uv run --no-project python -B "$ROOT/checks/test_source_lint_policy.py"
 
 echo "==> compile-checking ordinary examples (target: $TARGET)"
-cargo check --examples --target "$TARGET" --keep-going --message-format=json \
-    > check.json 2> check.err || true
+cd "$ROOT/checks"
+cargo check --examples --target "$TARGET" --keep-going --message-format=json > check.json 2> check.err || true
 
-echo "==> enforcing expectations and legacy baseline"
-run_python analyze.py check.json \
-    --check-baseline baseline.txt \
-    --good-exceptions good-exceptions.txt
+echo "==> enforcing expectations and legacy baseline in Zipp"
+node "$ROOT/checks/run_zipp.mjs" "$ZIPP_RUNNER" analyze
 
-echo "==> fixture-backed contracts"
-run_python run_fixture_contracts.py "$TARGET"
-
-echo "==> ordinary example runtime contracts"
-run_python run_example_contracts.py stable --target "$TARGET"
-
-echo "==> nightly example runtime contracts"
-run_python run_example_contracts.py nightly --target "$TARGET"
-
-echo "==> cancellation example runtime contracts"
-run_python test_async_cancel_safety.py
+echo "==> fixture, example and cancellation runtime contracts"
+node "$ROOT/checks/run_contracts.mjs" "$ZIPP_RUNNER" "$TARGET"
 
 echo "All checks passed."

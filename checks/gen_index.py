@@ -5,8 +5,8 @@ Single source of truth: each rule file's `# id` header, its `> summary` line, an
 the ordered CATEGORIES config below (prefix -> title + impact). Rule order within a
 category is preserved from the current SKILL.md and any new rules are appended.
 
-  uv run --no-project python checks/gen_index.py            rewrite SKILL.md + README counts
-  uv run --no-project python checks/gen_index.py --check    exit 1 if they are out of date (CI)
+  node ../ci-workflows/zipp-python/run.mjs . checks/zipp-tasks.json index            rewrite SKILL.md + README counts
+  node ../ci-workflows/zipp-python/run.mjs . checks/zipp-tasks.json index --check    exit 1 if they are out of date (CI)
 """
 import re, sys, pathlib
 
@@ -116,7 +116,7 @@ def main():
         if skill_new != SKILL.read_text(encoding="utf-8"): stale.append("SKILL.md")
         if readme_new != README.read_text(encoding="utf-8"): stale.append("README.md")
         if stale:
-            print(f"OUT OF DATE: {', '.join(stale)} — run `uv run --no-project python checks/gen_index.py`")
+            print(f"OUT OF DATE: {', '.join(stale)} — run `node ../ci-workflows/zipp-python/run.mjs . checks/zipp-tasks.json index`")
             sys.exit(1)
         print(f"OK: index up to date ({total} rules, {ncat} categories)")
         return

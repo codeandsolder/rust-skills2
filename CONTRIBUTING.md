@@ -54,7 +54,7 @@ adding a rule, improving an existing one, or fixing an example.
    never hand-edit the generated table or Quick Reference:
 
    ```bash
-   uv run --no-project python checks/gen_index.py
+   node ../ci-workflows/zipp-python/run.mjs . checks/zipp-tasks.json index
    ```
 
 5. **Add a `CHANGELOG.md` entry** under the next version.
@@ -62,9 +62,10 @@ adding a rule, improving an existing one, or fixing an example.
 ## Before opening a PR
 
 Run the same checks CI runs:
+Use a sibling checkout of the pinned `codeandsolder/ci-workflows` provider.
 
 ```bash
-bash checks/check.sh
+bash checks/check.sh ../ci-workflows/zipp-python/run.mjs
 ```
 
 If the compile gate reports a real bug, fix the example. If you intentionally
