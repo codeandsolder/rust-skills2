@@ -83,10 +83,10 @@ jobs:
           python-ci-paths: ${{ inputs.python-ci-paths }}
 
       - name: Enforce PR workflow supersession across all caller workflows
-        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@afab1a99dc73e3be32b6f4b139defa882741dab7 # main
+        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@7bbede943ffd14ba2a534cf1296a20fd11c177ae # main
 
       - name: Enforce canonical Rust CI caching
-        uses: codeandsolder/ci-workflows/.github/actions/rust-ci-sccache-policy@afab1a99dc73e3be32b6f4b139defa882741dab7 # main
+        uses: codeandsolder/ci-workflows/.github/actions/rust-ci-sccache-policy@7bbede943ffd14ba2a534cf1296a20fd11c177ae # main
         with:
           strict-ref: ${{ job.workflow_sha }}
 
@@ -116,7 +116,7 @@ jobs:
           targets: ${{ inputs.rust-targets }}
 
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@afab1a99dc73e3be32b6f4b139defa882741dab7 # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@7bbede943ffd14ba2a534cf1296a20fd11c177ae # main
         with:
           rust-toolchain: ${{ inputs.rust-toolchain }}
           rustflags: ""
@@ -150,4 +150,4 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@afab1a99dc73e3be32b6f4b139defa882741dab7 # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@7bbede943ffd14ba2a534cf1296a20fd11c177ae # main
