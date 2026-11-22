@@ -17,7 +17,7 @@ Raw borrow syntax (`&raw const place` / `&raw mut place`) is also preferable whe
 
 ```rust
 let value = 123u32;
-let ptr: *const u32 = &value;
+let ptr: *const u32 = &raw const value;
 
 // This opts into the ambiguous Exposed Provenance model.
 let addr = ptr as usize;
@@ -38,7 +38,7 @@ Integer casts are not automatically UB, but they are a poorer default when a pro
 use std::ptr;
 
 let value = 123u32;
-let ptr: *const u32 = &value;
+let ptr: *const u32 = &raw const value;
 
 // Extract an address without exposing provenance, then reattach ptr's provenance.
 let addr = ptr.addr();
@@ -46,9 +46,11 @@ let back = ptr.with_addr(addr);
 assert_eq!(back, ptr);
 
 // Transform an address while retaining ptr's provenance.
-let tagged = ptr.map_addr(|a| a | 1);
-let untagged = tagged.map_addr(|a| a & !1);
-assert_eq!(untagged, ptr);
+if ptr.addr() & 1 == 0 {
+    let tagged = ptr.map_addr(|a| a | 1);
+    let untagged = tagged.map_addr(|a| a & !1);
+    assert_eq!(untagged, ptr);
+}
 
 #[repr(packed)]
 struct Header {
@@ -77,7 +79,7 @@ let restored: *const u32 = ptr::with_exposed_provenance(exposed);
 let _ = restored;
 ```
 
-A tagged pointer must be untagged before dereferencing, and the resulting address must still be within the range permitted by the retained provenance and satisfy the usual alignment/validity requirements.
+Reserve tag bits only when alignment or an explicit check proves they are available. A tagged pointer must be untagged before dereferencing, and the resulting address must still be within the range permitted by the retained provenance and satisfy the usual alignment/validity requirements.
 
 
 ## Rust 1.99+: Prefer Raw Layout APIs When You Only Have a Raw Pointer
@@ -91,6 +93,10 @@ a reference merely to call the reference-based layout APIs.
 use core::alloc::Layout;
 use core::mem::{align_of_val_raw, size_of_val_raw};
 
+/// # Safety
+/// The pointer metadata must satisfy the raw layout-query contracts:
+/// a valid trait-object vtable, initialized slice length where relevant,
+/// and representable total size no greater than isize::MAX.
 unsafe fn inspect_layout<T: ?Sized>(ptr: *const T) -> (usize, usize, Layout) {
     // SAFETY: the caller guarantees ptr has metadata valid for these raw
     // layout queries, as required by each API.
@@ -149,7 +155,7 @@ applies to other standard-library leak helpers.
 - `with_addr()` and `map_addr()` preserve the provenance of the source pointer.
 - `ptr as usize` is equivalent to `expose_provenance()`; it is not the same operation as `addr()`.
 - `addr as *const T` is equivalent to `with_exposed_provenance(addr)`, whose chosen provenance is intentionally not precisely specified.
-- Use `without_provenance` for addresses that genuinely have no Rust allocation from which to obtain provenance, such as some MMIO/sentinel-address patterns. Dereferencing still requires the platform and Rust memory-model requirements to permit the access.
+- Use without_provenance for address-only values and sentinel patterns. It does not give permission to access a Rust allocation. For external MMIO, follow the target-specific volatile operation contract (including absence of Rust allocation overlap); those accesses are not ordinary dereferences.
 - Prefer `&raw const` / `&raw mut` when you need a raw pointer without first creating a reference; Rust 1.99's `raw_borrows_via_references` lint can help find indirect raw borrows.
 - Strict Provenance APIs stabilized in Rust 1.84; raw borrow operators stabilized earlier and are the native syntax for raw borrows.
 

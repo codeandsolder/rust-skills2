@@ -1,7 +1,7 @@
 ---
 name: rust-skills
 description: >
-  Comprehensive Rust coding guidelines with 354 rules across 26 categories.
+  Comprehensive Rust coding guidelines with 353 rules across 26 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
@@ -23,7 +23,7 @@ metadata:
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 354 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.100 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 353 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.100 (2024 edition).
 
 ## When to Apply
 
@@ -50,7 +50,7 @@ Reference these guidelines when:
 | 7 | Concurrency | HIGH | `conc-` | 4 |
 | 8 | Compiler Optimization | HIGH | `opt-` | 15 |
 | 9 | Numeric & Arithmetic Safety | HIGH | `num-` | 5 |
-| 10 | Type Safety | MEDIUM | `type-` | 18 |
+| 10 | Type Safety | MEDIUM | `type-` | 17 |
 | 11 | Trait & Generics Design | MEDIUM | `trait-` | 7 |
 | 12 | Conversions | MEDIUM | `conv-` | 3 |
 | 13 | Const & Compile-Time | MEDIUM | `const-` | 4 |
@@ -147,7 +147,7 @@ Reference these guidelines when:
 - [`unsafe-maybeuninit`](rules/unsafe-maybeuninit.md) - Use `MaybeUninit<T>` for uninitialized memory; never use `mem::uninitialized()` or `mem::zeroed()` for types with validity invariants.
 - [`unsafe-extern-block`](rules/unsafe-extern-block.md) - In Rust 2024, use `unsafe extern { }` blocks and mark an item `safe` only when every safe Rust caller can satisfy its contract.
 - [`unsafe-send-sync-manual`](rules/unsafe-send-sync-manual.md) - Justify manual `Send`/`Sync` from invariants enforced by the type and its dependencies, not from hoped-for caller behavior
-- [`unsafe-no-mangle-unsafe`](rules/unsafe-no-mangle-unsafe.md) - In Rust 2024, write `#[unsafe(no_mangle)]`, `#[unsafe(export_name = "...")]`, and `#[unsafe(link_section = "...")]` — not the bare attribute forms.
+- [`unsafe-no-mangle-unsafe`](rules/unsafe-no-mangle-unsafe.md) - Make symbol identity, ABI and linker-section preconditions explicit when using unsafe attributes; use Edition 2024 attribute syntax
 - [`unsafe-strict-provenance`](rules/unsafe-strict-provenance.md) - Prefer strict provenance APIs (`ptr.addr()`, `ptr.map_addr()`, `ptr.with_addr()`) over integer-pointer round-tripping (`as usize` / `as *const T`); prefer raw borrow syntax (`&raw const x` / `&raw mut x`) over `addr_of!` / `addr_of_mut!`.
 - [`unsafe-cell-access`](rules/unsafe-cell-access.md) - Treat Rust 1.100 `UnsafeCell` accessors as explicit aliasing contracts, not as permission to manufacture simultaneous references
 - [`unsafe-conjure-zst`](rules/unsafe-conjure-zst.md) - Use Rust 1.100 `mem::conjure_zst` only when constructing an inhabited zero-sized value is proven sound
@@ -219,9 +219,9 @@ Reference these guidelines when:
 - [`opt-inline-never-cold`](rules/opt-inline-never-cold.md) - Use cold-path and inlining annotations as measured optimization hints, not source-level guarantees
 - [`opt-cold-unlikely`](rules/opt-cold-unlikely.md) - Use `#[cold]` or `core::hint::cold_path()` only when an unlikely path is known or measured to matter.
 - [`opt-likely-hint`](rules/opt-likely-hint.md) - Use measured branch-probability hints when ordinary code and profiles do not already convey the useful information
-- [`opt-lto-release`](rules/opt-lto-release.md) - Enable LTO in release builds
-- [`opt-codegen-units`](rules/opt-codegen-units.md) - Set `codegen-units = 1` for maximum optimization in release builds
-- [`opt-pgo-profile`](rules/opt-pgo-profile.md) - Use Profile-Guided Optimization (PGO) for maximum performance
+- [`opt-lto-release`](rules/opt-lto-release.md) - Evaluate ThinLTO and fat LTO for the actual release artifact; choose based on measured optimization benefit and build cost
+- [`opt-codegen-units`](rules/opt-codegen-units.md) - Choose release codegen-unit count by measuring runtime, binary size, compilation cost and memory together
+- [`opt-pgo-profile`](rules/opt-pgo-profile.md) - Use representative profile-guided optimization when measured end-to-end gains justify its training and build costs
 - [`opt-target-cpu`](rules/opt-target-cpu.md) - Tune `target-cpu` only for deployment CPUs you actually control, and use explicit runtime dispatch for portable binaries
 - [`opt-bounds-check`](rules/opt-bounds-check.md) - Structure hot loops so bounds are easy to prove; verify optimized code before using unchecked indexing
 - [`opt-simd-portable`](rules/opt-simd-portable.md) - Treat portable SIMD as a semantic abstraction, not a speed guarantee: preserve scalar behavior, use safe vector memory operations, dispatch CPU-specific kernels correctly, and verify code generation and measured performance.
@@ -245,7 +245,7 @@ Reference these guidelines when:
 - [`type-enum-states`](rules/type-enum-states.md) - Use enums when a value is in exactly one of several mutually exclusive states
 - [`type-option-nullable`](rules/type-option-nullable.md) - Use `Option<T>` when absence is an ordinary state; use `Result<T, E>` when callers need failure information
 - [`type-result-fallible`](rules/type-result-fallible.md) - Use `Result<T, E>` when an operation can fail with useful error information
-- [`type-phantom-marker`](rules/type-phantom-marker.md) - Use `PhantomData` for zero-cost type markers
+- [`type-phantom-marker`](rules/type-phantom-marker.md) - Use PhantomData to express actual ownership, borrowing, variance and auto-trait relationships without storing a value; use PhantomPinned for deliberate pinning invariants
 - [`type-never-diverge`](rules/type-never-diverge.md) - Use `!` as the return type of functions that never return normally
 - [`type-generic-bounds`](rules/type-generic-bounds.md) - Put each trait bound on the API surface that actually requires it
 - [`type-no-stringly`](rules/type-no-stringly.md) - Replace durable stringly-typed states and identifiers with enums or domain types, while keeping text parsing at system boundaries
@@ -254,7 +254,6 @@ Reference these guidelines when:
 - [`type-display-vs-debug`](rules/type-display-vs-debug.md) - Use `Display` for user-facing output and `Debug` for diagnostics; never swap them
 - [`type-numeric-fmt`](rules/type-numeric-fmt.md) - Implement `LowerHex`, `UpperHex`, `Octal`, and `Binary` for numeric newtypes
 - [`type-derive-more-boilerplate`](rules/type-derive-more-boilerplate.md) - Use `derive_more` to remove mechanical trait boilerplate when the generated trait semantics are actually part of your API
-- [`type-newtype-repr-transparent`](rules/type-newtype-repr-transparent.md) - Use `#[repr(transparent)]` only when a newtype intentionally promises the wrapped field's layout or ABI
 - [`type-nonzero-intrinsics`](rules/type-nonzero-intrinsics.md) - Use `NonZero<T>` when zero is invalid, and use only operations whose result semantics preserve that invariant
 - [`type-nutype-validated`](rules/type-nutype-validated.md) - Use validated newtypes to make invalid states unrepresentable; `nutype` is useful when generated constructors and invariant-preserving trait impls justify a proc macro
 - [`type-named-fields`](rules/type-named-fields.md) - Name domain-record fields and distinct semantic values; use tuples for small local structural groupings or genuine newtypes
@@ -419,7 +418,7 @@ Reference these guidelines when:
 - [`perf-chain-avoid`](rules/perf-chain-avoid.md) - Use `Iterator::chain` when it expresses the traversal clearly; split or materialize only when measurement shows the chained iterator is a bottleneck
 - [`perf-collect-into`](rules/perf-collect-into.md) - Reuse an existing destination with `clear()` + `extend()` on stable Rust; nightly `Iterator::collect_into` appends like `Extend::extend` and does not clear for you
 - [`perf-black-box-bench`](rules/perf-black-box-bench.md) - Use `std::hint::black_box` in benchmarks when compile-time knowledge could make the measured work unrealistically disappear or specialize.
-- [`perf-release-profile`](rules/perf-release-profile.md) - Optimize release profile settings
+- [`perf-release-profile`](rules/perf-release-profile.md) - Tune release profiles against real deployment goals; keep semantic settings explicit and preserve the diagnostic information needed by the project
 - [`perf-profile-first`](rules/perf-profile-first.md) - Measure representative workloads before choosing an optimization, then measure again after the change.
 - [`perf-ahash`](rules/perf-ahash.md) - Use a faster hasher (`ahash` / `FxHashMap`) when DoS resistance is not needed
 - [`perf-io-buffering`](rules/perf-io-buffering.md) - Wrap `Read`/`Write` in `BufReader`/`BufWriter` for many small operations

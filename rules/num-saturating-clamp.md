@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-Constraining a numeric value to a range is a common operation, but hand-rolled `if`/`min`/`max` chains are verbose and easy to get wrong (especially when combining signed and unsigned types). `Ord::clamp(min, max)` expresses the intent in a single call and is available on all types that implement `Ord` (all integer primitives, and `f32`/`f64` via their own `clamp` since Rust 1.50). When you additionally want arithmetic that stops at the type's limits rather than panicking or wrapping, combine `clamp` with `saturating_*` methods.
+Constraining a numeric value to a range is a common operation, but hand-rolled `if`/`min`/`max` chains are verbose and easy to get wrong (especially when combining signed and unsigned types). `Ord::clamp(min, max)` expresses the intent in a single call and is available on all types that implement `Ord` (including integer primitives); floats have their own inherent `clamp` methods. When you additionally want arithmetic that stops at the type's limits rather than panicking or wrapping, combine `clamp` with `saturating_*` methods.
 
 ## Bad
 
@@ -27,14 +27,15 @@ fn clamp_volume(vol: u8, min: u8, max: u8) -> u8 {
 
 ## Good
 
+<!-- rust-check: run -->
 ```rust
 fn apply_damage(health: i32, damage: i32) -> i32 {
     // saturating_sub stops at i32::MIN — then clamp ensures non-negative
     health.saturating_sub(damage).clamp(0, i32::MAX)
 }
 
-fn clamp_volume(vol: u8, min: u8, max: u8) -> u8 {
-    vol.clamp(min, max)
+fn clamp_volume(vol: u8, min: u8, max: u8) -> Option<u8> {
+    (min <= max).then(|| vol.clamp(min, max))
 }
 
 // integer clamp: any Ord type
@@ -44,44 +45,40 @@ fn clamp_score(score: i64) -> i64 {
 
 // float clamp: available on f32/f64 since Rust 1.50
 fn normalize_alpha(a: f32) -> f32 {
-    a.clamp(0.0, 1.0)  // NaN propagates: NaN.clamp(0.0, 1.0) == NaN
+    a.clamp(0.0, 1.0)  // a NaN input produces a NaN result
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn clamp_float(value: f64, min: f64, max: f64) -> Option<f64> {
+    // This also rejects NaN bounds. NaN value propagation is intentional.
+    (min <= max).then(|| value.clamp(min, max))
+}
 
-    #[test]
-    fn damage_does_not_go_below_zero() {
-        assert_eq!(apply_damage(10, 5), 5);
-        assert_eq!(apply_damage(3, 100), 0);
-    }
-
-    #[test]
-    fn volume_is_bounded() {
-        assert_eq!(clamp_volume(50, 10, 90), 50);
-        assert_eq!(clamp_volume(5, 10, 90), 10);
-        assert_eq!(clamp_volume(200, 10, 90), 90);
-    }
-
-    #[test]
-    fn score_is_clamped() {
-        assert_eq!(clamp_score(-10), 0);
-        assert_eq!(clamp_score(150), 100);
-        assert_eq!(clamp_score(75), 75);
-    }
-
-    #[test]
-    fn float_nan_propagates_through_clamp() {
-        assert!(f32::NAN.clamp(0.0, 1.0).is_nan());
-    }
+fn main() {
+    assert_eq!(apply_damage(10, 5), 5);
+    assert_eq!(apply_damage(3, 100), 0);
+    assert_eq!(apply_damage(i32::MIN, 1), 0);
+    assert_eq!(apply_damage(i32::MAX, -1), i32::MAX);
+    assert_eq!(clamp_volume(50, 10, 90), Some(50));
+    assert_eq!(clamp_volume(5, 10, 90), Some(10));
+    assert_eq!(clamp_volume(200, 10, 90), Some(90));
+    assert_eq!(clamp_volume(50, 90, 10), None);
+    assert_eq!(clamp_volume(50, 10, 10), Some(10));
+    assert_eq!(clamp_score(-10), 0);
+    assert_eq!(clamp_score(150), 100);
+    assert_eq!(normalize_alpha(f32::INFINITY), 1.0);
+    assert!(normalize_alpha(f32::NAN).is_nan());
+    assert_eq!(clamp_float(0.5, 1.0, 0.0), None);
+    assert_eq!(clamp_float(0.5, f64::NAN, 1.0), None);
+    assert_eq!(clamp_float(0.5, 0.0, f64::NAN), None);
+    assert!(clamp_float(f64::NAN, 0.0, 1.0).is_some_and(f64::is_nan));
 }
 ```
 
 ## Key Points
 
-- **`clamp` panics if `min > max`** — this is a programming error and is caught in debug builds. If `min`/`max` come from user input, validate their order first.
-- **`f32`/`f64` `clamp`** propagates `NaN`: if `self` is `NaN`, the result is `NaN`. If `min` or `max` is `NaN`, the result is unspecified. Filter `NaN` before calling `clamp` on untrusted floats.
+- **`clamp` panics if `min > max`** in release as well as debug builds. If `min`/`max` come from user input, validate their order first.
+- **`f32`/`f64` `clamp`** propagates `NaN`: if `self` is `NaN`, the result is `NaN`. If either bound is NaN, the operation panics. Validate the bounds with `min <= max`; separately decide whether a NaN input is allowed.
+- Saturating arithmetic is only appropriate when its clamping semantics are intended. In the signed-delta example, a negative damage value intentionally increases health. If negative damage is invalid, use a checked domain type instead.
 - **Saturating vs. clamping**: `saturating_*` applies to a single arithmetic operation and stops at the type's absolute limits (`i32::MIN`/`i32::MAX`). `clamp` applies to the final value and accepts arbitrary bounds. They compose well, as shown in `apply_damage`.
 - The standard library docs for `clamp` are at `std::cmp::Ord::clamp` and `f32::clamp`.
 

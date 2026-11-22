@@ -1,244 +1,187 @@
 # type-phantom-marker
 
-> Use `PhantomData` for zero-cost type markers
-
-**Rule**: `type-phantom-marker`
+> Use PhantomData to express actual ownership, borrowing, variance and auto-trait relationships without storing a value; use PhantomPinned for deliberate pinning invariants
 
 ## Why It Matters
 
-Sometimes your type needs to be parameterized by a type that doesn't appear in any field — for variance, drop order, or semantic purposes. `PhantomData<T>` tells the compiler your type is "associated with" `T` without storing any `T` data. It has zero runtime cost. For `!Unpin` markers, use `PhantomPinned`, a dedicated zero-sized type from `std::marker`.
+A phantom marker is zero-sized and has alignment one. It influences compiler
+reasoning about variance, drop checking and auto traits. It does not create
+an object, run that object's destructor, establish a pointer's validity or
+enforce an external resource contract. Pick the marker from the relationship
+the type must actually express.
 
-## Bad
+## Good: Distinguish Semantic IDs
 
-<!-- rust-check: compile_fail; reason=an unused generic type parameter is rejected without a marker field -->
-```rust
-// Type parameter unused — compiler error
-struct Handle<T> {
-    id: u64,
-    // Error: parameter `T` is never used
-}
-
-// A storage field merely to mention T changes the representation and semantics.
-struct StoredHandle<T> {
-    id: u64,
-    _type: Option<T>,
-}
-```
-
-## Good
-
-<!-- rust-check: compile -->
+<!-- rust-check: run -->
 ```rust
 use std::marker::PhantomData;
 
-struct Handle<T> {
-    id: u64,
-    _marker: PhantomData<T>,  // Zero-size, tells compiler about T
+struct Id<T> {
+    raw: u64,
+    category: PhantomData<fn() -> T>,
 }
 
-impl<T> Handle<T> {
-    fn new(id: u64) -> Self {
-        Handle { id, _marker: PhantomData }
+impl<T> Id<T> {
+    fn new(raw: u64) -> Self {
+        Self { raw, category: PhantomData }
     }
 }
 
-// Different Handle types are incompatible
 struct User;
 struct Order;
 
-fn process_user(h: Handle<User>) { let _ = h; }
-
-let user_handle = Handle::<User>::new(1);
-let order_handle = Handle::<Order>::new(2);
-
-process_user(user_handle);   // OK
-// process_user(order_handle);  // Error: expected Handle<User>, found Handle<Order>
-```
-
-## Expressing Ownership
-
-```rust
-use std::marker::PhantomData;
-
-// Owns T conceptually (like Box<T>)
-struct Container<T> {
-    ptr: *mut T,
-    _marker: PhantomData<T>,  // Drop will be called on T
+fn user_number(id: Id<User>) -> u64 {
+    id.raw
 }
 
-impl<T> Drop for Container<T> {
-    fn drop(&mut self) {
-        unsafe { std::ptr::drop_in_place(self.ptr); }
+fn main() {
+    assert_eq!(user_number(Id::new(17)), 17);
+    let order = Id::<Order>::new(42);
+    assert_eq!(order.raw, 42);
+}
+```
+
+Here the generic parameter is only a category tag. A function-type marker
+does not impose ownership of a T or inherit T's Send/Sync restrictions.
+That is appropriate for an integer ID, not automatically for a foreign
+resource whose operations may have thread-affinity requirements.
+
+## Good: Express Actual Ownership
+
+<!-- rust-check: run -->
+```rust
+use std::cell::Cell;
+use std::marker::PhantomData;
+use std::ptr::NonNull;
+
+struct RawOwner<T> {
+    ptr: NonNull<T>,
+    owned: PhantomData<T>,
+}
+
+impl<T> RawOwner<T> {
+    fn new(value: T) -> Self {
+        Self { ptr: Box::into_non_null(Box::new(value)), owned: PhantomData }
     }
 }
+
+impl<T> Drop for RawOwner<T> {
+    fn drop(&mut self) {
+        // SAFETY: the private owner retains the unique live Box allocation;
+        // no ownership transfer occurred, and this destructor runs at most once.
+        drop(unsafe { Box::from_non_null(self.ptr) });
+    }
+}
+
+struct CountDrop<'a>(&'a Cell<u32>);
+
+impl Drop for CountDrop<'_> {
+    fn drop(&mut self) {
+        self.0.set(self.0.get() + 1);
+    }
+}
+
+fn main() {
+    let count = Cell::new(0);
+    let owner = RawOwner::new(CountDrop(&count));
+    assert_eq!(count.get(), 0);
+    drop(owner);
+    assert_eq!(count.get(), 1);
+}
 ```
 
-## Expressing Borrowing
+The marker represents ownership, but the destructor actually drops and
+deallocates the value. The constructor establishes validity; the marker
+cannot repair an arbitrary invalid pointer. This is an illustrative raw
+ownership boundary, not a reason to replace ordinary Box with raw pointers.
 
+## Good: Model a Borrowed Raw View
+
+<!-- rust-check: run -->
 ```rust
 use std::marker::PhantomData;
 
-// Borrows T for lifetime 'a
-struct Ref<'a, T> {
+struct Borrowed<'a, T> {
     ptr: *const T,
-    _marker: PhantomData<&'a T>,  // Acts like &'a T
+    borrow: PhantomData<&'a T>,
 }
 
-impl<'a, T> Ref<'a, T> {
+impl<'a, T> Borrowed<'a, T> {
+    fn new(value: &'a T) -> Self {
+        Self { ptr: value, borrow: PhantomData }
+    }
+
     fn get(&self) -> &'a T {
+        // SAFETY: new obtained this pointer from a shared reference valid
+        // for 'a; no method can change it or grant conflicting mutable access.
         unsafe { &*self.ptr }
     }
 }
+
+fn main() {
+    let value = String::from("borrowed");
+    let view = Borrowed::new(&value);
+    assert_eq!(view.get(), "borrowed");
+}
 ```
 
-## `PhantomPinned` for `!Unpin` Markers
+Prefer an ordinary reference when possible. A raw view needs the explicit
+lifetime and aliasing proof regardless of its marker.
 
-`PhantomPinned` is a zero-sized type that implements `!Unpin`, making your type immovable after construction — essential for self-referential structs and pinned futures:
+## Marker Semantics
 
+| Marker | Variance in T | Drop-check relationship | Send/Sync effect |
+|---|---|---|---|
+| `PhantomData<T>` | Covariant | Ownership-like | Follows T |
+| `PhantomData<&'a T>` | Covariant | Shared borrow | Follows shared-reference requirements |
+| `PhantomData<&'a mut T>` | Invariant | Exclusive borrow | Follows mutable-reference requirements |
+| `PhantomData<fn() -> T>` | Covariant | Non-owning type tag | Function-pointer auto traits |
+| `PhantomData<fn(T)>` | Contravariant | Non-owning type tag | Function-pointer auto traits |
+| `PhantomData<fn(T) -> T>` | Invariant | Non-owning type tag | Function-pointer auto traits |
+
+These describe the marker field, not the complete containing type.
+Other fields and bounds also matter. The full drop-check rules depend
+on destructors and ownership; do not use a phantom marker to waive a
+real lifetime requirement.
+
+## Pinning Is a Separate Contract
+
+`PhantomPinned` makes a containing type not automatically implement
+Unpin. It does not make an ordinary unpinned value immovable on
+construction. A pinning API must first establish the pinned address
+and ensure no safe method can move or invalidate the relevant data
+until destruction. Moving a Pin<Box<T>> handle is distinct from moving T.
+
+<!-- rust-check: run -->
 ```rust
 use std::marker::PhantomPinned;
 use std::pin::Pin;
 
-// A type that, once pinned, cannot be moved
-struct SelfReferential {
-    data: String,
-    pointer: *const String,  // Points to `self.data`
-    _pin: PhantomPinned,      // Makes the type !Unpin
+struct PinnedRecord {
+    value: u32,
+    pinned: PhantomPinned,
 }
 
-impl SelfReferential {
-    fn new(data: String) -> Pin<Box<Self>> {
-        let mut s = Box::pin(SelfReferential {
-            pointer: std::ptr::null(),
-            data,
-            _pin: PhantomPinned,
-        });
-        // Safety: we won't move `s` after initializing the pointer
-        unsafe {
-            let this: &mut Self = Pin::as_mut(&mut s).get_unchecked_mut();
-            this.pointer = &this.data as *const String;
-        }
-        s
-    }
+fn main() {
+    let record: Pin<Box<PinnedRecord>> = Box::pin(PinnedRecord {
+        value: 42,
+        pinned: PhantomPinned,
+    });
+    let moved_handle = record;
+    assert_eq!(moved_handle.as_ref().get_ref().value, 42);
 }
 ```
 
-## `#[repr(transparent)]` + `PhantomData` + `NonZero<uN>` for FFI Handles
-
-Combine all three for a type-safe, niche-optimized FFI handle:
-
-```rust
-use std::marker::PhantomData;
-use std::num::NonZero;
-
-/// A type-safe, non-nullable, niche-optimized FFI handle.
-#[repr(transparent)]
-struct FfiHandle<T> {
-    raw: NonZero<u64>,
-    _marker: PhantomData<T>,
-}
-
-impl<T> FfiHandle<T> {
-    /// Create a handle from a raw non-zero value.
-    ///
-    /// # Safety
-    /// `raw` must be a valid handle returned by the C library.
-    unsafe fn from_raw(raw: NonZero<u64>) -> Self {
-        Self { raw, _marker: PhantomData }
-    }
-
-    fn as_raw(&self) -> NonZero<u64> {
-        self.raw
-    }
-}
-
-// Zero-cost optional: Option<FfiHandle<T>> is 8 bytes
-assert_eq!(std::mem::size_of::<FfiHandle<()>>(), 8);
-assert_eq!(std::mem::size_of::<Option<FfiHandle<()>>>(), 8);
-```
-
-## Type-Level State Machine
-
-```rust
-use std::marker::PhantomData;
-
-struct Unlocked;
-struct Locked;
-
-struct Door<State> {
-    _state: PhantomData<State>,
-}
-
-impl Door<Unlocked> {
-    fn lock(self) -> Door<Locked> {
-        println!("Locking...");
-        Door { _state: PhantomData }
-    }
-
-    fn open(&self) { println!("Opening..."); }
-}
-
-impl Door<Locked> {
-    fn unlock(self) -> Door<Unlocked> {
-        println!("Unlocking...");
-        Door { _state: PhantomData }
-    }
-    // Can't call open() on Locked door — method doesn't exist
-}
-
-let door: Door<Unlocked> = Door { _state: PhantomData };
-door.open();             // OK
-let locked = door.lock();
-// locked.open();        // Error: no method `open` for Door<Locked>
-let unlocked = locked.unlock();
-unlocked.open();         // OK
-```
-
-## Variance Control
-
-```rust
-use std::marker::PhantomData;
-
-// Covariant in T (PhantomData<T>)
-struct Producer<T> { _marker: PhantomData<T> }
-
-// Contravariant in T (PhantomData<fn(T)>)
-struct Consumer<T> { _marker: PhantomData<fn(T)> }
-
-// Invariant in T (PhantomData<fn(T) -> T>)
-struct Both<T> { _marker: PhantomData<fn(T) -> T> }
-```
-
-## Common Uses
-
-```rust
-// 1. FFI handles with type safety
-struct FileHandle<T: FileType> {
-    fd: i32,
-    _marker: PhantomData<T>,
-}
-
-// 2. Generic iterators
-struct Iter<'a, T> {
-    ptr: *const T,
-    end: *const T,
-    _marker: PhantomData<&'a T>,
-}
-
-// 3. Allocator-aware types
-struct Vec<T, A: Allocator = Global> {
-    buf: RawVec<T, A>,
-    len: usize,
-}
-```
+Do not use a casually initialized self-reference as a pinning recipe.
+Self-referential objects need an audited construction, projection, aliasing
+and destruction contract. Prefer indices or independent ownership when
+they express the same relationships without pointer invariants.
 
 ## See Also
 
-- [Rust Reference: PhantomData](https://doc.rust-lang.org/reference/special-types-and-traits.html#phantomdata)
-- [PhantomPinned docs](https://doc.rust-lang.org/std/marker/struct.PhantomPinned.html)
-- [Pin and PhantomPinned](https://doc.rust-lang.org/std/pin/index.html)
-- [api-typestate](./api-typestate.md) — State machine pattern
-- [api-newtype-safety](./api-newtype-safety.md) — Type-safe wrappers
-- [type-newtype-ids](./type-newtype-ids.md) — ID types
-- [type-repr-transparent](./type-repr-transparent.md) — Layout guarantees
-- [type-nonzero-intrinsics](./type-nonzero-intrinsics.md) — NonZero niche optimization
+- [unsafe-untrusted-safe-code](./unsafe-untrusted-safe-code.md)
+- [unsafe-send-sync-manual](./unsafe-send-sync-manual.md)
+- [type-repr-transparent](./type-repr-transparent.md)
+- [api-typestate](./api-typestate.md)
+- [Rustonomicon: PhantomData](https://doc.rust-lang.org/nomicon/phantom-data.html)
+- [Pin](https://doc.rust-lang.org/std/pin/index.html)

@@ -1,66 +1,84 @@
 # unsafe-no-mangle-unsafe
 
-> In Rust 2024, write `#[unsafe(no_mangle)]`, `#[unsafe(export_name = "...")]`, and `#[unsafe(link_section = "...")]` — not the bare attribute forms.
+> Make symbol identity, ABI and linker-section preconditions explicit when using unsafe attributes; use Edition 2024 attribute syntax
 
 ## Why It Matters
 
-`#[no_mangle]`, `#[export_name]`, and `#[link_section]` were reclassified as unsafe in Rust 2024 because they can cause undefined behavior without any `unsafe` block at the call site. If two items in the same binary share the same exported symbol name, the linker silently picks one and discards the other — the "winning" symbol may have a completely different type, signature, or semantics. The result is type-level UB with no diagnostic from the compiler or linker. Requiring `#[unsafe(...)]` makes this footgun visible and auditable.
+`#[unsafe(no_mangle)]`, `#[unsafe(export_name = "...")]` and
+`#[unsafe(link_section = "...")]` impose obligations on the item author.
+Symbol names can collide across crates, native libraries and dynamically
+loaded components. Linkers may reject collisions or resolve them in ways
+that bind callers to a different, incompatible definition.
 
-## Bad
+A linker section may impose alignment, memory permissions, retention,
+startup, relocation, or platform-specific layout requirements. Simply
+moving an object into an arbitrary section is not safe by construction.
+
+## Bad: Bare Unsafe Attributes in Edition 2024
 
 <!-- rust-check: compile_fail; reason=Edition 2024 requires unsafe attribute syntax for no_mangle -->
 ```rust
-// Rust 2021 — bare attributes accepted, no warning about linker UB
 #[no_mangle]
-pub extern "C" fn init() {
-    // ...
+pub extern "C" fn example_library_version() -> u32 {
+    1
 }
-
-#[export_name = "plugin_entry"]
-pub fn plugin_main() {
-    // ...
-}
-
-#[link_section = ".init_array"]
-static INIT: extern "C" fn() = init;
 ```
 
-## Good
+## Good: Explicit Symbol Contract
 
 ```rust
-// Rust 2024 — unsafe(...) wrapper makes the risk explicit
+// SAFETY: the owning library reserves this exported symbol and matches
+// the declared C ABI and signature in its external header.
 #[unsafe(no_mangle)]
-pub extern "C" fn init() {
-    // ...
+pub extern "C" fn example_library_version() -> u32 {
+    1
 }
 
-#[unsafe(export_name = "plugin_entry")]
-pub fn plugin_main() {
-    // ...
+// SAFETY: the owning library reserves a distinct export name, and the
+// external header declares an equivalent C ABI and return type.
+#[unsafe(export_name = "example_library_protocol")]
+pub extern "C" fn protocol_version() -> u32 {
+    2
 }
-
-#[unsafe(link_section = ".init_array")]
-static INIT: extern "C" fn() = init;
 ```
 
-## Migration
+These names and signatures are examples of a deliberate foreign boundary.
+In actual code verify that symbol identity and calling convention match
+every supported consumer. Do not maintain obsolete aliases just because
+an earlier implementation exported them; preserve only real external
+contracts.
 
-| Rust 2021 | Rust 2024 |
-|-----------|-----------|
+## Linker Sections
+
+Do not use arbitrary named sections just to move data, and do not
+recommend executable pre-main hooks as a generic initialization pattern.
+Use a custom section only when the target ABI, loader or linker script
+requires it; document the applicable contract and why it is satisfied.
+Validate the final binary's section layout, address/alignment, access
+permissions, retention and startup behavior for each supported target.
+
+For example, firmware vector tables and immutable memory-mapped metadata
+have different section contracts. A section name copied from one target
+does not establish the contract on another.
+
+## Migration and Call-Site Safety
+
+| Earlier editions | Edition 2024 |
+|---|---|
 | `#[no_mangle]` | `#[unsafe(no_mangle)]` |
 | `#[export_name = "sym"]` | `#[unsafe(export_name = "sym")]` |
 | `#[link_section = ".sec"]` | `#[unsafe(link_section = ".sec")]` |
 
-Run `cargo fix --edition` when migrating to the 2024 edition — it rewrites bare attribute forms to `#[unsafe(...)]` automatically. Review each one afterward: confirm that the exported symbol name is unique across the binary.
-
-## Key Points
-
-- The `unsafe(...)` wrapper does **not** require an `unsafe {}` block at the call site; it marks the *attribute itself* as load-bearing for safety. The annotation documents that the programmer accepted responsibility for symbol uniqueness and ABI correctness.
-- Symbol collisions are especially dangerous in plugin architectures, `cdylib` crates, embedded firmware with custom linker scripts, and any codebase that links multiple Rust crates into a single binary.
-- These attributes interact with `unsafe extern` blocks (see `unsafe-extern-block`): external symbols you import and symbols you export follow the same 2024-edition safety rules.
-- The bare forms (`#[no_mangle]` without `unsafe`) are a hard error in Rust 2024 edition code. They still compile in earlier editions but emit a deprecation warning with `--warn future-incompatible`.
+The bare syntax is rejected in Edition 2024. Cargo's edition migration
+can rewrite syntax, but the author must audit each actual obligation.
+An unsafe attribute does not automatically make the function unsafe to
+call. Conversely, an exported function with caller validity requirements
+must still have an unsafe callable contract.
 
 ## See Also
 
-- [unsafe-extern-block](unsafe-extern-block.md) - wrap `extern` blocks in `unsafe extern` in Rust 2024
-- [type-repr-transparent](type-repr-transparent.md) - use `#[repr(transparent)]` for FFI newtypes
+- [unsafe-extern-block](./unsafe-extern-block.md)
+- [unsafe-ffi-boundary](./unsafe-ffi-boundary.md)
+- [proj-explicit-startup](./proj-explicit-startup.md)
+- [type-repr-transparent](./type-repr-transparent.md)
+- [Edition Guide](https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-attributes.html)

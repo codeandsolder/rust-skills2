@@ -1,146 +1,48 @@
 # opt-lto-release
 
-> Enable LTO in release builds
+> Evaluate ThinLTO and fat LTO for the actual release artifact; choose based on measured optimization benefit and build cost
 
 ## Why It Matters
 
-Link-Time Optimization (LTO) enables optimizations across crate boundaries that aren't possible during normal compilation. This includes cross-crate inlining, dead code elimination, and devirtualization. Typically provides 5-20% performance improvement.
+Link-time optimization can expose code from different compilation units and crates to additional optimization, including inlining and dead-code elimination. It can also increase build time, memory use, and code size. The result depends on the call graph, compiler, target, profile and workload.
 
-## Bad
+## Cargo's Four Settings
 
-```toml
-# Cargo.toml - default release profile
-[profile.release]
-opt-level = 3
-# No LTO = missed optimization opportunities
-```
+| Setting | Meaning |
+|---|---|
+| `false` (default) | Local ThinLTO across codegen units when applicable; no cross-crate LTO |
+| `"off"` | Disable LTO, including local ThinLTO |
+| `"thin"` | ThinLTO across the dependency graph |
+| `"fat"` or `true` | Fat LTO across the dependency graph |
 
-## Good
+Cargo documents that local ThinLTO is not performed with opt-level 0 or one codegen unit. Cross-language LTO and dynamically linked native components require their own compatible toolchain and linking contracts.
 
-```toml
-# Cargo.toml - optimized release profile
-[profile.release]
-opt-level = 3
-lto = "fat"          # Maximum optimization
-codegen-units = 1    # Better optimization (single codegen unit)
-panic = "abort"      # Smaller binary, no unwind tables
-strip = true         # Remove symbols for smaller binary
-```
-
-## LTO Options Explained
+## Compare Without Changing Semantics
 
 ```toml
-# No LTO (default) — still enables thin-local LTO when opt > 0
-lto = false
-
-# Thin LTO - fast compilation, most benefits
+[profile.release-thin]
+inherits = "release"
 lto = "thin"
 
-# Fat LTO - slowest compilation, maximum optimization
-lto = "fat"
-# Equivalent to:
-lto = true
-
-# Thin-local - LTO within each crate only
-lto = "off"
-```
-
-## Trade-offs
-
-| Setting | Compile Time | Binary Size | Performance |
-|---------|--------------|-------------|-------------|
-| `lto = false` | Fast | Larger | Baseline (thin-local still active when opt > 0) |
-| `lto = "thin"` | Medium | Smaller | +5-15% |
-| `lto = "fat"` | Slow | Smallest | +10-20% |
-
-## Evidence from Production
-
-```toml
-# From Anchor (Solana framework)
-# https://github.com/solana-foundation/anchor/blob/master/cli/src/rust_template.rs
-[profile.release]
-overflow-checks = true
-lto = "fat"
-codegen-units = 1
-
-# From sol-trade-sdk
-# https://github.com/0xfnzero/sol-trade-sdk
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "abort"
-```
-
-## Complete Optimized Profile
-
-```toml
-[profile.release]
-opt-level = 3        # Maximum optimization
-lto = "fat"          # Link-time optimization
-codegen-units = 1    # Single codegen unit for better optimization
-panic = "abort"      # Remove panic unwinding code
-strip = true         # Strip symbols
-debug = false        # No debug info
-
-# For benchmarking (need some debug info for profiling)
-[profile.bench]
+[profile.release-fat]
 inherits = "release"
-debug = true
-strip = false
-
-# Fast dev builds with optimized dependencies
-[profile.dev]
-opt-level = 0
-debug = true
-
-[profile.dev.package."*"]
-opt-level = 3        # Optimize dependencies even in dev
+lto = "fat"
 ```
 
-## When to Use Each
+Use `cargo build --locked --profile release-thin` (and the fat profile) with the same source, feature set, target, compiler and workload. Keep panic strategy, overflow checking, CPU features and diagnostic information equivalent. Measure build time, peak memory, binary size and runtime. Use the actual artifact locations from Cargo's JSON output.
 
-| Situation | LTO Setting |
-|-----------|-------------|
-| Development | `false` (fast compiles) |
-| CI builds | `"thin"` (balance) |
-| Release binaries (generic) | `"fat"` (max perf) |
-| Release binaries (x86-64-v3+) | `"thin"` (avoid 4000% regression) |
-| Libraries (crates.io) | `false` (users choose) |
+Fat LTO is not a guarantee of faster runtime than ThinLTO; ThinLTO is not a guarantee of smaller build cost for every program. Do not infer either from the names.
 
-## ⚠ Critical: fat LTO + target-cpu=x86-64-v3
+## Toolchain-Specific Regressions
 
-Combining `lto = "fat"` with `-C target-cpu=x86-64-v3` can cause **up to 4000% compile-time slowdowns** ([rust#146497](https://github.com/rust-lang/rust/issues/146497)). Use `lto = "thin"` when targeting x86-64-v3 or higher.
+A reported interaction between fat LTO and x86-64-v3 (rust-lang/rust#146497) is a compiler regression to evaluate on the selected toolchain and workload, not a permanent ban on that target/optimization combination. Verify its status and reproduce significant changes before recommending a workaround.
 
-```toml
-# Safe combination for x86-64-v3 targets
-[profile.release]
-lto = "thin"          # NOT "fat"
-codegen-units = 1
-opt-level = 3
-```
-
-> **Note**: Since Rust 1.90, `lld` is the default linker on Linux, improving LTO compile times.<br/>
-> **Tip**: Use [`cargo-wizard`](https://crates.io/crates/cargo-wizard) to quickly configure optimal profile settings.
-
-## Measuring Impact
-
-```bash
-# Build without LTO
-cargo build --release
-hyperfine ./target/release/myapp
-
-# Build with LTO
-# (after adding lto = "fat" to Cargo.toml)
-cargo build --release
-hyperfine ./target/release/myapp
-
-# Compare binary sizes
-ls -la target/release/myapp
-```
+The package's profile is not the release profile of downstream applications. Cargo reads profiles from the workspace root; package-specific overrides cannot set LTO, panic strategy or rpath.
 
 ## See Also
 
-- [opt-codegen-units](opt-codegen-units.md) - Use codegen-units = 1
-- [opt-pgo-profile](opt-pgo-profile.md) - Profile-guided optimization
-- [perf-release-profile](perf-release-profile.md) - Full release profile settings
+- [opt-codegen-units](./opt-codegen-units.md)
+- [opt-target-cpu](./opt-target-cpu.md)
+- [perf-release-profile](./perf-release-profile.md)
+- [perf-benchmark-regression](./perf-benchmark-regression.md)
+- [Cargo profiles: LTO](https://doc.rust-lang.org/cargo/reference/profiles.html#lto)

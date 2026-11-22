@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-`Send` and `Sync` are unsafe auto traits. A manual implementation is a promise to every safe caller that moving or sharing the type across threads cannot violate Rust's aliasing and data-race rules.
+`Send` and `Sync` are unsafe auto traits. A manual implementation is a promise to every safe caller that moving or sharing the type across threads cannot violate safety invariants, including external thread-affinity and destruction requirements.
 
 That promise cannot depend on comments such as "callers put this in a `Mutex`" unless the API actually enforces that synchronization. Safe code is allowed to use a `Send`/`Sync` type in every way those traits permit.
 
@@ -46,7 +46,7 @@ unsafe impl Send for DatabaseHandle {}
 unsafe impl Sync for DatabaseHandle {}
 ```
 
-The comments identify properties of the underlying resource and wrapper API that make the traits sound. If future methods break those properties, the unsafe impl must be reconsidered.
+The comments identify properties of the underlying resource and wrapper API that make the traits sound. If future methods break those properties, the unsafe impl must be reconsidered. Send must also permit destruction on another thread; Sync must justify every safe operation on shared references, not just an internally synchronized read.
 
 ## Prefer Automatic Derivation
 
@@ -75,6 +75,9 @@ No manual `unsafe impl` is needed.
 - Raw pointers are a common reason to need manual reasoning, not a reason to blindly opt in.
 
 ## See Also
+
+- [type-phantom-marker](./type-phantom-marker.md) — marker fields influence auto traits
+- [unsafe-untrusted-safe-code](./unsafe-untrusted-safe-code.md) — safe caller behavior
 
 - [unsafe-safety-comment](unsafe-safety-comment.md) — document unsafe proofs
 - [own-arc-shared](own-arc-shared.md) — thread-safe shared ownership

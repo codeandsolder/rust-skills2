@@ -38,52 +38,33 @@ fn meters_from_raw(raw: f64) -> Meters {
 }
 ```
 
-## Good: FFI Newtype
+## Good: A Deliberate Foreign ABI Value
 
+<!-- rust-check: run -->
 ```rust
-use std::ffi::{c_char, c_int, CString};
+use std::ffi::c_int;
+use std::mem::{align_of, size_of};
 
+// Numeric foreign handle representation, not ownership of a live resource.
 #[repr(transparent)]
-struct FileDescriptor(c_int);
+struct RawHandle(c_int);
 
-unsafe extern "C" {
-    // Raw-pointer validity is a caller precondition, so this remains unsafe.
-    fn open(path: *const c_char, flags: c_int, ...) -> c_int;
-    fn close(fd: c_int) -> c_int;
-}
-
-struct File {
-    fd: FileDescriptor,
-}
-
-impl File {
-    fn open(path: &str) -> std::io::Result<Self> {
-        let path = CString::new(path)
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "NUL in path"))?;
-
-        // SAFETY: CString guarantees a valid NUL-terminated pointer for this call.
-        let fd = unsafe { open(path.as_ptr(), 0) };
-        if fd < 0 {
-            Err(std::io::Error::last_os_error())
-        } else {
-            Ok(Self { fd: FileDescriptor(fd) })
-        }
-    }
-}
-
-impl Drop for File {
-    fn drop(&mut self) {
-        // SAFETY: this File owns the descriptor returned by open and closes it once.
-        unsafe { close(self.fd.0) };
-    }
+fn main() {
+    assert_eq!(size_of::<RawHandle>(), size_of::<c_int>());
+    assert_eq!(align_of::<RawHandle>(), align_of::<c_int>());
+    assert_eq!(RawHandle(7).0, 7);
 }
 ```
 
-Here `repr(transparent)` is meaningful because `FileDescriptor` is intentionally an ABI-compatible wrapper around `c_int`.
+If a foreign interface passes C int values by value, the transparent
+wrapper can deliberately match that ABI. It does not establish descriptor
+validity or ownership. For Unix file descriptors, use standard-library
+OwnedFd/BorrowedFd and safe File APIs internally instead of reimplementing
+open/close or hardcoding platform-specific flags.
 
 ## What It Guarantees
 
-For a transparent struct or single-variant enum, Rust permits at most one field that is not zero-sized with alignment 1. The transparent type then has the same layout and ABI as that field.
+For a transparent struct or single-variant enum, Rust permits at most one field that is not zero-sized with alignment 1. The transparent type has the same layout and ABI as that field, or as unit if no such field exists. Layout alone does not make every underlying bit pattern a valid wrapper value.
 
 ```rust
 use std::mem::{align_of, size_of};
@@ -119,7 +100,7 @@ struct TypedHandle<T> {
 
 ## Key Points
 
-- Treat `repr(transparent)` as a public layout/ABI promise.
+- Treat a publicly documented transparent representation as an intentional ABI promise. For external consumers, document the relevant field layout; do not infer a stable public contract from private fields alone.
 - Do not add it automatically to every one-field newtype.
 - `transmute` remains unsafe; layout compatibility is only one of its requirements.
 - Prefer constructors and conversion traits over transmutation when you control the wrapper type.
@@ -128,7 +109,6 @@ struct TypedHandle<T> {
 
 - [Rust Reference: repr(transparent)](https://doc.rust-lang.org/reference/type-layout.html#the-transparent-representation)
 - [type-newtype-ids](./type-newtype-ids.md) — Newtype pattern
-- [type-newtype-repr-transparent](./type-newtype-repr-transparent.md) — Compatibility entry for this guidance
 - [type-phantom-marker](./type-phantom-marker.md) — `PhantomData` usage
 - [api-newtype-safety](./api-newtype-safety.md) — Type-safe newtypes
 - [unsafe-extern-block](./unsafe-extern-block.md) — Edition 2024 FFI declarations
