@@ -1,6 +1,6 @@
 {
   "format": 1,
   "compiler": "nightly-2026-11-19",
-  "source_sha256": "a5e399e181f56b8de565ae778e9f886c1ff4ed1ca4526bb1568e88ea9863a488",
+  "source_sha256": "3c055af773f5a63182ade9d4f4e29d8b721bb145eb5644e3b61ddc405bc17307",
   "wasm_sha256": "7bbb738b1fda0352acc2aa3294710945fc2c9872ba0b9ff75722c4ac24d53d36"
 }
