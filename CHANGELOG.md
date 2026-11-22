@@ -6,7 +6,14 @@ semantic versioning for the rule set.
 
 ## [Unreleased]
 
+### Added
+- Added a packaged, compiler-versioned nightly feature guide and a comparison of
+  Rust/Clippy 1.100.0 versus 1.102.0-nightly, including new restriction-lint
+  candidates and recorded upcoming stabilizations.
+
 ### Changed
+- Corrected stale stability claims about free iterator chaining, const generic
+  defaults, and the never type; refreshed try-block, SIMD, and branch-hint guidance.
 - Expanded `opt-simd-portable` into a comprehensive SIMD implementation and
   review guide: nightly portable SIMD APIs, integer/floating-point semantics,
   mask and memory safety, lane tails, gather/scatter, runtime CPU dispatch,

@@ -64,8 +64,8 @@ fn check(value: i32) -> bool {
 ```rust
 fn search(data: &[i32], target: i32) -> Option<usize> {
     for (i, &item) in data.iter().enumerate() {
-        cold_path();  // Assume most iterations don't find the target
         if item == target {
+            cold_path();  // Hint only the rare matching branch
             return Some(i);
         }
     }
@@ -192,7 +192,7 @@ fn speculative(x: i32) -> i32 {
 | Era | Method | Since |
 |-----|--------|-------|
 | Rust 1.0 | `#[cold]` + `#[inline(never)]` | Always stable |
-| Nightly | `core_intrinsics::likely`/`unlikely` | Nightly only |
+| Nightly | `core::hint::likely` / `unlikely` | `likely_unlikely` (#151619); prefer over internal intrinsics |
 | External crate | `likely-stable` crate | Third-party |
 | Rust 1.88.0 | `core::hint::select_unpredictable` | Stable |
 | Rust 1.95.0 | `core::hint::cold_path()` | Stable |
@@ -200,6 +200,5 @@ fn speculative(x: i32) -> i32 {
 ## See Also
 
 - [opt-cold-unlikely](./opt-cold-unlikely.md) - #[cold] for unlikely functions
-- [opt-cold-path](./opt-cold-path.md) - Using cold_path() for inline path marking
 - [opt-select-unpredictable](./opt-select-unpredictable.md) - Branchless conditional moves
 - [perf-profile-first](./perf-profile-first.md) - Profile to know what's likely
