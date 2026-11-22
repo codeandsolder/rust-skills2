@@ -187,8 +187,10 @@ policy checker rejects `#[allow]` entirely and rejects `#[expect]` for:
   and `dbg_macro`;
 - undocumented unsafe blocks and missing unsafe API documentation;
 - blocking lock guards held across await;
-- missing reasons on handwritten must-use and deprecation attributes
-  (`must_use_without_reason` and `deprecated_attributes_without_note`);
+- the attribute-documentation lints `must_use_without_reason` and
+  `deprecated_attributes_without_note` (Clippy checks its supported attribute
+  forms; meaningful messages and type/trait must-use reasons are also review
+  requirements, not universally compiler-checked);
 - rustc `unexpected_cfgs`, `unsafe_op_in_unsafe_fn`, and stale lint
   expectations;
 - every lint that the current nightly places in Clippy's `correctness`,
