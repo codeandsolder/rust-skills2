@@ -135,7 +135,7 @@ function snapshot(toolchain) {
 
 const [modulePath, toolchain] = process.argv.slice(2);
 if (!modulePath || !/^nightly-\d{4}-\d{2}-\d{2}$/.test(toolchain ?? '') || process.argv.length !== 4) {
-  throw new Error('usage: node check.mjs MODULE.wasm nightly-YYYY-MM-DD');
+  throw new Error('usage: node check.mjs MODULE.wasm|module.json nightly-YYYY-MM-DD');
 }
 const {root, input} = snapshot(toolchain);
 const runner = fileURLToPath(new URL('run.mjs', import.meta.url));

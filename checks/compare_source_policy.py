@@ -10,7 +10,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from scripts.check_source_lint_policy import lint_attributes
+from source_policy_oracle import lint_attributes
 
 SUMMARY = re.compile(r"\((\d+) Rust files, (\d+) generated lint boundaries, (\d+) suppression attributes\)")
 
@@ -54,7 +54,7 @@ def compare_corpus(module: Path, root: Path) -> bool:
 
 
 def compare_fixtures(module: Path, toolchain: str) -> bool:
-    old_command = [sys.executable, str(ROOT / "scripts/check_source_lint_policy.py"), "--toolchain", toolchain]
+    old_command = [sys.executable, str(ROOT / "checks/source_policy_oracle.py"), "--toolchain", toolchain]
     new_command = ["node", str(ROOT / "policy-wasm/check.mjs"), str(module), toolchain]
     fixtures = sorted((ROOT / "checks/fixtures").glob("strict-ci-*"))
     failures = []
