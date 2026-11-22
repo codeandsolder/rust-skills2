@@ -76,8 +76,6 @@ jobs:
           CARGO_TARGET_DIR: ${{ runner.temp }}/source-policy
         run: |
           bash scripts/strict_clippy.sh --toolchain "${{ steps.compiler.outputs.channel }}"
-      - name: Validate packed skill
-        run: uv run --no-project python scripts/package_skill.py
 
       - name: Finalize mandatory sccache
         if: always()

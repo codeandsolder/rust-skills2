@@ -6,7 +6,13 @@ on:
       - SKILL.md
       - LICENSE
       - "rules/**"
-      - scripts/package_skill.py
+      - "skill-pack/**"
+      - rust-toolchain.toml
+      - .gitattributes
+      - ".github/actions/rust-strict/**"
+      - "policy-wasm/**"
+      - scripts/strict_clippy.sh
+      - scripts/toolchain-pin.sh
       - .github/workflows/skill-release.yml
   push:
     branches: [main]
@@ -24,14 +30,45 @@ jobs:
   package:
     name: Build packed skill
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
-          version: latest-known
-          enable-cache: false
-      - name: Build uploadable skill archives
-        run: uv run --no-project python scripts/package_skill.py
+          persist-credentials: false
+      - name: Resolve one quarantined compiler
+        id: compiler
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: ${{ steps.compiler.outputs.channel }}
+          targets: wasm32-wasip1
+          components: clippy,rustfmt
+      - name: Setup mandatory sccache
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        with:
+          rust-toolchain: ${{ steps.compiler.outputs.channel }}
+          rustflags: ""
+      - name: Build and test the portable skill packer
+        shell: bash
+        run: |
+          cargo test --locked --manifest-path skill-pack/Cargo.toml --target-dir "$RUNNER_TEMP/skill-pack-target"
+          cargo build --locked --release --target wasm32-wasip1 --manifest-path skill-pack/Cargo.toml --target-dir "$RUNNER_TEMP/skill-pack-target"
+          node skill-pack/test.mjs "$RUNNER_TEMP/skill-pack-target/wasm32-wasip1/release/skill-pack.wasm"
+          node skill-pack/run.mjs "$RUNNER_TEMP/skill-pack-target/wasm32-wasip1/release/skill-pack.wasm" . dist
+      - name: Strict lint skill packer
+        uses: ./.github/actions/rust-strict
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/skill-pack-target
+        with:
+          working-directory: skill-pack
+          rust-toolchain: ${{ steps.compiler.outputs.channel }}
+          install-toolchain: "false"
+      - name: Upload portable packer for validation
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: skill-pack-wasm
+          path: ${{ runner.temp }}/skill-pack-target/wasm32-wasip1/release/skill-pack.wasm
+          if-no-files-found: error
       - name: Upload packed skill artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
@@ -42,10 +79,44 @@ jobs:
             dist/SHA256SUMS
           if-no-files-found: error
 
+      - name: Finalize mandatory sccache
+        if: always()
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+
+  portable:
+    name: Portable skill package (${{ matrix.os }})
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: skill-pack-wasm
+          path: ${{ runner.temp }}/skill-pack-wasm
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: rust-skills-package
+          path: ${{ runner.temp }}/skill-pack-reference
+      - name: Compare exact package bytes with Linux
+        shell: bash
+        run: |
+          node skill-pack/test.mjs "$RUNNER_TEMP/skill-pack-wasm/skill-pack.wasm"
+          node skill-pack/run.mjs "$RUNNER_TEMP/skill-pack-wasm/skill-pack.wasm" . "$RUNNER_TEMP/skill-pack-check"
+          for name in rust-skills.zip rust-skills.skill SHA256SUMS; do
+            cmp "$RUNNER_TEMP/skill-pack-reference/$name" "$RUNNER_TEMP/skill-pack-check/$name"
+          done
+
   release:
     name: Attach package to GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: package
+    needs: [package, portable]
     runs-on: ubuntu-latest
     permissions:
       contents: write
