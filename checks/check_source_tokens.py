@@ -36,6 +36,26 @@ fn example() {}
     assert [item[:3] for item in lint_attributes(source)] == [
         ("expect", ["clippy::too_many_lines"], True)
     ]
+
+    # The scanner searches structural delimiters rather than walking every
+    # character. Exercise complete and unterminated tokens, nested comments,
+    # escaped quotes, raw hashes and non-BMP characters at arbitrary offsets.
+    segments = [
+        ("// comment 🦀", "\nfn after() {}"),
+        ("/* outer\n/* nested */ still outer */", "fn after() {}"),
+        ("/* unclosed /* nested */\n🦀", ""),
+        ('"escaped \\" quote \n and 🦀"', "fn after() {}"),
+        ('"trailing\\', ""),
+        ('br###"embedded \\" ## \n🦀"###', "fn after() {}"),
+        ('cr##"unterminated "# 🦀', ""),
+        ("'🦀'", " 'lifetime"),
+        ("b'\\x22'", " 'label: loop {}"),
+    ]
+    for token, suffix in segments:
+        prefix = "ordinary code "
+        expected = prefix + "".join("\n" if char == "\n" else " " for char in token) + suffix
+        assert mask_noncode(prefix + token + suffix) == expected, repr(token)
+
     print("OK: independent source token masking regressions")
 
 

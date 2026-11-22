@@ -9,102 +9,61 @@ def normalize_lint(name: str) -> str:
     return name.strip().replace("-", "_")
 
 
-RUST_CHARACTER = re.compile(
-    r"(?:b)?'(?:[^'\\\n\r\t]|\\(?:[nrt\\0'\"]|x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f_]+\}))'"
+# Search only for complete token openings; ordinary Rust code needs no masking.
+# Named alternatives preserve the original precedence without re-matching the
+# same Unicode offset to classify an opening.
+TOKEN_OPEN = re.compile(
+    r"(?P<line>//)|(?P<block>/\*)|"
+    r"(?P<character>(?:b)?'(?:[^'\\\n\r\t]|\\(?:[nrt\\0'\"]|x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f_]+\}))')|"
+    r'(?P<raw>(?:b|c)?r(?P<hashes>#+)?")|(?P<string>b"|c"|")'
 )
-RUST_RAW_STRING = re.compile(r"(?:b|c)?r(#+)?\"")
-
-# Search only for actual token openings; ordinary Rust code needs no masking.
-# Alternatives preserve the original precedence at each source position.
-TOKEN_OPEN = re.compile(r"//|/\*|" + RUST_CHARACTER.pattern + "|" + RUST_RAW_STRING.pattern + r'|b"|c"|"')
+BLOCK_MARK = re.compile(r"/\*|\*/")
+STRING_MARK = re.compile(r'\\[\s\S]?|"')
 
 
 def mask_noncode(text: str) -> str:
     """Mask comments and string literals while preserving length/newlines."""
-    masked = list(text)
+    pieces = []
     length = len(text)
-    i = 0
-
-    def blank(start: int, end: int) -> None:
-        for index in range(start, end):
-            if masked[index] != "\n":
-                masked[index] = " "
-
-    while i < length:
-        opening = TOKEN_OPEN.search(text, i)
+    cursor = 0
+    while cursor < length:
+        opening = TOKEN_OPEN.search(text, cursor)
         if opening is None:
             break
-        i = opening.start()
-        if text.startswith("//", i):
-            end = text.find("\n", i + 2)
-            if end == -1:
-                end = length
-            blank(i, end)
-            i = end
-            continue
-
-        if text.startswith("/*", i):
-            start = i
+        start = opening.start()
+        end = opening.end()
+        pieces.append(text[cursor:start])
+        if opening.group("line") is not None:
+            newline = text.find("\n", end)
+            end = length if newline == -1 else newline
+        elif opening.group("block") is not None:
             depth = 1
-            i += 2
-            while i < length and depth:
-                if text.startswith("/*", i):
-                    depth += 1
-                    i += 2
-                elif text.startswith("*/", i):
-                    depth -= 1
-                    i += 2
-                else:
-                    i += 1
-            blank(start, i)
-            continue
-
-        # A quote character such as '\"' must not start a string that swallows
-        # subsequent attributes. Require a complete character token so lifetimes
-        # and labels ('a, 'static, 'outer:) remain code.
-        char_literal = RUST_CHARACTER.match(text, i)
-        if char_literal is not None:
-            end = char_literal.end()
-            blank(i, end)
-            i = end
-            continue
-
-        raw = RUST_RAW_STRING.match(text, i)
-        if raw is not None:
-            start = i
-            hashes = raw.group(1) or ""
-            i = raw.end()
-            terminator = '"' + hashes
-            end = text.find(terminator, i)
-            i = length if end == -1 else end + len(terminator)
-            blank(start, i)
-            continue
-
-        string_prefix = None
-        for prefix in ('b"', 'c"', '"'):
-            if text.startswith(prefix, i):
-                string_prefix = prefix
-                break
-        if string_prefix is not None:
-            start = i
-            i += len(string_prefix)
-            escaped = False
-            while i < length:
-                char = text[i]
-                if escaped:
-                    escaped = False
-                elif char == "\\":
-                    escaped = True
-                elif char == '"':
-                    i += 1
+            while depth:
+                mark = BLOCK_MARK.search(text, end)
+                if mark is None:
+                    end = length
                     break
-                i += 1
-            blank(start, i)
-            continue
-
-        raise AssertionError("unrecognized token opening")
-
-    return "".join(masked)
+                depth += 1 if mark.group() == "/*" else -1
+                end = mark.end()
+        elif opening.group("raw") is not None:
+            terminator = '"' + (opening.group("hashes") or "")
+            close = text.find(terminator, end)
+            end = length if close == -1 else close + len(terminator)
+        elif opening.group("string") is not None:
+            while True:
+                mark = STRING_MARK.search(text, end)
+                if mark is None:
+                    end = length
+                    break
+                end = mark.end()
+                if mark.group() == '"':
+                    break
+        # Complete character literals already end at opening.end(). Lifetimes
+        # and labels are not token openings, so remain unmodified.
+        pieces.append("\n".join(" " * len(line) for line in text[start:end].split("\n")))
+        cursor = end
+    pieces.append(text[cursor:])
+    return "".join(pieces)
 
 
 def matching(text: str, start: int, opening: str, closing: str) -> int | None:

@@ -43,8 +43,8 @@ modules must pass the same policy regressions.
 
 ```sh
 node policy-wasm/package.mjs verify /path/to/build/wasm32-wasip1/release/source-policy.wasm nightly-2026-11-19
-node checks/compare_source_tokens.mjs ../ci-workflows/zipp-python/run.mjs policy-wasm/module.json .
-uv run --no-project python -B checks/compare_source_fixtures.py policy-wasm/module.json nightly-2026-11-19
+node checks/compare_source_tokens.mjs ../ci-workflows/zipp-python/run.mjs --module policy-wasm/module.json --root .
+uv run --no-project python -B checks/compare_source_fixtures.py nightly-2026-11-19 policy-wasm/module.json
 ```
 
 The independent source-token scanner in checks/source_tokens.py runs in

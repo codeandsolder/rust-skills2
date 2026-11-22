@@ -4,18 +4,22 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { isDeepStrictEqual } from 'node:util';
+import { isDeepStrictEqual, parseArgs } from 'node:util';
 import { performance } from 'node:perf_hooks';
 
 const checks = fileURLToPath(new URL('.', import.meta.url));
 const provider = realpathSync(path.join(checks, '..'));
-const [runner, module, ...roots] = process.argv.slice(2);
-if (!runner || !module || !roots.length) {
-  throw new Error('usage: node checks/compare_source_tokens.mjs ZIPP_RUNNER MODULE ROOT...');
+const {values, positionals} = parseArgs({
+  options: {module: {type: 'string', multiple: true}, root: {type: 'string', multiple: true}},
+  allowPositionals: true,
+});
+if (positionals.length !== 1 || !values.module?.length || !values.root?.length) {
+  throw new Error('usage: node checks/compare_source_tokens.mjs ZIPP_RUNNER --module MODULE [--module MODULE...] --root ROOT [--root ROOT...]');
 }
+const [runner] = positionals;
 const {runTask} = await import(pathToFileURL(realpathSync(runner)).href);
 const spec = JSON.parse(readFileSync(path.join(checks, 'zipp-tasks.json'), 'utf8')).source_corpus;
-const modulePath = path.resolve(module);
+const modules = values.module.map(module => path.resolve(module));
 const decoder = new TextDecoder('utf-8', {fatal: true});
 
 function command(bin, args, input) {
@@ -46,7 +50,7 @@ function* batches(root, names) {
 }
 
 let failed = false;
-for (const argument of roots) {
+for (const argument of values.root) {
   const root = realpathSync(argument);
   const tracked = decoder.decode(command('git', ['-C', root, 'ls-files', '-z', '--', '*.rs']));
   const names = [...new Set(tracked.split('\0').filter(name => {
@@ -54,7 +58,8 @@ for (const argument of roots) {
     try { return statSync(path.join(root, name)).isFile(); }
     catch (error) { if (error.code === 'ENOENT') return false; throw error; }
   }))].sort();
-  let referenceTime = 0, rustTime = 0, fileCount = 0, attributeCount = 0, byteCount = 0, mismatches = 0;
+  let referenceTime = 0, fileCount = 0, attributeCount = 0, byteCount = 0;
+  const results = modules.map(module => ({module, time: 0, mismatches: 0}));
   for (const batch of batches(root, names)) {
     const lines = [];
     const input = Buffer.from(JSON.stringify(batch));
@@ -65,24 +70,30 @@ for (const argument of roots) {
     }, input);
     const expected = JSON.parse(lines.join('\n'));
     referenceTime += performance.now() - start;
-    start = performance.now();
-    const actual = JSON.parse(command('node', [path.join(provider, 'policy-wasm/run.mjs'), modulePath, root, 'scan'],
-      Buffer.from(JSON.stringify(batch.map(([name]) => name)))));
-    rustTime += performance.now() - start;
-    if (actual.length !== batch.length || expected.length !== batch.length) throw new Error('incomplete source scan');
-    for (let i = 0; i < batch.length; i++) {
-      if (!isDeepStrictEqual(expected[i], actual[i])) {
-        if (mismatches < 5) console.error('expected:', JSON.stringify(expected[i]), '\nactual:', JSON.stringify(actual[i]));
-        mismatches++;
-      }
-      byteCount += Buffer.byteLength(batch[i][1]);
-      attributeCount += actual[i][1].length;
+    if (expected.length !== batch.length) throw new Error('incomplete reference scan');
+    for (const [i, [, source]] of batch.entries()) {
+      byteCount += Buffer.byteLength(source);
+      attributeCount += expected[i][1].length;
       fileCount++;
     }
+    const paths = Buffer.from(JSON.stringify(batch.map(([name]) => name)));
+    for (const result of results) {
+      start = performance.now();
+      const actual = JSON.parse(command('node', [path.join(provider, 'policy-wasm/run.mjs'), result.module, root, 'scan'], paths));
+      result.time += performance.now() - start;
+      if (actual.length !== batch.length) throw new Error('incomplete WASI scan: ' + result.module);
+      for (let i = 0; i < batch.length; i++) {
+        if (!isDeepStrictEqual(expected[i], actual[i])) {
+          if (result.mismatches < 5) console.error('expected:', JSON.stringify(expected[i]), '\nactual:', JSON.stringify(actual[i]));
+          result.mismatches++;
+        }
+      }
+    }
   }
-  console.log(root + ': ' + fileCount + ' files, ' + byteCount + ' bytes, ' + attributeCount + ' attributes; ' +
-    'Zipp ' + (referenceTime/1000).toFixed(3) + 's; WASI ' + (rustTime/1000).toFixed(3) +
-    's; ' + mismatches + ' disagreements');
-  failed ||= mismatches !== 0;
+  console.log(root + ': ' + fileCount + ' files, ' + byteCount + ' bytes, ' + attributeCount + ' attributes; Zipp ' + (referenceTime/1000).toFixed(3) + 's');
+  for (const result of results) {
+    console.log(result.module + ': WASI ' + (result.time/1000).toFixed(3) + 's; ' + result.mismatches + ' disagreements');
+    failed ||= result.mismatches !== 0;
+  }
 }
 process.exitCode = failed ? 1 : 0;

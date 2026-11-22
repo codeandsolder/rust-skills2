@@ -62,13 +62,10 @@ jobs:
       - name: Validate rebuilt and bundled policy
         shell: bash
         run: |
-          node checks/compare_workspace_policy.mjs "${{ steps.zipp.outputs.runner }}" "${{ steps.compiler.outputs.channel }}" "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm"
           node policy-wasm/package.mjs verify "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" "${{ steps.compiler.outputs.channel }}"
-          node checks/compare_source_tokens.mjs "${{ steps.zipp.outputs.runner }}" "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" .
-          uv run --no-project python -B checks/compare_source_fixtures.py "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" "${{ steps.compiler.outputs.channel }}"
-          node checks/compare_source_tokens.mjs "${{ steps.zipp.outputs.runner }}" policy-wasm/module.json .
-          uv run --no-project python -B checks/compare_source_fixtures.py policy-wasm/module.json "${{ steps.compiler.outputs.channel }}"
-          node checks/compare_workspace_policy.mjs "${{ steps.zipp.outputs.runner }}" "${{ steps.compiler.outputs.channel }}" policy-wasm/module.json
+          node checks/compare_workspace_policy.mjs "${{ steps.zipp.outputs.runner }}" "${{ steps.compiler.outputs.channel }}" "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" policy-wasm/module.json
+          node checks/compare_source_tokens.mjs "${{ steps.zipp.outputs.runner }}" --module "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" --module policy-wasm/module.json --root .
+          uv run --no-project python -B checks/compare_source_fixtures.py "${{ steps.compiler.outputs.channel }}" "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" policy-wasm/module.json
       - name: Strict lint portable policy
         shell: bash
         env:
@@ -116,8 +113,8 @@ jobs:
       - name: Validate the exact bundled artifact
         shell: bash
         run: |
-          node checks/compare_source_tokens.mjs "${{ steps.zipp.outputs.runner }}" policy-wasm/module.json .
-          uv run --no-project python -B checks/compare_source_fixtures.py policy-wasm/module.json "${{ steps.compiler.outputs.channel }}"
+          node checks/compare_source_tokens.mjs "${{ steps.zipp.outputs.runner }}" --module policy-wasm/module.json --root .
+          uv run --no-project python -B checks/compare_source_fixtures.py "${{ steps.compiler.outputs.channel }}" policy-wasm/module.json
           node checks/compare_workspace_policy.mjs "${{ steps.zipp.outputs.runner }}" "${{ steps.compiler.outputs.channel }}" policy-wasm/module.json
 
   strict-gate-self-test:
