@@ -105,5 +105,9 @@
       "checks/source_tokens.py"
     ],
     "stdin": "source-corpus.json"
+  },
+  "workspace_oracle": {
+    "entry": "checks/workspace_test_policy_oracle.py",
+    "stdin": "workspace-requests.json"
   }
 }
