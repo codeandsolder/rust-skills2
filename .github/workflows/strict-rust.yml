@@ -92,7 +92,7 @@ jobs:
 
       - name: Quarantine newly introduced crates.io versions across all workspaces
         if: github.event_name == 'pull_request'
-        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@afab1a99dc73e3be32b6f4b139defa882741dab7 # main
+        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@7bbede943ffd14ba2a534cf1296a20fd11c177ae # main
         with:
           base-ref: ${{ github.event.pull_request.base.sha }}
           lockfile: auto
