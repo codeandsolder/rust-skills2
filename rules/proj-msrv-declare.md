@@ -8,7 +8,7 @@
 
 For Rust 2024 workspaces, resolver 3 makes dependency resolution MSRV-aware: Cargo prefers dependency versions whose own `rust-version` does not exceed the workspace/package compatibility floor. This prevents an ordinary dependency update from silently selecting a release your stated MSRV cannot compile.
 
-But **MSRV and the toolchain used for day-to-day development are different policies**. Keeping every developer and production build frozen on the oldest supported compiler means missing compiler fixes, diagnostics, optimizer improvements, and point-release miscompilation fixes. A common modern setup is:
+But **MSRV and the toolchain used for day-to-day development are different policies**. Keeping every developer and production build frozen on the oldest supported compiler means missing compiler fixes, diagnostics, optimizer improvements, and point-release miscompilation fixes. For a package with a real stable downstream compatibility contract, a common setup is:
 
 - `rust-version = "1.94"` as the compatibility promise;
 - an explicit CI lane on the latest 1.94 patch release (for example 1.94.1);
@@ -121,10 +121,10 @@ Third-party tooling that parses Cargo TOML may also lag TOML 1.1, so do not adop
 
 - Pick the oldest stable toolchain your users realistically need (distro packages, embedded targets, corporate freeze windows, downstream library policy).
 - Do not go lower merely for prestige: a lower floor increases compatibility work and can constrain dependency versions.
-- Keep normal development/production builds on a patched stable compiler unless reproducibility or certification requirements call for another explicit policy.
+- Keep normal development/production builds on the centrally approved dated nightly in maintained fleet projects. For independent stable-only downstream contracts, use an explicitly justified patched stable compiler.
 - When a Rust point release fixes a compiler miscompilation, prefer the patched point release rather than pinning the superseded `.0` indefinitely.
 - Test important feature/target combinations on the MSRV, not just one trivial default build.
-- Run the current stable compiler too; an MSRV-only CI matrix can miss new warnings, linker-policy changes, or forward-compatibility regressions.
+- Test the normal development compiler too; an MSRV-only CI matrix can miss new warnings, linker-policy changes, or forward-compatibility regressions. Maintained applications without a stable compatibility promise do not need an extra stable lane.
 - When you intentionally bump a library MSRV, document the change in the changelog/release notes and follow the project's compatibility/versioning policy.
 - Tools such as `cargo-msrv` can help discover the apparent source floor, but the supported MSRV remains a project contract that CI should enforce.
 

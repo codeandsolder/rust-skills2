@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import tomllib
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 
@@ -147,7 +149,7 @@ def reason_field(table: dict[str, Any], key: str, location: str) -> str | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--toolchain", default="nightly")
+    parser.add_argument("--toolchain", default=tomllib.loads((Path(__file__).resolve().parents[1] / "rust-toolchain.toml").read_text())["toolchain"]["channel"])
     parser.add_argument("--default-allow-test-panics", required=True, type=parse_bool)
     parser.add_argument("--cargo-arg", action="append", default=[])
     args = parser.parse_args()

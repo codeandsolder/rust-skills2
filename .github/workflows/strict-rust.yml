@@ -4,10 +4,10 @@ on:
   workflow_call:
     inputs:
       rust-toolchain:
-        description: Nightly channel or dated nightly toolchain.
+        description: Dated nightly candidate; defaults to the checked-out gate pin.
         required: false
         type: string
-        default: nightly
+        default: ""
       working-directory:
         description: Rust workspace directory relative to repository root.
         required: false
@@ -83,16 +83,16 @@ jobs:
           python-ci-paths: ${{ inputs.python-ci-paths }}
 
       - name: Enforce PR workflow supersession across all caller workflows
-        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@7bbede943ffd14ba2a534cf1296a20fd11c177ae # main
+        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@100e73ac93cfce3e556084aa23d0cdc4fb481921 # main
 
       - name: Enforce canonical Rust CI caching
-        uses: codeandsolder/ci-workflows/.github/actions/rust-ci-sccache-policy@7bbede943ffd14ba2a534cf1296a20fd11c177ae # main
+        uses: codeandsolder/ci-workflows/.github/actions/rust-ci-sccache-policy@100e73ac93cfce3e556084aa23d0cdc4fb481921 # main
         with:
           strict-ref: ${{ job.workflow_sha }}
 
       - name: Quarantine newly introduced crates.io versions across all workspaces
         if: github.event_name == 'pull_request'
-        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@7bbede943ffd14ba2a534cf1296a20fd11c177ae # main
+        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@100e73ac93cfce3e556084aa23d0cdc4fb481921 # main
         with:
           base-ref: ${{ github.event.pull_request.base.sha }}
           lockfile: auto
@@ -108,17 +108,23 @@ jobs:
           read -r -a packages <<< "$PACKAGES"
           sudo apt-get install -y -- "${packages[@]}"
 
+      - name: Resolve one quarantined compiler
+        id: compiler
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@100e73ac93cfce3e556084aa23d0cdc4fb481921 # main
+        with:
+          rust-toolchain: ${{ inputs.rust-toolchain }}
+
       - name: Install selected nightly Rust tools
         uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
-          toolchain: ${{ inputs.rust-toolchain }}
+          toolchain: ${{ steps.compiler.outputs.channel }}
           components: clippy,rustfmt
           targets: ${{ inputs.rust-targets }}
 
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@7bbede943ffd14ba2a534cf1296a20fd11c177ae # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@100e73ac93cfce3e556084aa23d0cdc4fb481921 # main
         with:
-          rust-toolchain: ${{ inputs.rust-toolchain }}
+          rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
 
       - name: Configure runner-local Cargo target
@@ -135,7 +141,7 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
           cargo-args: ${{ inputs.cargo-args }}
           allow-test-panics: ${{ inputs.allow-test-panics }}
-          rust-toolchain: ${{ inputs.rust-toolchain }}
+          rust-toolchain: ${{ steps.compiler.outputs.channel }}
           install-toolchain: "false"
 
       - name: Show Cargo future-incompatibility report
@@ -143,11 +149,11 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         shell: bash
         env:
-          STRICT_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+          STRICT_TOOLCHAIN: ${{ steps.compiler.outputs.channel }}
         run: |
           cargo "+$STRICT_TOOLCHAIN" report future-incompatibilities || true
 
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@7bbede943ffd14ba2a534cf1296a20fd11c177ae # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@100e73ac93cfce3e556084aa23d0cdc4fb481921 # main

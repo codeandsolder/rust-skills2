@@ -452,7 +452,7 @@ Reference these guidelines when:
 - [`proj-cargo-publish-age`](rules/proj-cargo-publish-age.md) - Use Cargo 1.100's native dependency cooldown when new releases need time for review, while keeping lockfile changes intentional
 - [`proj-explicit-configuration`](rules/proj-explicit-configuration.md) - Parse configuration at application boundaries and pass typed values explicitly; never use the process environment as a hidden library or algorithm parameter.
 - [`proj-native-build-orchestration`](rules/proj-native-build-orchestration.md) - Prefer native Cargo build, test and artifact-discovery interfaces; express nontrivial orchestration as typed programs instead of Makefile or shell-based application logic.
-- [`proj-nightly-features`](rules/proj-nightly-features.md) - Use a dated nightly when a specific unstable feature earns its maintenance cost; track feature gates and remove them when the required API stabilizes
+- [`proj-nightly-features`](rules/proj-nightly-features.md) - Use the fleet-approved dated nightly for maintained projects; track feature gates and remove them when the required API stabilizes
 - [`proj-explicit-startup`](rules/proj-explicit-startup.md) - Initialize application state and register services explicitly at the owning application boundary, not as hidden pre-main or library side effects
 - [`proj-rust-native-porting`](rules/proj-rust-native-porting.md) - Preserve the source program's intended algorithmic and domain contracts while redesigning ownership, failure channels, and architecture for Rust
 
