@@ -1,7 +1,7 @@
 ---
 name: rust-skills
 description: >
-  Comprehensive Rust coding guidelines with 338 rules across 26 categories.
+  Comprehensive Rust coding guidelines with 340 rules across 26 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
@@ -23,7 +23,7 @@ metadata:
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 338 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.100 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 340 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.100 (2024 edition).
 
 ## When to Apply
 
@@ -64,7 +64,7 @@ Reference these guidelines when:
 | 21 | Documentation | MEDIUM | `doc-` | 16 |
 | 22 | Observability | MEDIUM | `obs-` | 7 |
 | 23 | Performance Patterns | MEDIUM | `perf-` | 18 |
-| 24 | Project Structure | LOW | `proj-` | 20 |
+| 24 | Project Structure | LOW | `proj-` | 22 |
 | 25 | Clippy & Linting | LOW | `lint-` | 20 |
 | 26 | Anti-patterns | REFERENCE | `anti-` | 21 |
 
@@ -439,6 +439,8 @@ Reference these guidelines when:
 - [`proj-workspace-publish`](rules/proj-workspace-publish.md) - Use `cargo publish --workspace` for native workspace publishing (Rust 1.90+)
 - [`proj-cargo-artifact-layout`](rules/proj-cargo-artifact-layout.md) - Consume Cargo's supported artifact discovery interfaces instead of depending on intermediate build paths, especially with shared caches and worktrees
 - [`proj-cargo-publish-age`](rules/proj-cargo-publish-age.md) - Use Cargo 1.100's native dependency cooldown when new releases need time for review, while keeping lockfile changes intentional
+- [`proj-explicit-configuration`](rules/proj-explicit-configuration.md) - Parse configuration at application boundaries and pass typed values explicitly; never use the process environment as a hidden library or algorithm parameter.
+- [`proj-native-build-orchestration`](rules/proj-native-build-orchestration.md) - Prefer native Cargo build, test and artifact-discovery interfaces; express nontrivial orchestration as typed programs instead of Makefile or shell-based application logic.
 - [`proj-nightly-features`](rules/proj-nightly-features.md) - Use a dated nightly when a specific unstable feature earns its maintenance cost; track feature gates and remove them when the required API stabilizes
 
 ### 25. Clippy & Linting (LOW)
