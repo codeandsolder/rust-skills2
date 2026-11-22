@@ -17,6 +17,7 @@ Usage:
   lint_campaign.sh status STATE
   lint_campaign.sh claim STATE WORKER [LINT_BUDGET=20] [PATH_PREFIX] [MAX_FILES=4]
   lint_campaign.sh extend STATE WORKER FILE...
+  lint_campaign.sh heartbeat STATE WORKER
   lint_campaign.sh checkpoint STATE WORKER
   lint_campaign.sh publish STATE WORKER [FOCUSED_TEST_COMMAND]  # enqueue only
   lint_campaign.sh serve STATE                                # one validator
@@ -40,6 +41,8 @@ Set LINT_CAMPAIGN_RUSTUP_HOME to an isolated Rustup home to persist the
 compiler installation for every worker and validator. An active campaign
 can adopt an isolated home with upgrade, only if its compiler versions match.
 Cargo compilation concurrency defaults to 32 and is clamped to at least 16.
+Editor claims expire after 15 minutes of inactivity; heartbeat renews a claim.
+Expired claim records and worktrees are retained for recovery.
 HELP
 }
 [[ $# -ge 1 ]] || { usage; exit 2; }
@@ -92,6 +95,8 @@ lock_worker() {
     valid_worker "$worker"
     exec {worker_fd}>"$state/locks/$worker.lock"
     flock -n "$worker_fd" || die "worker $worker already has a running command"
+    # A long command is activity until it finishes, not just when it starts.
+    trap 'if [[ -n ${claim:-} && -f "$claim" ]]; then touch -m -- "$claim"; fi' EXIT
 }
 clean_at() {
     local status
@@ -101,7 +106,7 @@ clean_at() {
 clean_policy() {
     local status
     status=$(git -C "$SKILLS" status --porcelain --untracked-files=all -- \
-        scripts/lint_campaign.sh scripts/lint_campaign_queue.sh scripts/lint_campaign_issues.sh scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
+        scripts/lint_campaign.sh scripts/lint_campaign_queue.sh scripts/lint_campaign_issues.sh scripts/lint_campaign_leases.sh scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
         scripts/workspace_test_policy.py .github/actions/rust-strict) || die "cannot inspect policy checkout"
     [[ -z "$status" ]] || die "campaign tool or policy files have uncommitted edits"
 }
@@ -215,7 +220,7 @@ inventory_tip() {
 load_worker() {
     worker=$1; lock_worker
     claim="$state/claims/$worker.json"
-    [[ -f "$claim" ]] || die "no active claim for $worker"
+    renew_claim
     work=$(jq -er .worktree "$claim")
     topic=$(jq -er .branch "$claim")
     [[ "$(git_work symbolic-ref --short HEAD)" == "$topic" ]] || die "incorrect worker branch"
@@ -312,6 +317,8 @@ remove_claim() {
 source "$SKILLS/scripts/lint_campaign_queue.sh"
 # shellcheck source=scripts/lint_campaign_issues.sh
 source "$SKILLS/scripts/lint_campaign_issues.sh"
+# shellcheck source=scripts/lint_campaign_leases.sh
+source "$SKILLS/scripts/lint_campaign_leases.sh"
 if [[ "$action" == init || "$action" == init-issues ]]; then
     manifest=''
     if [[ "$action" == init-issues ]]; then
@@ -434,6 +441,7 @@ case "$action" in
         [[ $# -eq 0 && -f "$state/issues.json" ]] || die "issues requires an issue campaign"
         tip=$(remote_tip)
         lock_claims
+        expire_claims
         issue_status "$tip" | jq 'map(del(.files))'
         unlock_claims
         ;;
@@ -447,6 +455,18 @@ case "$action" in
         ;;
     results)
         [[ $# -le 1 ]] || die "results accepts optional WORKER"
+        if [[ $# == 1 ]]; then
+            worker=$1; valid_worker "$worker"
+            exec {worker_fd}>"$state/locks/$worker.lock"
+            if flock -n "$worker_fd"; then
+                claim="$state/claims/$worker.json"
+                lock_claims
+                expire_claim "$claim" "$(date +%s)"
+                if [[ -f "$claim" ]]; then touch -m -- "$claim"; fi
+                unlock_claims
+            fi
+            exec {worker_fd}>&-
+        fi
         queue_records | jq --arg worker "${1:-}" \
           '[.[]|select($worker=="" or .worker==$worker)|{job,worker,issue,status,files,source,detail}]'
         ;;
@@ -469,9 +489,11 @@ case "$action" in
         lock_claims
         [[ -f "$record" && "$(jq -er .status "$record")" == failed ]] || die "job not failed"
         claim="$state/claims/$worker.json"
+        expire_claim "$claim" "$(date +%s)"
+        expire_claims
         [[ ! -e "$claim" ]] || die "worker has active claim"
-        work="$workroot/$worker"
         topic="lint-campaign/${id:0:12}/$worker-$(date +%s%N)"
+        work=$(new_worker_worktree "$worker" "$topic")
         source=$(jq -er .source "$record")
         git_repo worktree add --quiet -b "$topic" "$work" "$source"
         jq --arg worker "$worker" --arg work "$work" --arg topic "$topic" \
@@ -501,6 +523,7 @@ case "$action" in
         jq 'group_by(.file) | map({file:.[0].file,findings:length}) |
             sort_by(-.findings,.file)' "$state/inventory/$tip.json"
         lock_claims
+        expire_claims
         shopt -s nullglob
         claims=("$state/claims/"*.json)
         if (("${#claims[@]}" > 0)); then jq -s '.' "${claims[@]}"; else printf '[]\n'; fi
@@ -529,6 +552,8 @@ case "$action" in
             [[ "$attempt" != 4 ]] || die "target kept advancing; retry claim"
         done
         claim="$state/claims/$worker.json"
+        expire_claim "$claim" "$(date +%s)"
+        expire_claims
         [[ ! -e "$claim" ]] || die "worker already owns a claim: $claim"
         shopt -s nullglob
         claims=("$state/claims/"*.json)
@@ -565,7 +590,7 @@ case "$action" in
             git_repo cat-file -e "$tip:$file" || die "diagnostic file is not tracked: $file"
         done < <(jq -r '.[]' <<<"$files")
         topic="lint-campaign/${id:0:12}/$worker-$(date +%s%N)"
-        work="$workroot/$worker"
+        work=$(new_worker_worktree "$worker" "$topic")
         git_repo worktree add --quiet -b "$topic" "$work" "$tip"
         jq -n --arg worker "$worker" --arg base "$tip" --arg work "$work" --arg topic "$topic" \
             --argjson files "$files" '{worker:$worker,base:$base,worktree:$work,branch:$topic,files:$files}' >"$claim.tmp"
@@ -591,6 +616,11 @@ case "$action" in
         jq --argjson extra "$extra" '.files=(.files+$extra|unique)' "$claim" >"$claim.tmp"
         mv -- "$claim.tmp" "$claim"
         unlock_claims
+        cat "$claim"
+        ;;
+    heartbeat)
+        [[ $# -eq 1 ]] || die "heartbeat requires WORKER"
+        load_worker "$1"
         cat "$claim"
         ;;
     checkpoint)
@@ -633,6 +663,7 @@ case "$action" in
         [[ $# -eq 0 ]] || die "stop takes no additional arguments"
         validator_lock
         lock_claims
+        expire_claims
         require_empty_queue
         shopt -s nullglob
         claims=("$state/claims/"*.json)
@@ -651,6 +682,7 @@ case "$action" in
         # Exclude the serial validator and assignments during final checks.
         validator_lock
         lock_claims
+        expire_claims
         require_empty_queue
         shopt -s nullglob
         claims=("$state/claims/"*.json)

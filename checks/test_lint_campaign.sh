@@ -3,6 +3,7 @@
 set -euo pipefail
 SKILLS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 tool="$SKILLS/scripts/lint_campaign.sh"
+bash "$SKILLS/checks/test_lint_campaign_leases.sh"
 tmp=$(mktemp -d "${LINT_CAMPAIGN_TEST_ROOT:-${RUNNER_TEMP:-/tmp}}/lint-campaign-test.XXXXXX")
 cleanup() {
     local rc=$?

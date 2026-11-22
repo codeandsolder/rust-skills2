@@ -154,6 +154,7 @@ drain_queue() {
     local job record rc tip staged old_claim original workpath source queue_ref
     while [[ -f "$registry" && ! -e "$state/migrating" ]]; do
         lock_claims
+        expire_claims
         # Recover a crash after removing the editor worktree but before
         # marking its durable submission pending.
         while IFS= read -r staged; do

@@ -75,6 +75,8 @@ claim_issue() {
         [[ "$i" != 4 ]] || die "target advanced; retry claim"
     done
     claim="$state/claims/$worker.json"
+    expire_claim "$claim" "$(date +%s)"
+    expire_claims
     [[ ! -e "$claim" ]] || die "worker already owns a claim"
     plan=$(issue_status "$tip")
     chosen=$(jq -c --arg id "$request" '[.[] | select(.status=="ready" and ($id=="" or .id==$id))] | (map(select(.conflicts|length==0))[0] // .[0] // empty)' <<<"$plan")
@@ -84,7 +86,7 @@ claim_issue() {
     files=$(jq -c .files <<<"$chosen")
     while IFS= read -r path; do valid_repo_path "$path"; done < <(jq -r '.[]' <<<"$files")
     topic="lint-campaign/${id:0:12}/$worker-$(date +%s%N)"
-    work="$workroot/$worker"
+    work=$(new_worker_worktree "$worker" "$topic")
     git_repo worktree add --quiet -b "$topic" "$work" "$tip"
     jq -n --arg worker "$worker" --arg base "$tip" --arg work "$work" --arg topic "$topic" \
         --arg issue "$issue" --arg title "$title" --argjson files "$files" \
@@ -116,12 +118,14 @@ amend_issues() (
     lock_claims
     [[ -f "$registry" && "$(cat "$registry")" == "$state" ]] || die "campaign closed during amendment"
     [[ ! -e "$state/migrating" ]] || die "campaign migration in progress"
+    expire_claims
     jq -e --slurpfile old "$state/issues.json" \
-        --slurpfile claims <(issue_claims) --slurpfile queue <(queue_records) '
+        --slurpfile claims <(issue_claims) --slurpfile queue <(queue_records) \
+        --slurpfile expired <(shopt -s nullglob; records=("$state/expired/"*.json); if ((${#records[@]})); then jq -s . "${records[@]}"; else printf '[]\n'; fi) '
       . as $new |
       ($old[0] | map({key:.id,value:.}) | from_entries) as $before |
       ($new | map({key:.id,value:.}) | from_entries) as $after |
-      ([$claims[0][].issue, $queue[0][].issue] | map(select(. != null)) | unique) as $started |
+      ([$claims[0][].issue, $queue[0][].issue, $expired[0][].issue] | map(select(. != null)) | unique) as $started |
       if (($before|keys) - ($after|keys) | length) != 0 then error("cannot remove existing issues")
       elif any($started[]; $before[.] != $after[.]) then error("cannot redefine started issues")
       else true end

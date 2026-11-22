@@ -81,6 +81,18 @@ subsystem. The state registry uses short flock critical sections for claims,
 not a global build lock. Inventories are cached by commit and deduplicated by
 primary source location, lint code and diagnostic message.
 
+Claims expire after 15 minutes without worker activity. Campaign commands that
+use the claim renew its lease; direct worktree and linked Git metadata edits
+also count as activity. Use `heartbeat STATE WORKER` during read-only
+investigation or long external tests (at least every 10 minutes). Active
+campaign commands holding the worker lock are not expired. The validator and
+claim/status commands sweep expired claims; queued submissions do not expire.
+Expired reservations become available again, but their JSON records remain in
+`STATE/expired` and their worktrees and Git refs are preserved. A new claim may
+return a different worktree path; never assume it from the worker ID.
+An expired claim cannot publish; obtain a new claim before resuming work,
+and inspect/cherry-pick or copy any needed edits from the archived worktree.
+
 Work inside the returned worktree. Fix the root cause, preserve project
 semantics, add regression tests when appropriate and commit. If a change
 legitimately needs another exact Rust file (including a test or a new module),
