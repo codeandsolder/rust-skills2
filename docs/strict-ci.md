@@ -122,6 +122,20 @@ jobs:
       cargo-args: "--locked --workspace --all-targets --all-features"
 ```
 
+Cross-target jobs can install the required nightly standard libraries using
+the `rust-targets` input (comma-separated target triples), then select the
+same target with `cargo-args`. This keeps target-specific code under exactly
+the same strict policy and mandatory compiler cache:
+
+```yaml
+jobs:
+  strict-uefi:
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
+    with:
+      rust-targets: x86_64-unknown-uefi
+      cargo-args: "--locked -p firmware-probe --target x86_64-unknown-uefi"
+```
+
 Repositories that compile examples or tests from files stored in Git submodules can opt the caller checkout into submodule initialization. `checkout-submodules` is passed directly to the caller-repository `actions/checkout` step and accepts checkout's `false`, `true`, or `recursive` modes; it defaults to `false`. The separately pinned rust-skills2 implementation checkout remains isolated.
 
 ```yaml

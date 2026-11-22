@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: "--locked --workspace --all-targets"
+      rust-targets:
+        description: Comma-separated Rust compilation targets to install for cross-target selectors.
+        required: false
+        type: string
+        default: ""
       checkout-submodules:
         description: "Submodule checkout mode passed to actions/checkout for the caller repository: false, true, or recursive."
         required: false
@@ -103,6 +108,7 @@ jobs:
         with:
           toolchain: nightly
           components: clippy,rustfmt
+          targets: ${{ inputs.rust-targets }}
 
       - name: Setup mandatory sccache
         uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@079cb96347f3dee5a628baaed46e63055c80efa5 # main
