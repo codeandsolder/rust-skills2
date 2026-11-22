@@ -101,7 +101,7 @@ if [[ ! -f "$WORKSPACE_POLICY_SCRIPT" ]]; then
     exit 2
 fi
 
-uv run --no-project python "$SOURCE_POLICY_SCRIPT"
+uv run --no-project python "$SOURCE_POLICY_SCRIPT" --toolchain "$TOOLCHAIN"
 
 # The reusable gate intentionally owns Clippy configuration. A project-local
 # clippy.toml may contain useful developer preferences, but it must not be able
@@ -201,7 +201,7 @@ if ! has_cargo_arg --all-targets; then
     exit 0
 fi
 
-POLICY_ARGS=(--default-allow-test-panics "$ALLOW_TEST_PANICS")
+POLICY_ARGS=(--toolchain "$TOOLCHAIN" --default-allow-test-panics "$ALLOW_TEST_PANICS")
 for arg in "${CARGO_ARGS[@]}"; do
     POLICY_ARGS+=("--cargo-arg=$arg")
 done
