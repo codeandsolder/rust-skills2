@@ -53,9 +53,14 @@ required = [
     "uses: ./.rust-skills2-gate/.github/actions/python-strict",
     "uses: ./.rust-skills2-gate/.github/actions/rust-strict",
     "sparse-checkout: |",
-    "      .github/actions",
-    "      scripts",
-    "sparse-checkout-cone-mode: true",
+    "      /.github/actions/",
+    "      /scripts/",
+    "      /policy-wasm/check.mjs",
+    "      /policy-wasm/run.mjs",
+    "      /policy-wasm/module.mjs",
+    "      /policy-wasm/module.json",
+    "      /policy-wasm/module.wasm.gz",
+    "sparse-checkout-cone-mode: false",
 ]
 for needle in required:
     if needle not in workflow:
