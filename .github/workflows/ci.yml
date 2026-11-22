@@ -45,20 +45,23 @@ jobs:
           # normalize this before it changes cwd or dispatches fixture builds.
           CARGO_TARGET_DIR: checks/target
         run: bash checks/check.sh
-      - name: Compile and exercise portable source policy
+      - name: Build portable source policy
         shell: bash
         run: |
           cargo test --locked --manifest-path policy-wasm/Cargo.toml --target-dir "$RUNNER_TEMP/source-policy"
           cargo build --locked --release --target wasm32-wasip1 --manifest-path policy-wasm/Cargo.toml --target-dir "$RUNNER_TEMP/source-policy"
-          node policy-wasm/package.mjs verify "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" "${{ steps.compiler.outputs.channel }}"
-          uv run --no-project python -B checks/compare_source_policy.py "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" . --fixtures "${{ steps.compiler.outputs.channel }}"
-          uv run --no-project python -B checks/compare_source_policy.py policy-wasm/module.json . --fixtures "${{ steps.compiler.outputs.channel }}"
       - name: Upload portable policy for cross-platform validation
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: source-policy-wasm
           path: ${{ runner.temp }}/source-policy/wasm32-wasip1/release/source-policy.wasm
           if-no-files-found: error
+      - name: Validate rebuilt and bundled policy
+        shell: bash
+        run: |
+          node policy-wasm/package.mjs verify "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" "${{ steps.compiler.outputs.channel }}"
+          uv run --no-project python -B checks/compare_source_policy.py "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" . --fixtures "${{ steps.compiler.outputs.channel }}"
+          uv run --no-project python -B checks/compare_source_policy.py policy-wasm/module.json . --fixtures "${{ steps.compiler.outputs.channel }}"
       - name: Strict lint portable policy
         shell: bash
         env:
@@ -72,6 +75,10 @@ jobs:
       - name: Finalize mandatory sccache
         if: always()
         uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@8e1f9d2c450e4761884b72a00a2f324e87a3f3cb # main
+
+  cargo-release-age:
+    if: github.event_name == 'pull_request'
+    uses: codeandsolder/ci-workflows/.github/workflows/cargo-release-quarantine.yml@72877f5f7c8e885fb7f80f8fd731e0aeb8ebd8e7 # main
 
   portable-source-policy:
     name: Portable source policy (${{ matrix.os }})
