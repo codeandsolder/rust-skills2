@@ -451,15 +451,43 @@ def generated_lint_boundaries(packages: list[CargoPackage]) -> set[Path]:
     return boundaries
 
 
+def registered_gitlinks(root: Path) -> set[Path]:
+    """Exclude separately owned Git submodules, not arbitrary nested directories."""
+    result = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "--stage", "-z"],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode:
+        # Source distributions need not be Git checkouts.
+        return set()
+    gitlinks: set[Path] = set()
+    for entry in result.stdout.split(b"\0"):
+        if not entry:
+            continue
+        metadata, pathname = entry.split(b"\t", 1)
+        if metadata.split()[0] == b"160000":
+            gitlinks.add(root / os.fsdecode(pathname))
+    return gitlinks
+
+
 def rust_files(roots: list[Path]) -> list[Path]:
     found: set[Path] = set()
     for root in roots:
-        for path in root.rglob("*.rs"):
-            relative_parts = path.relative_to(root).parts[:-1]
-            if any(part in IGNORED_DIRS for part in relative_parts):
-                continue
-            found.add(path.resolve())
+        gitlinks = registered_gitlinks(root)
+        for directory, dirs, files in os.walk(root):
+            parent = Path(directory)
+            dirs[:] = [
+                name
+                for name in dirs
+                if name not in IGNORED_DIRS and parent / name not in gitlinks
+            ]
+            found.update(
+                (parent / name).resolve() for name in files if name.endswith(".rs")
+            )
     return sorted(found)
+
+
 
 
 # Match at an absolute offset without allocating a copy of the remaining
