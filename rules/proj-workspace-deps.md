@@ -166,8 +166,9 @@ unsafe_code = "forbid"
 missing_docs = "warn"
 
 [workspace.lints.clippy]
-all = "warn"
-pedantic = { level = "warn", priority = -1 }
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 
 [workspace.lints.rustdoc]
@@ -246,7 +247,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 unsafe_code = "forbid"
 
 [workspace.lints.clippy]
-all = "warn"
+all = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 
 # crates/core/Cargo.toml

@@ -76,37 +76,29 @@ CARGO_BUILD_WARNINGS=deny cargo check
 
 ## What It Catches
 
+These examples are compilable Rust but trigger Clippy correctness diagnostics
+because the comparisons are logically redundant or impossible:
+
+<!-- rust-check: compile -->
 ```rust
-// Infinite loop (iter::repeat without take)
-for x in std::iter::repeat(1) {  // ERROR: infinite iterator
-    println!("{}", x);
+fn incorrectly_compare(value: i32) -> bool {
+    value == value // clippy::eq_op
 }
 
-// Comparison to NaN (always false)
-if x == f64::NAN {  // ERROR: NaN != NaN always
-    // This never executes
-}
-
-// Use after free patterns
-let r;
-{
-    let x = 5;
-    r = &x;  // ERROR: x dropped here
-}
-println!("{}", r);
-
-// Wrong equality check
-if x = 5 {  // ERROR: assignment in condition (should be ==)
-}
-
-// Useless comparisons
-if x >= 0 && x < 0 {  // ERROR: impossible condition
+fn impossible_range(value: i32) -> bool {
+    value >= 10 && value < 0 // clippy::impossible_comparisons
 }
 ```
 
-## Uplifted Correctness Lints
+`clippy::infinite_iter` detects infinite iterator computations that require
+finite input, not intentionally infinite loops in general. A dangling
+reference or an assignment expression in an `if` condition is already a
+Rust compiler error independent of Clippy. An invalid comparison with NaN
+is diagnosed by rustc's `invalid_nan_comparisons`.
 
-Several lints previously in `clippy::correctness` have been uplifted to `rustc`. Configure them under `[lints.rust]` instead:
+## Related Compiler Lints
+
+Several former Clippy or related compiler diagnostics now belong to rustc. Configure those names under `[lints.rust]`, not the Clippy namespace:
 
 | Lint | Uplifted In | Level | What It Catches |
 |------|-------------|-------|-----------------|

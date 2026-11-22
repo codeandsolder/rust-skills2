@@ -9,6 +9,7 @@ An example can override its expectation with an HTML comment immediately above
 the fence:
 
     <!-- rust-check: compile -->
+    <!-- rust-check: run -->
     <!-- rust-check: fragment; reason=uses domain types defined elsewhere -->
     <!-- rust-check: compile_fail; reason=demonstrates a type error -->
     <!-- rust-check: ignore; reason=not executable in any maintained fixture -->
@@ -48,7 +49,7 @@ for output in (OUT, NIGHTLY_OUT):
 
 MARKER = re.compile(
     r"^<!--\s*rust-check:\s*"
-    r"(compile|fragment|compile_fail|ignore|nightly(?:\([^)]*\))?|fixture\([A-Za-z0-9_-]+\))"
+    r"(compile|run|fragment|compile_fail|ignore|nightly(?:\([^)]*\))?|fixture\([A-Za-z0-9_-]+\))"
     r"(?:\s*;\s*reason=(.*?))?\s*-->$"
 )
 FENCE = re.compile(r"^```rust(?P<attrs>\s*(?:,[^`]*)?)\s*$")
@@ -198,6 +199,16 @@ for md in sorted(RULES.glob("*.md")):
                 and not expect.startswith("fixture:")
             ):
                 raise SystemExit(f"{md.name}:{start + 1}: nightly feature gate needs an explicit contract")
+            attrs = {
+                part.strip()
+                for part in (fence_match.group("attrs") or "").strip().lstrip(",").split(",")
+            }
+            has_main = re.search(r"\bfn\s+main\s*\(", block) is not None
+            stable_run = expect == "run"
+            if stable_run:
+                if not has_main or {"no_run", "should_panic"} & attrs:
+                    raise SystemExit(f"{md.name}:{start + 1}: run contract requires a runnable main")
+                expect = "compile"
             name = f"{md.stem.replace('-', '_')}__{file_index}"
             generated_expectation = (
                 expect not in {"ignore", "nightly"}
@@ -211,15 +222,10 @@ for md in sorted(RULES.glob("*.md")):
                 "reason": reason,
                 "generated": generated_expectation,
             }
+            if stable_run:
+                info["stable_run"] = True
             if expect == "nightly":
-                attrs = {
-                    part.strip()
-                    for part in (fence_match.group("attrs") or "").strip().lstrip(",").split(",")
-                }
-                info["nightly_run"] = (
-                    re.search(r"\bfn\s+main\s*\(", block) is not None
-                    and not {"no_run", "should_panic"} & attrs
-                )
+                info["nightly_run"] = has_main and not {"no_run", "should_panic"} & attrs
                 (NIGHTLY_OUT / f"{name}.rs").write_text(
                     wrap(block), encoding="utf-8"
                 )

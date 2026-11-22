@@ -38,7 +38,6 @@ The exact lint set evolves with Clippy. Current examples include:
 | `box_collection` | Adds a redundant heap indirection around an already heap-backed collection |
 | `boxed_local` | Boxes a local value when ownership does not require allocation |
 | `cmp_owned` | Creates an owned value only to compare it |
-| `iter_nth` | Uses iterator stepping on a standard collection that has direct indexed access |
 | `iter_overeager_cloned` | Clones items before adapters that may discard most of them |
 | `large_enum_variant` | A large variant inflates every value of the enum |
 | `redundant_allocation` | Adds an unnecessary layer of allocation/indirection |
@@ -145,7 +144,7 @@ fn main() {
 
 ## Practical Guidance
 
-- Enable `clippy::perf` as a warning group and review its findings rather than blindly applying them.
+- Keep `clippy::perf` at deny level in the shared strict policy and review its findings rather than blindly applying them.
 - Keep the project's MSRV in mind when Clippy suggests newer APIs.
 - Prefer removing allocations/copies to micro-tuning syntax.
 - Profile before changing hot code on performance grounds.
