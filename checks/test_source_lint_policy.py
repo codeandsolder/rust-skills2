@@ -4,6 +4,7 @@
 import contextlib
 import io
 import sys
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,6 +17,7 @@ from scripts.check_source_lint_policy import (
     mask_noncode,
     run_text,
     rustflag_allow_tokens,
+    rust_files,
 )
 
 
@@ -67,6 +69,22 @@ fn example() {}
 
 
 class PolicyHelperTests(unittest.TestCase):
+    def test_registered_gitlink_is_not_first_party_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(
+                ["git", "-C", str(root), "update-index", "--add", "--cacheinfo",
+                 "160000,1111111111111111111111111111111111111111,dependency"],
+                check=True,
+            )
+            (root / "dependency").mkdir()
+            (root / "dependency" / "foreign.rs").write_text("", encoding="utf-8")
+            (root / "untracked").mkdir()
+            own = root / "untracked" / "own.rs"
+            own.write_text("", encoding="utf-8")
+            self.assertEqual(rust_files([root]), [own.resolve()])
+
     def test_rustflag_allow_forms_are_detected(self) -> None:
         self.assertEqual(
             rustflag_allow_tokens("-C opt-level=3 -A dead_code"), ["-A dead_code"]
