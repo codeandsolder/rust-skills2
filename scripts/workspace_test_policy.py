@@ -147,11 +147,12 @@ def reason_field(table: dict[str, Any], key: str, location: str) -> str | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--toolchain", default="nightly")
     parser.add_argument("--default-allow-test-panics", required=True, type=parse_bool)
     parser.add_argument("--cargo-arg", action="append", default=[])
     args = parser.parse_args()
 
-    metadata = run_json(["cargo", "+nightly", "metadata", "--no-deps", "--format-version", "1"])
+    metadata = run_json(["cargo", f"+{args.toolchain}", "metadata", "--no-deps", "--format-version", "1"])
 
     workspace_table = rust_skills2_table(
         (metadata.get("metadata") or {}).get("rust-skills2"),

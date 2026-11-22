@@ -3,6 +3,11 @@ name: rust-skills2 strict CI gate
 on:
   workflow_call:
     inputs:
+      rust-toolchain:
+        description: Nightly channel or dated nightly toolchain.
+        required: false
+        type: string
+        default: nightly
       working-directory:
         description: Rust workspace directory relative to repository root.
         required: false
@@ -103,17 +108,17 @@ jobs:
           read -r -a packages <<< "$PACKAGES"
           sudo apt-get install -y -- "${packages[@]}"
 
-      - name: Install latest nightly Rust tools
+      - name: Install selected nightly Rust tools
         uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
-          toolchain: nightly
+          toolchain: ${{ inputs.rust-toolchain }}
           components: clippy,rustfmt
           targets: ${{ inputs.rust-targets }}
 
       - name: Setup mandatory sccache
         uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@afab1a99dc73e3be32b6f4b139defa882741dab7 # main
         with:
-          rust-toolchain: nightly
+          rust-toolchain: ${{ inputs.rust-toolchain }}
           rustflags: ""
 
       - name: Configure runner-local Cargo target
@@ -130,14 +135,17 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
           cargo-args: ${{ inputs.cargo-args }}
           allow-test-panics: ${{ inputs.allow-test-panics }}
+          rust-toolchain: ${{ inputs.rust-toolchain }}
           install-toolchain: "false"
 
       - name: Show Cargo future-incompatibility report
         if: failure()
         working-directory: ${{ inputs.working-directory }}
         shell: bash
+        env:
+          STRICT_TOOLCHAIN: ${{ inputs.rust-toolchain }}
         run: |
-          cargo +nightly report future-incompatibilities || true
+          cargo "+$STRICT_TOOLCHAIN" report future-incompatibilities || true
 
 
       - name: Finalize mandatory sccache

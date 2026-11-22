@@ -10,6 +10,7 @@ categories.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -183,7 +184,7 @@ def run_text(argv: list[str]) -> str:
     return result.stdout
 
 
-def check_compiler_flag_policy() -> list[str]:
+def check_compiler_flag_policy(toolchain: str) -> list[str]:
     # Reject compiler flags that can weaken or bypass the central lint policy.
     violations: list[str] = []
 
@@ -206,7 +207,7 @@ def check_compiler_flag_policy() -> list[str]:
             for flag in rustflag_allow_tokens(value)
         )
 
-    config = run_text(["cargo", "+nightly", "-Z", "unstable-options", "config", "get"])
+    config = run_text(["cargo", f"+{toolchain}", "-Z", "unstable-options", "config", "get"])
     allow_flag = re.compile(
         r"(?<![A-Za-z0-9_-])(?:-A(?:[A-Za-z0-9_:-]+)?|--allow(?:=[A-Za-z0-9_:-]+)?)(?![A-Za-z0-9_-])"
     )
@@ -228,8 +229,8 @@ def check_compiler_flag_policy() -> list[str]:
     return violations
 
 
-def clippy_groups() -> tuple[set[str], dict[str, set[str]]]:
-    output = run_text(["clippy-driver", "+nightly", "-W", "help"])
+def clippy_groups(toolchain: str) -> tuple[set[str], dict[str, set[str]]]:
+    output = run_text(["clippy-driver", f"+{toolchain}", "-W", "help"])
     groups: dict[str, set[str]] = {}
 
     in_groups = False
@@ -341,10 +342,10 @@ def is_generated_include_wrapper(path: Path) -> bool:
     return not body.strip()
 
 
-def cargo_metadata() -> CargoMetadata:
+def cargo_metadata(toolchain: str) -> CargoMetadata:
     data = json.loads(
         run_text(
-            ["cargo", "+nightly", "metadata", "--no-deps", "--format-version", "1"]
+            ["cargo", f"+{toolchain}", "metadata", "--no-deps", "--format-version", "1"]
         )
     )
     if not isinstance(data, dict):
@@ -614,12 +615,18 @@ def lint_attributes(text: str) -> list[tuple[str, list[str], bool, int]]:
 
 
 def main() -> int:
-    violations = check_compiler_flag_policy()
-    group_names, groups = clippy_groups()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--toolchain", default="nightly")
+    args = parser.parse_args()
+    toolchain = args.toolchain
+    if not re.fullmatch(r"nightly(?:-\d{4}-\d{2}-\d{2})?", toolchain):
+        parser.error("expected a nightly toolchain")
+    violations = check_compiler_flag_policy(toolchain)
+    group_names, groups = clippy_groups(toolchain)
     blocked_members = set().union(*(groups[group] for group in BLOCKED_CLIPPY_GROUPS))
 
     suppression_count = 0
-    metadata = cargo_metadata()
+    metadata = cargo_metadata(toolchain)
     violations.extend(manifest_allow_violations(metadata))
     packages = workspace_packages(metadata)
     roots = [
