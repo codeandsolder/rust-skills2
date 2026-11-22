@@ -96,13 +96,22 @@ if [[ ! -f "$SOURCE_POLICY_SCRIPT" || ! -f "$SOURCE_POLICY_MODULE" ]]; then
     exit 2
 fi
 
-WORKSPACE_POLICY_SCRIPT="$ACTION_DIR/../../../scripts/workspace_test_policy.py"
-if [[ ! -f "$WORKSPACE_POLICY_SCRIPT" ]]; then
-    echo "rust-skills2: workspace policy resolver missing at $WORKSPACE_POLICY_SCRIPT" >&2
-    exit 2
-fi
+has_cargo_arg() {
+    local needle=$1
+    local arg
+    for arg in "${CARGO_ARGS[@]}"; do
+        if [[ "$arg" == "$needle" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
 
-node "$SOURCE_POLICY_SCRIPT" "$SOURCE_POLICY_MODULE" "$TOOLCHAIN"
+if has_cargo_arg --all-targets; then
+    POLICY_OUTPUT="$(node "$SOURCE_POLICY_SCRIPT" "$SOURCE_POLICY_MODULE" "$TOOLCHAIN" "$ALLOW_TEST_PANICS" "${CARGO_ARGS[@]}")"
+else
+    node "$SOURCE_POLICY_SCRIPT" "$SOURCE_POLICY_MODULE" "$TOOLCHAIN"
+fi
 
 # The reusable gate intentionally owns Clippy configuration. A project-local
 # clippy.toml may contain useful developer preferences, but it must not be able
@@ -188,27 +197,10 @@ run_clippy() {
     cargo "+$TOOLCHAIN" clippy "${cargo_args_ref[@]}" -- "${lint_args_ref[@]}"
 }
 
-has_cargo_arg() {
-    local needle=$1
-    local arg
-    for arg in "${CARGO_ARGS[@]}"; do
-        if [[ "$arg" == "$needle" ]]; then
-            return 0
-        fi
-    done
-    return 1
-}
-
 if ! has_cargo_arg --all-targets; then
     run_clippy CARGO_ARGS LINT_ARGS
     exit 0
 fi
-
-POLICY_ARGS=(--toolchain "$TOOLCHAIN" --default-allow-test-panics "$ALLOW_TEST_PANICS")
-for arg in "${CARGO_ARGS[@]}"; do
-    POLICY_ARGS+=("--cargo-arg=$arg")
-done
-POLICY_OUTPUT="$(uv run --no-project python "$WORKSPACE_POLICY_SCRIPT" "${POLICY_ARGS[@]}")"
 
 STRICT_PACKAGES=()
 RELAXED_PACKAGES=()

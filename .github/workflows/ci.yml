@@ -63,6 +63,7 @@ jobs:
           node policy-wasm/package.mjs verify "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" "${{ steps.compiler.outputs.channel }}"
           uv run --no-project python -B checks/compare_source_policy.py "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" . --fixtures "${{ steps.compiler.outputs.channel }}"
           uv run --no-project python -B checks/compare_source_policy.py policy-wasm/module.json . --fixtures "${{ steps.compiler.outputs.channel }}"
+          uv run --no-project python -B checks/compare_workspace_policy.py policy-wasm/module.json "${{ steps.compiler.outputs.channel }}"
       - name: Strict lint portable policy
         shell: bash
         env:
@@ -105,7 +106,9 @@ jobs:
           components: clippy
       - name: Validate the exact bundled artifact
         shell: bash
-        run: uv run --no-project python -B checks/compare_source_policy.py policy-wasm/module.json . --fixtures "${{ steps.compiler.outputs.channel }}"
+        run: |
+          uv run --no-project python -B checks/compare_source_policy.py policy-wasm/module.json . --fixtures "${{ steps.compiler.outputs.channel }}"
+          uv run --no-project python -B checks/compare_workspace_policy.py policy-wasm/module.json "${{ steps.compiler.outputs.channel }}"
 
   strict-gate-self-test:
     name: Strict reusable gate self-test
@@ -135,11 +138,11 @@ jobs:
             git -C "$gate" sparse-checkout set --no-cone --stdin
           git -C "$gate" checkout --detach "$(git rev-parse HEAD)"
           test -f "$gate/scripts/strict_clippy.sh"
-          test -f "$gate/scripts/workspace_test_policy.py"
+          test ! -e "$gate/scripts/workspace_test_policy.py"
           test -f "$gate/.github/actions/rust-strict/clippy.toml"
           test ! -e "$gate/policy-wasm/src"
           cd checks/fixtures/strict-ci-generated-boundary
-          node "$gate/policy-wasm/check.mjs" "$gate/policy-wasm/module.json" "${{ steps.compiler.outputs.channel }}"
+          node "$gate/policy-wasm/check.mjs" "$gate/policy-wasm/module.json" "${{ steps.compiler.outputs.channel }}" false --all-targets
 
       - name: Python action accepts strict CI-only Python
         uses: ./.github/actions/python-strict

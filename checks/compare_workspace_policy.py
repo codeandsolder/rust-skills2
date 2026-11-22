@@ -14,8 +14,6 @@ def main() -> int:
     module = Path(sys.argv[1]).resolve()
     toolchain = sys.argv[2]
     previous = ROOT / "checks" / "workspace_test_policy_oracle.py"
-    if not previous.exists():
-        previous = ROOT / "scripts" / "workspace_test_policy.py"
     cases = [
         ("strict-ci-pass", "false", []),
         ("strict-ci-pass", "true", ["--workspace"]),
