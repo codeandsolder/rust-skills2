@@ -126,8 +126,13 @@ its environment. For finite manual processing, use
 `"$tool" drain "$state"`; both commands share the same exclusive
 validator lock.
 
-The validator processes FIFO jobs in a dedicated reusable detached
-worktree. It incorporates the latest target, reuses the accepted tip's
+The validator processes jobs in a dedicated reusable detached worktree.
+Lint-only jobs are FIFO. Issue-mode pending jobs are ranked by the number
+of distinct unfinished transitive dependants, with FIFO ties. An interrupted
+running job is retried first; an active validation is never preempted.
+Priorities are recomputed from the live DAG and published receipts at each
+job boundary, so recovering a key prerequisite does not send it to the
+back of an unrelated queue. It incorporates the latest target, reuses the accepted tip's
 cached lint inventory, scans the exact candidate once, checks scope and
 lint delta, and runs formatting, stable all-target Clippy, source policy,
 shared and focused regressions. It alone pushes accepted candidates
@@ -164,8 +169,8 @@ different free worker ID.
 
 Status uses the latest cached accepted inventory and shows file counts,
 active claims, queued submissions and deferred files. Only the serial
-validator refreshes a missing target inventory. Claims are never silently stolen or timed
-out: release/defer require an unchanged or already published clean checkout.
+validator refreshes a missing target inventory. Inactive claims expire as described above; explicit release/defer require
+an unchanged or already published clean checkout.
 Deferral is keyed to file content, so editing that file makes it eligible
 again; `retry` clears the deferral explicitly. Deferral does not make the
 strict gate pass. For interrupted work, resume the existing claim or publish

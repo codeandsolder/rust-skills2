@@ -6,6 +6,33 @@ queue_records() {
     records=("$state/queue/"*.json)
     if (("${#records[@]}")); then jq -s '.' "${records[@]}"; else printf '[]\n'; fi
 }
+# Caller holds claims.lock. Retry an interrupted running job first.
+# In issue campaigns rank pending jobs by unique unfinished transitive
+# dependants, then FIFO. Lint-only campaigns retain their FIFO policy.
+next_validation_job() {
+    if [[ ! -f "$state/issues.json" ]]; then
+        queue_records | jq -r '
+          map(select(.status=="pending" or .status=="running"))
+          | sort_by((.status!="running"),.job) | .[0].job // empty'
+        return
+    fi
+    queue_records | jq -r --slurpfile tasks "$state/issues.json" '
+      . as $queue |
+      [$queue[] | select(.status=="published") | .issue] as $done |
+      # The validated manifest is topologically ordered. Deduplicate each
+      # ancestor set so diamonds are not counted multiple times.
+      (reduce $tasks[0][] as $task ({};
+        . as $known | .[$task.id] =
+          ([$task.depends[] as $dep | $dep, $known[$dep][]] | unique)
+      )) as $ancestors |
+      (reduce ($tasks[0][] | select(.id as $id | ($done|index($id))==null)) as $task ({};
+        reduce $ancestors[$task.id][] as $ancestor (.;
+          .[$ancestor] = ((.[$ancestor] // 0) + 1))
+      )) as $impact |
+      map(select(.status=="pending" or .status=="running")) |
+      sort_by((.status!="running"), -($impact[.issue] // 0), .job) |
+      .[0].job // empty'
+}
 reserved_queue() {
     queue_records | jq -c '[.[] | select(.status=="staging" or .status=="pending" or .status=="running" or .status=="failed") | .files[]]'
 }
@@ -173,7 +200,7 @@ drain_queue() {
             queue_update "$record" pending "recovered interrupted submission"
         done < <(queue_records | jq -r '.[]|select(.status=="staging")|.job')
         # A crashed running job is retried, checking ancestry before rebuilding.
-        job=$(queue_records | jq -r 'map(select(.status=="pending" or .status=="running"))|sort_by(.job)|.[0].job // empty')
+        job=$(next_validation_job)
         if [[ -z "$job" ]]; then
             unlock_claims
             tip=$(git_repo rev-parse "refs/remotes/origin/$target")
