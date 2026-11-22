@@ -108,9 +108,10 @@ struct State {
     counter: usize,
 }
 
-async fn increment(state: Arc<Mutex<State>>) {
+async fn increment(state: &Mutex<State>) -> Option<()> {
     let mut guard = state.lock().await;
-    guard.counter = guard.counter.saturating_add(1);
+    guard.counter = guard.counter.checked_add(1)?;
+    Some(())
 }
 ```
 

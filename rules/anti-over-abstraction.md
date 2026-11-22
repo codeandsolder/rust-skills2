@@ -231,6 +231,8 @@ Choose an abstraction for semantics first. Profile/build-measure when performanc
 
 ## See Also
 
+- [proj-rust-native-porting](./proj-rust-native-porting.md)
+
 - [type-generic-bounds](./type-generic-bounds.md) - Generic bounds
 - [api-sealed-trait](./api-sealed-trait.md) - Controlled extension
 - [anti-type-erasure](./anti-type-erasure.md) - Static versus dynamic polymorphism

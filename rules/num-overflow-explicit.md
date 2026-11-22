@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-Integer overflow panics in debug builds and silently wraps (two's complement) in release builds. Relying on either default behavior is a latent bug — the release build can produce wrong results without any diagnostic. Choosing an explicit variant makes intent unmistakable to both the compiler and future readers.
+Overflow of ordinary integer addition, subtraction and multiplication is normally checked in dev profiles and wraps in release profiles without overflow checks. Cargo profiles can override those defaults. Division by zero and signed minimum divided by -1 have additional rules and can panic regardless of overflow-check settings. Choose an explicit operation when overflow is possible and its semantics matter; ordinary arithmetic is fine when the bounds are proved.
 
 ## Bad
 
@@ -79,9 +79,13 @@ mod tests {
 | `wrapping_*` | `T` | modular arithmetic is intentional (e.g., checksums, ring buffers) |
 | `overflowing_*` | `(T, bool)` | you need the result *and* know whether it overflowed |
 
-These methods are available on all primitive integer types in the standard library (`u8` through `u128`, `i8` through `i128`, `usize`, `isize`). Equivalent sub/mul/div/shl/shr variants exist for every arithmetic operation.
+These methods are available on all primitive integer types in the standard library (`u8` through `u128`, `i8` through `i128`, `usize`, `isize`). Not every arithmetic operation has every variant. Division/remainder and shifts have distinct domain and overflow semantics; check the precise method. For example, checked shifts reject an out-of-range shift count, not loss of high bits from a left shift. Wrapping division still rejects a zero divisor.
+
+If validation proves arithmetic is in range, encode or preserve that proof and measure the hot loop. Do not weaken unrelated overflow checking or silently switch a checked algorithm to modular arithmetic to improve a benchmark.
 
 ## See Also
+
+- [perf-benchmark-regression](./perf-benchmark-regression.md)
 
 - [num-saturating-clamp](num-saturating-clamp.md) - bound values with `clamp` and saturating arithmetic
 - [num-cast-try-from](num-cast-try-from.md) - avoid `as` for narrowing casts; prefer `TryFrom`

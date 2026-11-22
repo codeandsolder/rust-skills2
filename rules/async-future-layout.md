@@ -11,7 +11,14 @@ An async function builds a future that may contain initial captures and state ne
 <!-- rust-check: run -->
 ```rust
 fn prepare(input: u8) -> u32 {
-    let buffer = [input; 4096];
+    // black_box is only for this comparison: prevent trivial constant folding.
+    let buffer = std::hint::black_box([input; 4096]);
+    buffer.iter().map(|&byte| u32::from(byte)).sum()
+}
+
+async fn retains_buffer(input: u8) -> u32 {
+    let buffer = std::hint::black_box([input; 4096]);
+    tokio::task::yield_now().await;
     buffer.iter().map(|&byte| u32::from(byte)).sum()
 }
 
@@ -22,15 +29,18 @@ async fn compact(input: u8) -> u32 {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let future = compact(3);
-    println!("future size: {} bytes", std::mem::size_of_val(&future));
+    let before = retains_buffer(3);
+    let after = compact(3);
+    println!("future sizes: before={}, after={}",
+        std::mem::size_of_val(&before), std::mem::size_of_val(&after));
     let runtime = tokio::runtime::Builder::new_current_thread().build()?;
-    assert_eq!(runtime.block_on(future), 12_288);
+    assert_eq!(runtime.block_on(before), 12_288);
+    assert_eq!(runtime.block_on(after), 12_288);
     Ok(())
 }
 ```
 
-The synchronous buffer is not logically live across the suspension point.
+In the compact variant, the synchronous buffer is not logically live across the suspension point. The order is interchangeable for this pure computation, not arbitrary side effects. Use the benchmark barrier only for measurement, not as a production optimization.
 Measure the actual future size, task allocations, throughput and latency
 on the representative target. A fixed layout assertion is appropriate only
 if the project really has a size budget on specified targets.
