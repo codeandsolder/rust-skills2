@@ -23,18 +23,18 @@ jobs:
           version: latest-known
           enable-cache: false
       - name: Enforce PR workflow supersession across all caller workflows
-        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@100e73ac93cfce3e556084aa23d0cdc4fb481921 # main
+        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@8e1f9d2c450e4761884b72a00a2f324e87a3f3cb # main
 
       - name: Resolve one quarantined compiler
         id: compiler
-        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@100e73ac93cfce3e556084aa23d0cdc4fb481921 # main
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@8e1f9d2c450e4761884b72a00a2f324e87a3f3cb # main
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
           toolchain: ${{ steps.compiler.outputs.channel }}
           targets: x86_64-unknown-linux-gnu
           components: clippy,rustfmt
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@100e73ac93cfce3e556084aa23d0cdc4fb481921 # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@8e1f9d2c450e4761884b72a00a2f324e87a3f3cb # main
         with:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
@@ -50,7 +50,7 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@100e73ac93cfce3e556084aa23d0cdc4fb481921 # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@8e1f9d2c450e4761884b72a00a2f324e87a3f3cb # main
 
   strict-gate-self-test:
     name: Strict reusable gate self-test
@@ -63,7 +63,7 @@ jobs:
 
       - name: Resolve one quarantined compiler
         id: compiler
-        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@100e73ac93cfce3e556084aa23d0cdc4fb481921 # main
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@8e1f9d2c450e4761884b72a00a2f324e87a3f3cb # main
 
       - name: Source-only lint policy action accepts generated-boundary fixture
         uses: ./.github/actions/source-lint-policy
@@ -149,7 +149,7 @@ jobs:
           echo "Python gate correctly rejected a ty violation"
 
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@100e73ac93cfce3e556084aa23d0cdc4fb481921 # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@8e1f9d2c450e4761884b72a00a2f324e87a3f3cb # main
         with:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
@@ -566,5 +566,5 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@100e73ac93cfce3e556084aa23d0cdc4fb481921 # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@8e1f9d2c450e4761884b72a00a2f324e87a3f3cb # main
 
