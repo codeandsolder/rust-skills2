@@ -462,6 +462,15 @@ def rust_files(roots: list[Path]) -> list[Path]:
     return sorted(found)
 
 
+# Match at an absolute offset without allocating a copy of the remaining
+# source at each character. Both patterns are unanchored and use no lookbehind,
+# so their match-at-offset semantics are identical to matching a suffix.
+RUST_CHARACTER = re.compile(
+    r"(?:b)?'(?:[^'\\\n\r\t]|\\(?:[nrt\\0'\"]|x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f_]+\}))'"
+)
+RUST_RAW_STRING = re.compile(r"(?:b|c)?r(#+)?\"")
+
+
 def mask_noncode(text: str) -> str:
     """Mask comments and string literals while preserving length/newlines."""
     masked = list(text)
@@ -501,21 +510,18 @@ def mask_noncode(text: str) -> str:
         # A quote character such as '\"' must not start a string that swallows
         # subsequent attributes. Require a complete character token so lifetimes
         # and labels ('a, 'static, 'outer:) remain code.
-        char_literal = re.match(
-            r"(?:b)?'(?:[^'\\\n\r\t]|\\(?:[nrt\\0'\"]|x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f_]+\}))'",
-            text[i:],
-        )
+        char_literal = RUST_CHARACTER.match(text, i)
         if char_literal is not None:
-            end = i + char_literal.end()
+            end = char_literal.end()
             blank(i, end)
             i = end
             continue
 
-        raw = re.match(r"(?:b|c)?r(#+)?\"", text[i:])
+        raw = RUST_RAW_STRING.match(text, i)
         if raw is not None:
             start = i
             hashes = raw.group(1) or ""
-            i += raw.end()
+            i = raw.end()
             terminator = '"' + hashes
             end = text.find(terminator, i)
             i = length if end == -1 else end + len(terminator)
