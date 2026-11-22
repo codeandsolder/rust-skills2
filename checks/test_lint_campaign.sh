@@ -118,7 +118,13 @@ for worker in one two; do
     run checkpoint "$worker"
 done
 # Submissions return before any compilation and retain their reservations.
-run publish one "test "\$CARGO_BUILD_BUILD_DIR" = "\$CARGO_TARGET_DIR"; cargo +stable test --locked --lib --no-run --message-format=json | jq -se 'any(.[]; .reason=="compiler-artifact" and .fresh==true and .profile.test==true and (.target.kind|index("lib"))!=null)'; touch '$tmp/validation-started'; while ! test -e '$tmp/release-validation'; do sleep 0.1; done"
+reuse_check=$(cat <<'SH'
+test "$CARGO_BUILD_BUILD_DIR" = "$CARGO_TARGET_DIR"
+cargo +stable test --locked --lib --no-run --message-format=json | jq -se 'any(.[]; .reason=="compiler-artifact" and .fresh==true and .profile.test==true and (.target.kind|index("lib"))!=null)'
+SH
+)
+run publish one "$reuse_check
+touch '$tmp/validation-started'; while ! test -e '$tmp/release-validation'; do sleep 0.1; done"
 run publish two
 [[ "$(git -C "$tmp/repo" ls-remote --heads origin campaign | cut -f1)" == "$baseline" ]]
 [[ "$(jq -rs '[.[]|select(.status=="pending")]|length' "$state"/queue/*.json)" == 2 ]]
