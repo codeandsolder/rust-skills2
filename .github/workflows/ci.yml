@@ -61,6 +61,7 @@ jobs:
         shell: bash
         env:
           RUST_SKILLS2_WORKING_DIRECTORY: policy-wasm
+          CARGO_TARGET_DIR: ${{ runner.temp }}/source-policy
         run: |
           bash scripts/strict_clippy.sh --toolchain "${{ steps.compiler.outputs.channel }}"
       - name: Validate packed skill

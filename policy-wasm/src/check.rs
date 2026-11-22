@@ -203,7 +203,7 @@ impl WrapperPatterns {
             body[attribute.start()..=end].fill(b' ');
         }
 
-        let mut includes = 0;
+        let mut proven = 0;
         for include in self.literal.captures_iter(&text) {
             let (Some(full), Some(relative)) = (include.get(0), include.get(1)) else {
                 continue;
@@ -216,9 +216,9 @@ impl WrapperPatterns {
                 return false;
             }
             body[full.range()].fill(b' ');
-            includes += 1;
+            proven += 1;
         }
-        includes > 0 && body.iter().all(u8::is_ascii_whitespace)
+        proven > 0 && body.iter().all(u8::is_ascii_whitespace)
     }
 }
 
@@ -298,6 +298,9 @@ fn package_boundaries(
 }
 
 /// Inspect an explicit host snapshot. All policy decisions occur in this module.
+///
+/// # Errors
+/// Returns an error if the compiler output is incomplete or a source file cannot be read.
 pub fn check(input: Input) -> Result<Report, Box<dyn std::error::Error>> {
     let policy = Policy::from_clippy_help(&input.clippy_help)?;
     let patterns = WrapperPatterns::new()?;
@@ -366,7 +369,10 @@ mod tests {
         ] {
             assert_eq!(allow_flags(&rustflag_tokens(value)), [expected]);
         }
-        assert!(allow_flags(&rustflag_tokens("-D warnings -C target-cpu=x86-64-v2")).is_empty());
+        assert_eq!(
+            allow_flags(&rustflag_tokens("-D warnings -C target-cpu=x86-64-v2")),
+            Vec::<String>::new()
+        );
     }
 
     #[test]

@@ -92,7 +92,7 @@ fn block_end(bytes: &[u8], mut cursor: usize) -> usize {
 }
 
 /// Mask comments and literals in one pass, retaining UTF-8 byte offsets and line breaks.
-pub fn mask_noncode(source: &str) -> String {
+fn mask_noncode(source: &str) -> String {
     let bytes = source.as_bytes();
     let mut masked = bytes.to_vec();
     let mut cursor = 0;
@@ -100,7 +100,7 @@ pub fn mask_noncode(source: &str) -> String {
         let rest = &bytes[cursor..];
         let end = match rest.first() {
             Some(b'/') if rest.starts_with(b"//") => {
-                cursor + rest.iter().position(|&b| b == b'\n').unwrap_or(rest.len())
+                cursor + memchr::memchr(b'\n', rest).unwrap_or(rest.len())
             }
             Some(b'/') if rest.starts_with(b"/*") => block_end(bytes, cursor + 2),
             Some(b'\'' | b'b') if rest.starts_with(b"'") || rest.starts_with(b"b'") => {
@@ -112,13 +112,17 @@ pub fn mask_noncode(source: &str) -> String {
             }
             Some(b'"') => quoted_end(bytes, cursor + 1),
             Some(b'b' | b'c') if rest.get(1) == Some(&b'"') => quoted_end(bytes, cursor + 2),
-            _ => match raw_prefix(rest) {
-                Some((prefix, hashes)) => raw_end(bytes, cursor + prefix, hashes),
-                None => {
+            Some(b'r' | b'b' | b'c') => {
+                let Some((prefix, hashes)) = raw_prefix(rest) else {
                     cursor += 1;
                     continue;
-                }
-            },
+                };
+                raw_end(bytes, cursor + prefix, hashes)
+            }
+            _ => {
+                cursor += 1;
+                continue;
+            }
         };
         for byte in &mut masked[cursor..end] {
             if *byte != b'\n' {
@@ -147,7 +151,11 @@ fn matching(text: &[u8], start: usize, opening: u8, closing: u8) -> Option<usize
 }
 
 /// Return lint attributes with source line numbers; string/comment bytes never act as syntax.
+#[must_use = "the extracted attributes are the input to policy evaluation"]
 pub fn lint_attributes(source: &str) -> Vec<Attribute> {
+    if memchr::memchr(b'#', source.as_bytes()).is_none() {
+        return Vec::new();
+    }
     let masked = mask_noncode(source);
     let mut found = Vec::new();
     let mut last_offset = 0;
@@ -191,10 +199,7 @@ pub fn lint_attributes(source: &str) -> Vec<Attribute> {
                 line = 1;
                 last_offset = 0;
             }
-            line += source.as_bytes()[last_offset..offset]
-                .iter()
-                .filter(|&&b| b == b'\n')
-                .count();
+            line += memchr::memchr_iter(b'\n', &source.as_bytes()[last_offset..offset]).count();
             last_offset = offset;
             found.push(Attribute {
                 kind: kind.as_str().to_owned(),

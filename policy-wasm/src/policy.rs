@@ -28,6 +28,9 @@ pub struct Policy {
 
 impl Policy {
     /// Construct the policy from the exact compiler's help output, never a stale lint snapshot.
+    ///
+    /// # Errors
+    /// Returns an error when any mandatory Clippy group is absent.
     pub fn from_clippy_help(help: &str) -> Result<Self, String> {
         let mut groups = BTreeMap::<String, Vec<String>>::new();
         let mut in_groups = false;
