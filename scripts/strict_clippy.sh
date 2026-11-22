@@ -172,6 +172,8 @@ LINT_ARGS=(
     # handwritten suppression form for policy-suppressible lints. Keep
     # unreasoned allow attributes fatal in generated/macro-expanded code too.
     -Dclippy::allow_attributes_without_reason
+    -Dclippy::deprecated_attributes_without_note
+    -Dclippy::must_use_without_reason
 )
 
 run_clippy() {

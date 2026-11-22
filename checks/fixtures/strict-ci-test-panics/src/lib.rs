@@ -1,4 +1,4 @@
-#[must_use]
+#[must_use = "the returned option indicates whether the value was nonzero"]
 pub const fn maybe_identity(value: usize) -> Option<usize> {
     if value == 0 { None } else { Some(value) }
 }

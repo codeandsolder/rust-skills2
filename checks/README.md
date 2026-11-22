@@ -40,7 +40,7 @@ Supported expectations:
 - `fragment` — may fail only because surrounding names/context are absent.
 - `compile_fail` — must fail to compile.
 - `ignore` — not compiled; an explicit `rust-check` marker requires a reason.
-- `nightly(feature_name)` — not checked by the stable harness; records the required feature.
+- `nightly(feature_name)` — generated into a separate package and built by nightly CI with stable-feature warnings denied. Complete examples with a main function are executed unless marked `no_run` or `should_panic`.
 - `fixture(name)` — checked by `fixtures/<name>/verify.sh` instead of the ordinary example harness.
 
 Examples:
@@ -129,8 +129,9 @@ stale legacy debt; the generated diff should be treated as code-review material.
 - The harness is pinned by `checks/rust-toolchain.toml` to Rust 1.100.0.
 - Generated `examples/`, `check.json`, `check.err`, and `manifest.json` are ignored.
 - Outside strict `Good`/`Bad` sections, `gen.py` keeps legacy examples as
-  `auto` except `#![feature(...)]` snippets, which remain nightly-only. Special
-  environments and non-default expectations should use explicit metadata.
+  `auto`. Unstable feature examples require an explicit nightly contract.
+  After generation, run `uv run --no-project python checks/run_nightly_contracts.py`
+  to verify the nightly package. Special environments should use fixture contracts.
 - `test_gen_metadata.py` creates a temporary rule file, verifies native fence
   parsing, removes it, and restores the generated manifest/examples before the
   real corpus compile begins.

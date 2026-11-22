@@ -37,7 +37,7 @@ impl RequestBuilder {
         Self { path: path.into() }
     }
 
-    #[must_use]
+    #[must_use = "the updated builder replaces the consumed builder"]
     fn with_prefix(mut self, prefix: &str) -> Self {
         self.path = format!("{prefix}{}", self.path);
         self
@@ -138,7 +138,7 @@ fn main() {
 }
 ```
 
-Prefer a message that tells the caller why discarding the value is suspicious. Repeating “must use this value” adds little beyond the lint itself.
+The strict nightly gate denies `clippy::must_use_without_reason`; every handwritten must-use attribute needs an explanatory string. Prefer a message that tells the caller why discarding the value is suspicious. Repeating “must use this value” adds little beyond the lint itself.
 
 ## Lint Policy
 
@@ -158,6 +158,7 @@ Clippy's `must_use_candidate`, `return_self_not_must_use`, and `double_must_use`
 
 ## See Also
 
+- [api-deprecation-note](./api-deprecation-note.md) — actionable deprecation notes
 - [api-builder-must-use](./api-builder-must-use.md) — builder-specific guidance
 - [err-result-over-panic](./err-result-over-panic.md) — handling recoverable errors
 - [lint-deny-correctness](./lint-deny-correctness.md) — lint policy

@@ -25,7 +25,7 @@ Verified against Rust 1.102.0-nightly (bdf712ee87, 2026-11-21), compared with Ru
 | `gen_blocks`, `coroutines` | Lazy generators or suspension-based state machines | Distinct features and contracts; prefer explicit iterators when already simple |
 | `must_not_suspend`, `strict_provenance_lints` | Additional compiler diagnostics | Opt-in and scope-specific; useful for async guards or low-level pointer code |
 | `explicit_tail_calls` | Deliberate tail-call control flow | Restricted calling/return conventions; no automatic TCO promise |
-| `optimize_attribute` | Per-function optimization goals | Accepted for 1.101 according to compiler source; remove the gate once that is the actual project baseline |
+
 
 ## Newly visible library features worth evaluating
 
@@ -52,6 +52,7 @@ The 1.102 nightly library records stabilization of the following for 1.101; feat
 - `Arc::is_unique` / `Rc::is_unique`: uniqueness checks; not equivalent to a general proof based on an arbitrary reference count snapshot.
 - `[T]::split_once` / `rsplit_once`: split at the first/last matching element.
 - Integer funnel shifts: prefer the native operations when the two-word shift semantics match.
+- `#[optimize(...)]` (`optimize_attribute`): the language feature is accepted for 1.101 and already ungated on this nightly; verify supported arguments and optimization behavior.
 - Other source-level stabilization changes include `cstr_display`, `debug_closure_helpers`, `exclusive_wrapper`, `int_from_ascii`, `pointer_try_cast_aligned`, `ptr_cast_slice`, `string_into_chars`, and const collection length APIs.
 
 ## Toolchain and verification

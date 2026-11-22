@@ -94,7 +94,8 @@ When a selected workspace mixes strict and relaxed members, the gate runs one
 fully strict production pass and a strict examples pass for the selected set,
 then groups test/bench Clippy runs by effective policy. The relaxed group allows
 only the existing test ergonomics set; `correctness`, `suspicious`, `perf`,
-`todo`, `unimplemented`, `dbg_macro`, and `await_holding_lock` remain fatal.
+`todo`, `unimplemented`, `dbg_macro`, and `await_holding_lock` remain fatal. The two attribute-documentation
+restriction lints also remain fatal in relaxed tests and benchmarks.
 
 For a Rust workspace below the repository root:
 
@@ -186,6 +187,8 @@ policy checker rejects `#[allow]` entirely and rejects `#[expect]` for:
   and `dbg_macro`;
 - undocumented unsafe blocks and missing unsafe API documentation;
 - blocking lock guards held across await;
+- missing reasons on handwritten must-use and deprecation attributes
+  (`must_use_without_reason` and `deprecated_attributes_without_note`);
 - rustc `unexpected_cfgs`, `unsafe_op_in_unsafe_fn`, and stale lint
   expectations;
 - every lint that the current nightly places in Clippy's `correctness`,

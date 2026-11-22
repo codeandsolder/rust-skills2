@@ -1,5 +1,5 @@
 /// Returns the fixture value.
-#[must_use]
+#[must_use = "the returned fixture value is the result"]
 pub const fn value() -> u8 {
     1
 }

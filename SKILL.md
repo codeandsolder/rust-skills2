@@ -1,7 +1,7 @@
 ---
 name: rust-skills
 description: >
-  Comprehensive Rust coding guidelines with 340 rules across 26 categories.
+  Comprehensive Rust coding guidelines with 341 rules across 26 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
@@ -23,7 +23,7 @@ metadata:
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 340 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.100 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 341 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.100 (2024 edition).
 
 ## When to Apply
 
@@ -45,7 +45,7 @@ Reference these guidelines when:
 | 2 | Error Handling | CRITICAL | `err-` | 17 |
 | 3 | Memory Optimization | CRITICAL | `mem-` | 25 |
 | 4 | Unsafe Code | CRITICAL | `unsafe-` | 10 |
-| 5 | API Design | HIGH | `api-` | 20 |
+| 5 | API Design | HIGH | `api-` | 21 |
 | 6 | Async/Await | HIGH | `async-` | 21 |
 | 7 | Concurrency | HIGH | `conc-` | 4 |
 | 8 | Compiler Optimization | HIGH | `opt-` | 15 |
@@ -174,6 +174,7 @@ Reference these guidelines when:
 - [`api-bon-builder`](rules/api-bon-builder.md) - Use `bon` when typestate builders for structs or functions improve the API; account for proc-macro and typestate compile cost
 - [`api-do-not-recommend`](rules/api-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` on legal trait impls whose appearance in diagnostics would usually mislead callers
 - [`api-nutype-validated`](rules/api-nutype-validated.md) - Use `nutype` when generated sanitization, validation, and invariant-preserving trait impls materially simplify a public newtype API
+- [`api-deprecation-note`](rules/api-deprecation-note.md) - When deliberately retaining a deprecated API, document its version and actionable migration in the attribute; do not retain obsolete APIs without an actual compatibility requirement
 
 ### 6. Async/Await (HIGH)
 
@@ -458,8 +459,8 @@ Reference these guidelines when:
 - [`lint-workspace-lints`](rules/lint-workspace-lints.md) - Configure lints at workspace level for consistent enforcement
 - [`lint-cfg-check`](rules/lint-cfg-check.md) - Enable `unexpected_cfgs` and declare known cfgs to catch feature-gate typos
 - [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Enable `clippy::nursery` lints selectively and re-check group membership when the toolchain changes
-- [`lint-cargo-unused-features`](rules/lint-cargo-unused-features.md) - Audit unused Cargo feature flags; distinguish Cargo 1.100’s stable lint infrastructure from the still-experimental feature lint
-- [`lint-dylint-custom`](rules/lint-dylint-custom.md) - Use Dylint for project-specific custom lints without forking clippy
+- [`lint-cargo-unused-features`](rules/lint-cargo-unused-features.md) - Audit unused Cargo feature flags using their actual activation graph; Cargo 1.100 and the reviewed 1.102 nightly do not recognize an `unused_features` lint
+- [`lint-dylint-custom`](rules/lint-dylint-custom.md) - Use Dylint for compiler-resolved project-specific lints when existing Clippy and simpler static checks cannot express the contract
 - [`lint-edition-2024`](rules/lint-edition-2024.md) - Use the `rust_2024_compatibility` lint group and `cargo fix --edition` to audit edition-sensitive code before switching to Rust 2024
 - [`lint-lints-table`](rules/lint-lints-table.md) - Use the `[lints]` table in `Cargo.toml` for canonical lint configuration (Rust 1.74+)
 - [`lint-uplifted`](rules/lint-uplifted.md) - Track Clippy lints uplifted into rustc and adjacent compiler lint changes (Rust 1.86-1.100)
