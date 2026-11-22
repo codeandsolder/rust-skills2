@@ -16,6 +16,7 @@ const tasks = stage === 'pre' ? [
   ['index', ['--check']],
   ['metadata', []],
   ['evidence', []],
+  ['source_tokens', []],
   ['pins', []],
   ['generate', []],
   ['inventory', []],

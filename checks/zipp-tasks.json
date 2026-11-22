@@ -92,5 +92,18 @@
       "checks/fixtures/ambient-config-advisory/src/lib.rs"
     ],
     "stdin": "compiler-evidence.jsonl"
+  },
+  "source_tokens": {
+    "entry": "checks/check_source_tokens.py",
+    "read": [
+      "checks/source_tokens.py"
+    ]
+  },
+  "source_corpus": {
+    "entry": "checks/check_source_tokens.py",
+    "read": [
+      "checks/source_tokens.py"
+    ],
+    "stdin": "source-corpus.json"
   }
 }
