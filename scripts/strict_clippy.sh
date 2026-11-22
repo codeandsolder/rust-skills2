@@ -89,8 +89,9 @@ done
 echo "rust-skills2: cargo +$TOOLCHAIN fmt --all --check"
 cargo "+$TOOLCHAIN" fmt --all --check
 
-SOURCE_POLICY_SCRIPT="$ACTION_DIR/../../../scripts/check_source_lint_policy.py"
-if [[ ! -f "$SOURCE_POLICY_SCRIPT" ]]; then
+SOURCE_POLICY_SCRIPT="$ACTION_DIR/../../../policy-wasm/check.mjs"
+SOURCE_POLICY_MODULE="$ACTION_DIR/../../../policy-wasm/module.json"
+if [[ ! -f "$SOURCE_POLICY_SCRIPT" || ! -f "$SOURCE_POLICY_MODULE" ]]; then
     echo "rust-skills2: source policy checker missing at $SOURCE_POLICY_SCRIPT" >&2
     exit 2
 fi
@@ -101,7 +102,7 @@ if [[ ! -f "$WORKSPACE_POLICY_SCRIPT" ]]; then
     exit 2
 fi
 
-uv run --no-project python "$SOURCE_POLICY_SCRIPT" --toolchain "$TOOLCHAIN"
+node "$SOURCE_POLICY_SCRIPT" "$SOURCE_POLICY_MODULE" "$TOOLCHAIN"
 
 # The reusable gate intentionally owns Clippy configuration. A project-local
 # clippy.toml may contain useful developer preferences, but it must not be able

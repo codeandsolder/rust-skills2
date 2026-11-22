@@ -34,4 +34,4 @@ runs:
     - name: Check source lint suppression policy
       working-directory: ${{ inputs.working-directory }}
       shell: bash
-      run: python3 "$GITHUB_ACTION_PATH/../../../scripts/check_source_lint_policy.py" --toolchain "${{ steps.compiler.outputs.channel }}"
+      run: node "$GITHUB_ACTION_PATH/../../../policy-wasm/check.mjs" "$GITHUB_ACTION_PATH/../../../policy-wasm/module.json" "${{ steps.compiler.outputs.channel }}"

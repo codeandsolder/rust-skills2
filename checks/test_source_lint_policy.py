@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.check_source_lint_policy import (
+from source_policy_oracle import (
     CargoMetadata,
     lint_attributes,
     manifest_allow_violations,
