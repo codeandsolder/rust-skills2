@@ -48,7 +48,8 @@ uv run --no-project python -B checks/compare_source_fixtures.py policy-wasm/modu
 ```
 
 The independent source-token scanner in checks/source_tokens.py runs in
-Zipp for token tests and corpus comparison. Native-host fixture comparisons
-remain CPython until Zipp supports the required standard-library modules.
+Zipp for token tests and corpus comparison. Workspace policy comparison also uses Zipp against actual Cargo metadata and
+unit-graph evidence. Native-host source policy fixture comparisons remain
+CPython until Zipp supports the required standard-library modules.
 The prior Python implementation is a test-only differential oracle in
 `checks/source_policy_oracle.py`, not an alternative consumer code path.

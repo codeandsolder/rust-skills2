@@ -3,46 +3,15 @@
 
 from __future__ import annotations
 
-import argparse
 import json
-import tomllib
-import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 
 def fail(message: str) -> "NoReturn":
     print(f"rust-skills2: {message}", file=sys.stderr)
     raise SystemExit(2)
-
-
-def parse_bool(value: str) -> bool:
-    if value == "true":
-        return True
-    if value == "false":
-        return False
-    raise argparse.ArgumentTypeError("expected true or false")
-
-
-def run_json(argv: list[str]) -> dict[str, Any]:
-    result = subprocess.run(
-        argv,
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    if result.returncode != 0:
-        print(result.stderr, file=sys.stderr, end="")
-        fail(f"command failed: {' '.join(argv)}")
-    try:
-        value = json.loads(result.stdout)
-    except json.JSONDecodeError as error:
-        fail(f"invalid JSON from {' '.join(argv)}: {error}")
-    if not isinstance(value, dict):
-        fail(f"unexpected JSON shape from {' '.join(argv)}")
-    return value
 
 
 def parse_package_selectors(cargo_args: list[str]) -> tuple[bool, list[str], list[str]]:
@@ -147,15 +116,7 @@ def reason_field(table: dict[str, Any], key: str, location: str) -> str | None:
     return value.strip()
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--toolchain", default=tomllib.loads((Path(__file__).resolve().parents[1] / "rust-toolchain.toml").read_text())["toolchain"]["channel"])
-    parser.add_argument("--default-allow-test-panics", required=True, type=parse_bool)
-    parser.add_argument("--cargo-arg", action="append", default=[])
-    args = parser.parse_args()
-
-    metadata = run_json(["cargo", f"+{args.toolchain}", "metadata", "--no-deps", "--format-version", "1"])
-
+def resolve(metadata: dict[str, Any], default_allow_test_panics: bool, cargo_args: list[str]) -> list[str]:
     workspace_table = rust_skills2_table(
         (metadata.get("metadata") or {}).get("rust-skills2"),
         "workspace.metadata",
@@ -168,18 +129,19 @@ def main() -> int:
     )
 
     workspace_default = (
-        args.default_allow_test_panics if workspace_override is None else workspace_override
+        default_allow_test_panics if workspace_override is None else workspace_override
     )
-    if workspace_override is True and args.default_allow_test_panics is False and workspace_reason is None:
+    if workspace_override is True and default_allow_test_panics is False and workspace_reason is None:
         fail(
             "workspace.metadata.rust-skills2.allow-test-panics = true requires "
             "allow-test-panics-reason"
         )
 
-    selected = select_packages(metadata, args.cargo_arg)
+    selected = select_packages(metadata, cargo_args)
     if not selected:
         fail("Cargo selectors resolved to no workspace packages")
 
+    rows = []
     for package in selected:
         package_location = f"{package['manifest_path']}: package.metadata.rust-skills2"
         package_metadata = package.get("metadata") or {}
@@ -200,10 +162,23 @@ def main() -> int:
 
         policy = "relaxed" if effective else "strict"
         spec = f"{package['name']}@{package['version']}"
-        print(f"{policy}\t{spec}")
+        rows.append(f"{policy}\t{spec}")
 
-    return 0
+    return rows
+
+
+def main():
+    requests = json.loads(Path("workspace-requests.json").read_text())
+    results = []
+    for request in requests:
+        try:
+            rows = resolve(request["metadata"], request["default"], request["selectors"])
+        except SystemExit as error:
+            results.append({"status": error.code, "rows": []})
+        else:
+            results.append({"status": 0, "rows": rows})
+    print(json.dumps(results))
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()
