@@ -6,7 +6,7 @@
 
 A `try { ... }` block creates a local try-propagation context: `?` can short-circuit out of the block rather than out of the enclosing function. This is useful when a function itself should not return the same `Result` or `Option`, but one expression inside it naturally does.
 
-As of Rust 1.100, homogeneous try blocks are still unstable behind `#![feature(try_blocks)]` and are tracked by rust-lang/rust#154391. Do not confuse that feature with RFC 3058 / `try_trait_v2`: the public `Try` and `FromResidual` traits are a separate, still-unstable library API tracked by #84277.
+As of Rust 1.102.0-nightly (2026-11-21 compiler commit), homogeneous try blocks are still unstable behind `#![feature(try_blocks)]` and are tracked by rust-lang/rust#154391. Do not confuse that feature with RFC 3058 / `try_trait_v2`: the public `Try` and `FromResidual` traits are a separate, still-unstable library API tracked by #84277.
 
 ## Bad
 
@@ -93,7 +93,7 @@ Prefer a named helper when the logic is substantial or independently meaningful.
 
 ## Current Status
 
-| Feature | Rust 1.100 status |
+| Feature | Rust 1.102.0-nightly status |
 |---|---|
 | `?` on supported standard types | Stable |
 | homogeneous `try { ... }` | Nightly, `try_blocks`, issue #154391 |

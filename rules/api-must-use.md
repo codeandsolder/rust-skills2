@@ -99,7 +99,7 @@ Whether that return value deserves `#[must_use]` is an API-design decision, not 
 
 The language has a narrow exception for must-use container types that cannot represent the must-handle branch. `Result<(), E>` does not trigger `unused_must_use` when `E` is uninhabited; likewise for `ControlFlow<B, ()>` when `B` is uninhabited.
 
-Use a stable uninhabited type in examples. `core::convert::Infallible` works on stable Rust; using `!` as a generic type argument is still not the right stable example.
+Both `core::convert::Infallible` and `!` are available on the Rust 1.100 baseline; `Infallible` is an alias for `!` on that baseline.
 
 ```rust
 #![deny(unused_must_use)]

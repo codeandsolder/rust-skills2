@@ -1,11 +1,11 @@
 # Rust Skills
 
-![rules](https://img.shields.io/badge/rules-337-blue)
+![rules](https://img.shields.io/badge/rules-338-blue)
 ![categories](https://img.shields.io/badge/categories-26-blue)
 ![Rust](https://img.shields.io/badge/Rust-1.100%20%2F%202024%20edition-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-337 Rust rules your AI coding agent can use to write better code. Current for Rust 1.100 (2024 edition).
+338 Rust rules your AI coding agent can use to write better code. Current for Rust 1.100 (2024 edition).
 
 Works with Claude Code, Cursor, Windsurf, Copilot, Codex, Aider, Zed, Amp, Cline, and pretty much any other agent that supports skills.
 
@@ -41,6 +41,8 @@ Clippy. See [docs/strict-ci.md](./docs/strict-ci.md) for the policy and
 customization points.
 
 Migrating a codebase? Start with [Rust 1.99 → 1.100](./docs/migration-rust-1.99-to-1.100.md) for the current stable upgrade, or the historical [Rust 1.88 → 1.99 guide](./docs/migration-rust-1.88-to-1.99.md).
+
+For nightly development, see the [nightly feature guide](./rules/proj-nightly-features.md) and [current lint review](./docs/nightly-lint-review.md).
 
 ## How to use it
 
@@ -87,7 +89,7 @@ fn first_word(s: &str) -> Option<&str> {
 
 ## What's in here
 
-337 rules split into 26 categories:
+338 rules split into 26 categories:
 
 | Category | Rules | What it covers |
 |----------|-------|----------------|
