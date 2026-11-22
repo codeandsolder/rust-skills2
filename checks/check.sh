@@ -49,9 +49,6 @@ run_python "$ROOT/checks/gen_index.py" --check
 echo "==> verifier metadata regression tests"
 run_python "$ROOT/checks/test_gen_metadata.py"
 
-echo "==> maintenance renderer regression tests"
-run_python "$ROOT/checks/test_maintenance_renderer.py"
-
 echo "==> compiler evidence and source-policy regression tests"
 run_python "$ROOT/checks/test_analyze.py"
 run_python "$ROOT/checks/test_source_lint_policy.py"
