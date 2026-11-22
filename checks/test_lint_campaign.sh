@@ -118,7 +118,7 @@ for worker in one two; do
     run checkpoint "$worker"
 done
 # Submissions return before any compilation and retain their reservations.
-run publish one "touch '$tmp/validation-started'; while ! test -e '$tmp/release-validation'; do sleep 0.1; done"
+run publish one "test "\$CARGO_BUILD_BUILD_DIR" = "\$CARGO_TARGET_DIR"; cargo +stable test --locked --lib --no-run --message-format=json | jq -se 'any(.[]; .reason=="compiler-artifact" and .fresh==true and .profile.test==true and (.target.kind|index("lib"))!=null)'; touch '$tmp/validation-started'; while ! test -e '$tmp/release-validation'; do sleep 0.1; done"
 run publish two
 [[ "$(git -C "$tmp/repo" ls-remote --heads origin campaign | cut -f1)" == "$baseline" ]]
 [[ "$(jq -rs '[.[]|select(.status=="pending")]|length' "$state"/queue/*.json)" == 2 ]]
@@ -140,6 +140,7 @@ if run extend one "$two_file"; then echo "queued overlap accepted" >&2; touch "$
 touch "$tmp/release-validation"
 wait "$drain_pid" || { cat "$tmp/drain.log"; exit 1; }
 [[ "$(jq -rs '[.[]|select(.status=="published")]|length' "$state"/queue/*.json)" == 2 ]]
+[[ ! -e "$state/build/validator" ]]
 # Failure retains the source and reservation, but never blocks later jobs.
 one="$tmp/worktrees/one"
 printf '// no reduction\n' >>"$one/src/gamma.rs"
@@ -148,6 +149,7 @@ git -C "$one" commit --quiet -m no-reduction
 run publish one
 run drain
 [[ "$(jq -r .status "$state/queue/000000003.json")" == failed ]]
+[[ ! -e "$state/build/validator" ]]
 run recover 000000003 one
 sed -i 's/345678/345_678/' "$one/src/gamma.rs"
 git -C "$one" add src/gamma.rs

@@ -152,6 +152,15 @@ remote_tip() {
         die "campaign target no longer descends from its initial revision"
     printf '%s\n' "$tip"
 }
+# Cargo's normal ephemeral-intermediates mode is process-scoped. The
+# campaign owns a bounded build transaction, not individual Cargo calls.
+# Explicit build-dir is Cargo's supported override; keep it at target-dir
+# so the managed compiler cache sees the same canonical artifact root.
+configure_campaign_build() {
+    local dir=$1
+    mkdir -p "$dir/target"
+    export CARGO_TARGET_DIR="$dir/target" CARGO_BUILD_BUILD_DIR="$dir/target" CARGO_INCREMENTAL=0
+}
 # Inventory runs with style lints as warnings so Cargo can reach every target.
 # Actual compiler failures and safety diagnostics remain fatal, and publishing
 # also runs the stable, source-policy and configured regression gates.
@@ -167,7 +176,7 @@ inventory() {
         say "inventory $revision"
         (
             cd "$checkout" || exit
-            export CARGO_TARGET_DIR="$dir/target" CARGO_INCREMENTAL=0
+            configure_campaign_build "$dir"
             export GITHUB_WORKSPACE="$checkout" RUST_SKILLS2_WORKING_DIRECTORY=.
             export RUST_SKILLS2_ACTION_DIR="$SKILLS/.github/actions/rust-strict"
             export RUST_SKILLS2_CARGO_ARGS="--locked --workspace --all-targets"
@@ -270,14 +279,24 @@ validate() {
     clean_at "$work"
     (
         cd "$work" || exit
-        export CARGO_TARGET_DIR="$dir/target" CARGO_INCREMENTAL=0
+        configure_campaign_build "$dir"
+        local started=$SECONDS
         cargo "+$stable" fmt --all -- --check || exit
+        printf 'Timing: stable format %ss\n' "$((SECONDS-started))"
+        started=$SECONDS
         cargo "+$stable" clippy --workspace --all-targets --locked -- -D warnings || exit
+        printf 'Timing: stable Clippy %ss\n' "$((SECONDS-started))"
+        started=$SECONDS
         uv run --no-project python "$SKILLS/scripts/check_source_lint_policy.py" || exit
+        printf 'Timing: source policy %ss\n' "$((SECONDS-started))"
         printf 'Shared smoke command: %s\n' "$smoke"
+        started=$SECONDS
         bash -euo pipefail -c "$smoke" || exit
+        printf 'Timing: shared smoke %ss\n' "$((SECONDS-started))"
         printf 'Worker focused command: %s\n' "$focused"
-        bash -euo pipefail -c "$focused"
+        started=$SECONDS
+        bash -euo pipefail -c "$focused" || exit
+        printf 'Timing: focused checks %ss\n' "$((SECONDS-started))"
     ) >"$state/logs/$revision.gate.log" 2>&1 ||
         die "regression gate failed; see $state/logs/$revision.gate.log"
     clean_at "$work"
@@ -695,7 +714,7 @@ case "$action" in
             trap 'git_repo worktree remove "$temporary" >/dev/null 2>&1 || true; rmdir "$temporary" 2>/dev/null || true; rm -rf -- "$build"' EXIT
             git_repo worktree add --quiet --detach "$temporary" "$tip" || exit
             cd "$temporary" || exit
-            export CARGO_TARGET_DIR="$build/target" CARGO_INCREMENTAL=0
+            configure_campaign_build "$build"
             export GITHUB_WORKSPACE="$temporary" RUST_SKILLS2_WORKING_DIRECTORY=.
             export RUST_SKILLS2_ACTION_DIR="$SKILLS/.github/actions/rust-strict"
             export RUST_SKILLS2_CARGO_ARGS="--locked --workspace --all-targets"

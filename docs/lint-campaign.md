@@ -127,6 +127,16 @@ its environment. For finite manual processing, use
 validator lock.
 
 The validator processes jobs in a dedicated reusable detached worktree.
+Within one candidate's transaction, all Cargo invocations share an explicit
+campaign-owned target/build directory (Cargo's supported build-dir override).
+This preserves fingerprints, test binaries and dependency artifacts across
+nightly inventory, stable Clippy, smoke and focused commands, without
+disabling the host's ephemeral mode globally or bypassing managed sccache.
+The transaction deletes build output when it finishes, including failures;
+an interrupted transaction's leftover output is removed before retry.
+Diagnostic logs and inventory receipts remain in STATE. Disposable baseline
+and final-validation directories use the same build-dir setup and cleanup.
+Stage timings are recorded in the existing gate logs.
 Lint-only jobs are FIFO. Issue-mode pending jobs are ranked by the number
 of distinct unfinished transitive dependants, with FIFO ties. An interrupted
 running job is retried first; an active validation is never preempted.

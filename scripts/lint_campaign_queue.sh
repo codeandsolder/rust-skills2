@@ -205,8 +205,7 @@ drain_queue() {
             unlock_claims
             tip=$(git_repo rev-parse "refs/remotes/origin/$target")
             if [[ ! -f "$state/inventory/$tip.json" ]]; then
-                validator_checkout "$tip"
-                inventory "$work" "$tip" "$state/build/validator"
+                inventory_tip "$tip"
             fi
             return
         fi
@@ -217,7 +216,17 @@ drain_queue() {
         say "validating queue job $job"
         # An if-condition would disable errexit throughout the function.
         set +e
-        (set -e; validate_job "$record") >>"$state/logs/queue-$job.log" 2>&1
+        (
+            set -e
+            started=$SECONDS
+            # The validator lock is held here. No other job can use this
+            # directory; discard any leftovers from an interrupted job.
+            build="$state/build/validator"
+            rm -rf -- "$build"
+            mkdir -p "$build"
+            trap 'rc=$?; rm -rf -- "$build"; printf "Timing: validation transaction %ss (exit %s)\n" "$((SECONDS-started))" "$rc"' EXIT
+            validate_job "$record"
+        ) >>"$state/logs/queue-$job.log" 2>&1
         rc=$?
         set -e
         lock_claims
