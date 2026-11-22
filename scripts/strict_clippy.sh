@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+TOOLCHAIN=nightly
+if [[ ${1:-} == --toolchain && $# == 2 ]]; then
+    TOOLCHAIN=$2
+elif (( $# != 0 )); then
+    echo "usage: strict_clippy.sh [--toolchain nightly[-YYYY-MM-DD]]" >&2
+    exit 2
+fi
+[[ "$TOOLCHAIN" =~ ^nightly(-[0-9]{4}-[0-9]{2}-[0-9]{2})?$ ]] || {
+    echo "rust-skills2: expected a nightly toolchain" >&2
+    exit 2
+}
+
 ROOT="${GITHUB_WORKSPACE:-$(pwd)}"
 WORKDIR="${RUST_SKILLS2_WORKING_DIRECTORY:-.}"
 ACTION_DIR="${RUST_SKILLS2_ACTION_DIR:-}"
@@ -74,8 +86,8 @@ for ((i = 0; i < ${#CARGO_ARGS[@]}; i++)); do
     esac
 done
 
-echo "rust-skills2: cargo +nightly fmt --all --check"
-cargo +nightly fmt --all --check
+echo "rust-skills2: cargo +$TOOLCHAIN fmt --all --check"
+cargo "+$TOOLCHAIN" fmt --all --check
 
 SOURCE_POLICY_SCRIPT="$ACTION_DIR/../../../scripts/check_source_lint_policy.py"
 if [[ ! -f "$SOURCE_POLICY_SCRIPT" ]]; then
@@ -165,12 +177,12 @@ LINT_ARGS=(
 run_clippy() {
     local -n cargo_args_ref=$1
     local -n lint_args_ref=$2
-    printf 'rust-skills2: cargo +nightly clippy'
+    printf 'rust-skills2: cargo +%s clippy' "$TOOLCHAIN"
     printf ' %q' "${cargo_args_ref[@]}"
     printf ' --'
     printf ' %q' "${lint_args_ref[@]}"
     printf '\n'
-    cargo +nightly clippy "${cargo_args_ref[@]}" -- "${lint_args_ref[@]}"
+    cargo "+$TOOLCHAIN" clippy "${cargo_args_ref[@]}" -- "${lint_args_ref[@]}"
 }
 
 has_cargo_arg() {
