@@ -4,3 +4,6 @@ manifest.json
 check*.json
 check*.err
 suspects.txt
+
+# Python differential-reference subprocesses must not publish bytecode.
+__pycache__/

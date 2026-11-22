@@ -43,8 +43,12 @@ modules must pass the same policy regressions.
 
 ```sh
 node policy-wasm/package.mjs verify /path/to/build/wasm32-wasip1/release/source-policy.wasm nightly-2026-11-19
-uv run --no-project python -B checks/compare_source_policy.py policy-wasm/module.json . --fixtures nightly-2026-11-19
+node checks/compare_source_tokens.mjs ../ci-workflows/zipp-python/run.mjs policy-wasm/module.json .
+uv run --no-project python -B checks/compare_source_fixtures.py policy-wasm/module.json nightly-2026-11-19
 ```
 
+The independent source-token scanner in checks/source_tokens.py runs in
+Zipp for token tests and corpus comparison. Native-host fixture comparisons
+remain CPython until Zipp supports the required standard-library modules.
 The prior Python implementation is a test-only differential oracle in
 `checks/source_policy_oracle.py`, not an alternative consumer code path.
