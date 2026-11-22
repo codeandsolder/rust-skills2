@@ -6,11 +6,11 @@ use serde_json::{Map, Value};
 use std::collections::BTreeSet;
 
 #[derive(Deserialize)]
-pub(crate) struct Request {
-    pub(crate) default_allow_test_panics: bool,
-    pub(crate) cargo_args: Vec<String>,
-    pub(crate) default_members: Vec<String>,
-    pub(crate) metadata: Value,
+pub struct Request {
+    pub default_allow_test_panics: bool,
+    pub cargo_args: Vec<String>,
+    pub default_members: Vec<String>,
+    pub metadata: Value,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -21,7 +21,7 @@ enum Policy {
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
-pub(crate) struct Row {
+pub struct Row {
     policy: Policy,
     spec: String,
 }
@@ -179,7 +179,7 @@ fn effective(metadata: &Value, inherited: bool, location: &str) -> Result<bool, 
     Ok(override_value.unwrap_or(inherited))
 }
 
-pub(crate) fn resolve(request: &Request, packages: &[Package]) -> Result<Vec<Row>, String> {
+pub fn resolve(request: &Request, packages: &[Package]) -> Result<Vec<Row>, String> {
     let default = effective(
         &request.metadata,
         request.default_allow_test_panics,
@@ -210,7 +210,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn member(name: &str, metadata: Value) -> Result<Package, serde_json::Error> {
+    fn member(name: &str, metadata: &Value) -> Result<Package, serde_json::Error> {
         serde_json::from_value(json!({
             "id": name, "name": name, "version": "1.0.0",
             "manifest": format!("/workspace/{name}/Cargo.toml"),
@@ -221,10 +221,10 @@ mod tests {
     #[test]
     fn workspace_precedes_packages_and_excludes_apply() -> Result<(), Box<dyn std::error::Error>> {
         let packages = [
-            member("a", Value::Null)?,
+            member("a", &Value::Null)?,
             member(
                 "b",
-                json!({"rust-skills2": {"allow-test-panics": true, "allow-test-panics-reason": "migration"}}),
+                &json!({"rust-skills2": {"allow-test-panics": true, "allow-test-panics-reason": "migration"}}),
             )?,
         ];
         let mut request = Request {
@@ -263,8 +263,8 @@ mod tests {
     fn inherited_relaxation_can_only_be_strengthened_without_reason()
     -> Result<(), Box<dyn std::error::Error>> {
         let packages = [
-            member("a", json!({"rust-skills2": {"allow-test-panics": false}}))?,
-            member("b", Value::Null)?,
+            member("a", &json!({"rust-skills2": {"allow-test-panics": false}}))?,
+            member("b", &Value::Null)?,
         ];
         let mut request = Request {
             default_allow_test_panics: false,
