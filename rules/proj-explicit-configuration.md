@@ -59,6 +59,30 @@ Parse an explicit CLI argument or configuration file once in the executable, rej
 
 Review the resolved API and its purpose, including imported aliases, reexports, indirect helper calls, and dependencies on global configuration. A text search is an inventory, not proof of a violation or absence. A compiler-resolved disallowed-method policy can enforce a boundary in a crate whose role is known; a universal ban would break legitimate integration tools. Start fleet migration with advisory findings and enforce only policies that distinguish the actual contract.
 
+### Compiler-resolved advisory inventory
+
+The repository supplies a standalone [audit runner](https://github.com/codeandsolder/rust-skills2/blob/main/scripts/audit_ambient_config.sh). Run it from the workspace you are reviewing, with the same toolchain, target and feature selection you would pass to Cargo Clippy:
+
+```sh
+/path/to/rust-skills2/scripts/audit_ambient_config.sh --locked --workspace --lib
+```
+
+The audit uses Clippy's `disallowed-methods` against `std::env::{var, var_os, vars, vars_os, set_var, remove_var}`. It reports resolved function items, including imported aliases and reexports, without interpreting comments or strings as code. It does not report explicit child-process environment configuration, CLI arguments, or compile-time Cargo metadata. It reports the operation inside a wrapper, not an interprocedural proof that every downstream caller respects the boundary.
+
+This is deliberately a separate Clippy configuration, not the central strict gate. Audit findings are warnings, other compiler findings retain their normal severity, and compilation errors are not hidden. Cargo's ordinary selected targets and cfg/feature coverage still apply. To enforce the rule in a crate with a known role, integrate the corresponding `disallowed-methods` entries into that crate's effective Clippy configuration and deny the lint there.
+
+When narrow, intentional integration exceptions are necessary, keep the expectation directly at the boundary, not at the crate or module level. A reasoned exception is a real compiler-checked contract:
+
+<!-- rust-check: fixture(ambient-config-advisory) -->
+```rust
+#[expect(clippy::disallowed_methods, reason = "explicit credential provider boundary")]
+pub fn credentials() -> Option<String> {
+    std::env::var("CREDENTIAL").ok()
+}
+```
+
+Do not add this attribute where the configured audit is not run regularly: it must correspond to an actual emitted lint, not a broad future-proof suppression.
+
 ## See Also
 
 - [proj-lib-main-split](./proj-lib-main-split.md) - Application and library boundaries
