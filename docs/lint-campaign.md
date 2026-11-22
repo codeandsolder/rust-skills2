@@ -8,7 +8,7 @@ branch. The default branch is never a campaign target.
 
 ## Start once
 
-Requirements: Bash, Git, jq, flock (Linux), uv, the installed stable/nightly
+Requirements: Bash, Git, jq, flock (Linux), uv, the installed nightly
 Rust tools, and the existing managed sccache wrapper. All participating agents
 must use the same Git common directory on the same host and the same
 rust-skills2 revision. The tool is not a distributed lease service for separate
@@ -16,8 +16,7 @@ clones. Keep that pinned rust-skills2 checkout available throughout a campaign.
 Do not use a moving toolchain or modify compiler flags during a campaign.
 
 For a long-lived campaign, provision a dedicated Rustup home with its
-`toolchains/nightly-<host>` and `toolchains/stable-<host>` aliases pointing
-to installed dated nightly and numbered stable toolchains, respectively.
+`toolchains/nightly-<host>` alias pointing to the installed dated nightly.
 Do not point these aliases at the host's moving toolchains. Keep the
 installation available until the campaign is finished. Initialize with
 `LINT_CAMPAIGN_RUSTUP_HOME=/absolute/path/to/pinned-rustup`; the campaign
@@ -44,7 +43,7 @@ worktrees=/absolute/projects/repo-lint-campaign
 export RUST_SKILLS2_ALLOW_TEST_PANICS=true
 # RUSTC_WRAPPER already points at the managed cache; never start another.
 "$tool" init "$state" chore/strict-cleanup "$worktrees" \
-  'cargo +stable test --locked --lib'
+  'cargo +nightly test --locked --lib'
 ```
 
 The last argument is a required shared regression command for every
@@ -101,7 +100,7 @@ claim it **before** changing it:
 ```bash
 "$tool" extend "$state" agent-1 src/shared_helper.rs tests/regression.rs
 "$tool" checkpoint "$state" agent-1  # optional: save committed work remotely
-"$tool" publish "$state" agent-1 'cargo +stable test --locked --test regression'
+"$tool" publish "$state" agent-1 'cargo +nightly test --locked --test regression'
 ```
 
 Publication is now **submission**, not synchronous validation. It checks
@@ -130,13 +129,16 @@ The validator processes jobs in a dedicated reusable detached worktree.
 Within one candidate's transaction, all Cargo invocations share an explicit
 campaign-owned target/build directory (Cargo's supported build-dir override).
 This preserves fingerprints, test binaries and dependency artifacts across
-nightly inventory, stable Clippy, smoke and focused commands, without
+nightly inventory, smoke and focused commands, without
 disabling the host's ephemeral mode globally or bypassing managed sccache.
 The transaction deletes build output when it finishes, including failures;
 an interrupted transaction's leftover output is removed before retry.
 Diagnostic logs and inventory receipts remain in STATE. Disposable baseline
 and final-validation directories use the same build-dir setup and cleanup.
-Stage timings are recorded in the existing gate logs.
+Stage timings are recorded in the existing gate logs. On upgrade from a
+two-compiler campaign, queued Cargo +stable commands are migrated once to
++nightly, with original records archived under STATE/migrations/nightly-only.
+New submissions must use nightly.
 Lint-only jobs are FIFO. Issue-mode pending jobs are ranked by the number
 of distinct unfinished transitive dependants, with FIFO ties. An interrupted
 running job is retried first; an active validation is never preempted.
@@ -144,8 +146,9 @@ Priorities are recomputed from the live DAG and published receipts at each
 job boundary, so recovering a key prerequisite does not send it to the
 back of an unrelated queue. It incorporates the latest target, reuses the accepted tip's
 cached lint inventory, scans the exact candidate once, checks scope and
-lint delta, and runs formatting, stable all-target Clippy, source policy,
-shared and focused regressions. It alone pushes accepted candidates
+lint delta, and runs the authoritative nightly formatting/Clippy/source-policy
+inventory followed by nightly shared and focused regressions. No duplicate
+compiler or source-policy pass. It alone pushes accepted candidates
 directly to the target. There is no designated integration agent, no
 competing validation loop, and no per-worker revalidation on each merge.
 A non-campaign external target update may cause a non-fast-forward push
@@ -202,7 +205,7 @@ when idle, fetch and fast-forward it to the target.
 When claims are released and the target is ready:
 
 ```bash
-"$tool" finish "$state" 'cargo +stable test --workspace --locked'
+"$tool" finish "$state" 'cargo +nightly test --workspace --locked'
 ```
 
 When the queue is empty, the final command excludes the validator and runs the real, normal strict CI gate and the complete
@@ -228,7 +231,7 @@ after the lint campaign has finished and the target inventory is empty:
 
 ```bash
 "$tool" init-issues "$state" "$target" "$worktrees" /absolute/issue-plan.json \
-  'cargo +stable test --workspace --locked'
+  'cargo +nightly test --workspace --locked'
 "$tool" serve "$state"
 ```
 

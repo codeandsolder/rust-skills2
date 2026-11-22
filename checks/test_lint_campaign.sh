@@ -15,7 +15,7 @@ cleanup() {
     rm -rf -- "$tmp"
 }
 trap cleanup EXIT
-export LINT_CAMPAIGN_NIGHTLY=nightly LINT_CAMPAIGN_STABLE=stable
+export LINT_CAMPAIGN_NIGHTLY=nightly
 export RUST_SKILLS2_ALLOW_TEST_PANICS=true
 # Deliberately supply an undersized inherited value: the campaign must clamp it.
 export CARGO_BUILD_JOBS=1
@@ -53,12 +53,12 @@ fn relaxed() {
 RS
 (
     cd "$tmp/repo"
-    cargo +stable generate-lockfile --offline
-    cargo +stable fmt --all
+    cargo +nightly generate-lockfile --offline
+    cargo +nightly fmt --all
     git add .
     git commit --quiet -m baseline
     git push --quiet -u origin campaign
-    bash "$tool" init "$tmp/state" campaign "$tmp/worktrees" 'test "$CARGO_BUILD_JOBS" -eq 16 && cargo +stable test --locked'
+    bash "$tool" init "$tmp/state" campaign "$tmp/worktrees" 'test "$CARGO_BUILD_JOBS" -eq 16 && cargo +nightly test --locked'
 )
 state="$tmp/state"
 run() { bash "$tool" "$1" "$state" "${@:2}"; }
@@ -68,10 +68,10 @@ baseline=$(jq -er .base "$state/config.json")
 [[ "$(jq length "$state/inventory/$baseline.json")" == 3 ]]
 # A campaign can adopt a shared isolated Rustup home without changing
 # its baseline. The fixture links the current test toolchains (no updates).
-host=$(rustc +stable -vV | sed -n 's/^host: //p')
+host=$(rustc +nightly -vV | sed -n 's/^host: //p')
 pinned="$tmp/pinned-rustup"
 mkdir -p "$pinned/toolchains"
-for channel in nightly stable; do
+for channel in nightly; do
     compiler=$(rustup which --toolchain "$channel" rustc)
     ln -s "$(dirname "$(dirname "$compiler")")" "$pinned/toolchains/$channel-$host"
 done
@@ -120,7 +120,7 @@ done
 # Submissions return before any compilation and retain their reservations.
 reuse_check=$(cat <<'SH'
 test "$CARGO_BUILD_BUILD_DIR" = "$CARGO_TARGET_DIR"
-cargo +stable test --locked --lib --no-run --message-format=json | jq -se 'any(.[]; .reason=="compiler-artifact" and .fresh==true and .profile.test==true and (.target.kind|index("lib"))!=null)'
+cargo +nightly test --locked --lib --no-run --message-format=json | jq -se 'any(.[]; .reason=="compiler-artifact" and .fresh==true and .profile.test==true and (.target.kind|index("lib"))!=null)'
 SH
 )
 run publish one "$reuse_check
@@ -174,7 +174,7 @@ tip=$(git -C "$tmp/repo" rev-parse origin/campaign)
 [[ "$(git -C "$tmp/repo" show "$tip:shared/beta.rs")" == 'pub const BETA: u32 = 234_567;' ]]
 [[ -z "$(git -C "$tmp/repo" ls-remote --heads origin 'refs/heads/lint-campaign/*')" ]]
 [[ -z "$(find "$state/claims" -name '*.json' -print -quit)" ]]
-run finish 'cargo +stable test --locked'
+run finish 'cargo +nightly test --locked'
 [[ "$(cat "$state/finished")" == "$tip" ]]
 [[ -z "$(find "$tmp/worktrees" -mindepth 1 -maxdepth 1 -type d -print -quit)" ]]
 if run claim after-finish; then echo "unexpected success" >&2; exit 1; fi
@@ -191,7 +191,7 @@ JSON
 state="$tmp/issue-state"
 (
     cd "$tmp/repo"
-    bash "$tool" init-issues "$state" campaign "$tmp/issue-worktrees" "$tmp/issues.json" 'cargo +stable test --locked'
+    bash "$tool" init-issues "$state" campaign "$tmp/issue-worktrees" "$tmp/issues.json" 'cargo +nightly test --locked'
 )
 [[ "$(run issues | jq -r 'map(.status)|join(",")')" == 'ready,ready,blocked,blocked' ]]
 run claim-issue one 101
@@ -205,7 +205,21 @@ printf '// Refactor alpha.\n' >>"$one/src/alpha.rs"
 git -C "$one" add NOTES.md src/alpha.rs
 git -C "$one" commit --quiet -m 'refactor alpha'
 if run publish one; then echo "missing focused gate accepted" >&2; exit 1; fi
-run publish one 'cargo +stable test --locked'
+if run publish one 'cargo +stable test --locked'; then echo "stable submission accepted" >&2; exit 1; fi
+run publish one 'cargo +nightly test --locked'
+# Exercise the one-time migration of a legacy live queue, not a compatibility
+# execution path. Keep original command and toolchain metadata for audit.
+jq '.stable="stable" | .stable_version="legacy" | .smoke="cargo +stable test --locked"' "$state/config.json" >"$state/config.tmp"
+mv "$state/config.tmp" "$state/config.json"
+jq '.focused="cargo +stable test --locked"' "$state/queue/000000001.json" >"$state/queue/000000001.tmp"
+mv "$state/queue/000000001.tmp" "$state/queue/000000001.json"
+if run upgrade; then echo "unpaused compiler migration accepted" >&2; exit 1; fi
+touch "$state/migrating"
+run upgrade
+jq -e 'has("stable")|not' "$state/config.json"
+jq -e '.smoke=="cargo +nightly test --locked"' "$state/config.json"
+jq -e '.focused=="cargo +nightly test --locked"' "$state/queue/000000001.json"
+jq -e '.focused=="cargo +stable test --locked"' "$state/migrations/nightly-only/queue/000000001.json"
 if run claim-issue other 103; then echo "pending dependency accepted" >&2; exit 1; fi
 printf '// Refactor beta.\n' >>"$two/shared/beta.rs"
 git -C "$two" add shared/beta.rs
@@ -215,7 +229,7 @@ run drain
 [[ "$(run issues | jq -r 'map(.status)|join(",")')" == 'published,failed,ready,blocked' ]]
 run recover 000000002 two
 [[ "$(jq -r .issue "$state/claims/two.json")" == 102 ]]
-run publish two 'cargo +stable test --locked'
+run publish two 'cargo +nightly test --locked'
 run drain
 run claim-issue one
 [[ "$(jq -r .issue "$state/claims/one.json")" == 103 ]]
@@ -223,7 +237,7 @@ run claim-issue one
 sed -i 's/123_456/123456/' "$one/src/alpha.rs"
 git -C "$one" add src/alpha.rs
 git -C "$one" commit --quiet -m 'introduce lint regression'
-run publish one 'cargo +stable test --locked'
+run publish one 'cargo +nightly test --locked'
 run drain
 [[ "$(run issues | jq -r 'map(.status)|join(",")')" == 'published,published,failed,blocked' ]]
 run recover 000000004 one
@@ -231,7 +245,7 @@ sed -i 's/123456/123_456/' "$one/src/alpha.rs"
 printf '// Follow-up alpha.\n' >>"$one/src/alpha.rs"
 git -C "$one" add src/alpha.rs
 git -C "$one" commit --quiet -m 'finish follow-up alpha'
-run publish one 'cargo +stable test --locked'
+run publish one 'cargo +nightly test --locked'
 run drain
 if run finish true; then echo "finish accepted incomplete issues" >&2; exit 1; fi
 run claim-issue one
@@ -241,7 +255,7 @@ mkdir -p "$one/docs"
 printf '# Combined result\n' >"$one/docs/example.md"
 git -C "$one" add docs/example.md
 git -C "$one" commit --quiet -m 'document combined result'
-run publish one 'cargo +stable test --locked'
+run publish one 'cargo +nightly test --locked'
 run drain
 [[ "$(run issues | jq -r 'map(.status)|join(",")')" == 'published,published,published,published' ]]
 # Amend a live manifest; preserve completed records and reject bad DAGs.
@@ -263,8 +277,8 @@ for checkout in "$one" "$two"; do
     git -C "$checkout" add src/alpha.rs
     git -C "$checkout" commit --quiet -m 'overlapping alpha edit'
 done
-run publish one 'cargo +stable test --locked'
-run publish two 'cargo +stable test --locked'
+run publish one 'cargo +nightly test --locked'
+run publish two 'cargo +nightly test --locked'
 run drain
 [[ "$(jq -r .status "$state/queue/000000007.json")" == published ]]
 [[ "$(jq -r .status "$state/queue/000000008.json")" == failed ]]
@@ -274,8 +288,8 @@ run recover 000000008 two
 printf 'pub const ALPHA: u32 = 123_459;\n// Refactor alpha.\n// Follow-up alpha.\n' >"$two/src/alpha.rs"
 git -C "$two" add src/alpha.rs
 git -C "$two" commit --quiet --no-edit
-run publish two 'cargo +stable test --locked'
+run publish two 'cargo +nightly test --locked'
 run drain
 [[ "$(run issues | jq -r 'map(.status)|join(",")')" == 'published,published,published,published,published,published' ]]
-run finish 'cargo +stable test --locked'
+run finish 'cargo +nightly test --locked'
 printf 'Dependency-aware issue campaign integration test passed.\n'

@@ -35,8 +35,8 @@ STATE and WORKTREE_ROOT must be absolute, outside repository worktrees.
 init runs inside the target Git repository. All workers use the same local
 Git common directory and STATE. Remote is origin; TARGET is an existing
 temporary topic branch, not main/master. Require the managed RUSTC_WRAPPER.
-LINT_CAMPAIGN_NIGHTLY (default nightly) and LINT_CAMPAIGN_STABLE (stable)
-are fixed at init, including actual rustc versions.
+LINT_CAMPAIGN_NIGHTLY (default nightly) is fixed at init, including the
+actual rustc version. Use nightly for every campaign build and test.
 Set LINT_CAMPAIGN_RUSTUP_HOME to an isolated Rustup home to persist the
 compiler installation for every worker and validator. An active campaign
 can adopt an isolated home with upgrade, only if its compiler versions match.
@@ -121,12 +121,6 @@ check_compilers() {
     [[ "$(rustc "+$nightly" --version)" == "$nightly_version" &&
        "$(rustc +nightly --version)" == "$nightly_version" ]] ||
         die "nightly compiler drift; start a new campaign"
-    [[ "$(rustc "+$stable" --version)" == "$stable_version" ]] ||
-        die "stable compiler drift; start a new campaign"
-    if [[ -n "$rustup_home" ]]; then
-        [[ "$(rustc +stable --version)" == "$stable_version" ]] ||
-            die "stable alias differs from pinned compiler"
-    fi
 }
 check_tools() {
     need_cache
@@ -160,10 +154,11 @@ configure_campaign_build() {
     local dir=$1
     mkdir -p "$dir/target"
     export CARGO_TARGET_DIR="$dir/target" CARGO_BUILD_BUILD_DIR="$dir/target" CARGO_INCREMENTAL=0
+    export RUSTUP_TOOLCHAIN="$nightly"
 }
 # Inventory runs with style lints as warnings so Cargo can reach every target.
 # Actual compiler failures and safety diagnostics remain fatal, and publishing
-# also runs the stable, source-policy and configured regression gates.
+# requires an empty inventory in issue mode, then runs the nightly regression gates.
 inventory() {
     local checkout=$1 revision=$2 dir=$3 out="$state/inventory/$2.json"
     local inv_fd snapshot
@@ -281,14 +276,6 @@ validate() {
         cd "$work" || exit
         configure_campaign_build "$dir"
         local started=$SECONDS
-        cargo "+$stable" fmt --all -- --check || exit
-        printf 'Timing: stable format %ss\n' "$((SECONDS-started))"
-        started=$SECONDS
-        cargo "+$stable" clippy --workspace --all-targets --locked -- -D warnings || exit
-        printf 'Timing: stable Clippy %ss\n' "$((SECONDS-started))"
-        started=$SECONDS
-        uv run --no-project python "$SKILLS/scripts/check_source_lint_policy.py" || exit
-        printf 'Timing: source policy %ss\n' "$((SECONDS-started))"
         printf 'Shared smoke command: %s\n' "$smoke"
         started=$SECONDS
         bash -euo pipefail -c "$smoke" || exit
@@ -344,10 +331,11 @@ if [[ "$action" == init || "$action" == init-issues ]]; then
         [[ $# -ge 3 && $# -le 4 ]] || die "init-issues requires TARGET WORKTREE_ROOT MANIFEST [SMOKE_COMMAND]"
         manifest=$(realpath -e "$3")
         validate_issue_manifest "$manifest"
-        set -- "$1" "$2" "${4:-cargo +stable test --workspace --locked}"
+        set -- "$1" "$2" "${4:-cargo +nightly test --workspace --locked}"
     fi
     [[ $# -ge 2 && $# -le 3 ]] || die "init requires TARGET WORKTREE_ROOT [SMOKE_COMMAND]"
-    target=$1; workroot=$2; smoke=${3:-cargo +stable test --workspace --locked}
+    target=$1; workroot=$2; smoke=${3:-cargo +nightly test --workspace --locked}
+    [[ "$smoke" != *"cargo +stable"* ]] || die "campaign requires nightly: use cargo +nightly for smoke tests"
     repo=$(git rev-parse --show-toplevel)
     repo=$(realpath "$repo")
     [[ "$target" != main && "$target" != master && "$target" != HEAD ]] ||
@@ -371,7 +359,6 @@ if [[ "$action" == init || "$action" == init-issues ]]; then
     done < <(git_repo worktree list --porcelain | sed -n 's/^worktree //p')
     need_cache
     nightly=${LINT_CAMPAIGN_NIGHTLY:-nightly}
-    stable=${LINT_CAMPAIGN_STABLE:-stable}
     rustup_home=${LINT_CAMPAIGN_RUSTUP_HOME:-}
     use_campaign_rustup
     nightly_version=$(rustc "+$nightly" --version)
@@ -380,7 +367,6 @@ if [[ "$action" == init || "$action" == init-issues ]]; then
     allow_test_panics=${RUST_SKILLS2_ALLOW_TEST_PANICS:-false}
     [[ "$allow_test_panics" == true || "$allow_test_panics" == false ]] ||
         die "RUST_SKILLS2_ALLOW_TEST_PANICS must be true or false"
-    stable_version=$(rustc "+$stable" --version)
     check_compilers
     skills_revision=$(git -C "$SKILLS" rev-parse HEAD)
     clean_policy
@@ -397,11 +383,11 @@ if [[ "$action" == init || "$action" == init-issues ]]; then
     jq -n --arg repo "$repo" --arg target "$target" --arg base "$base" \
         --arg workroot "$workroot" --arg id "$id" --arg registry "$registry" \
         --arg smoke "$smoke" --arg skills "$skills_revision" \
-        --arg nightly "$nightly" --arg stable "$stable" --arg test_panics "$allow_test_panics" \
-        --arg nv "$nightly_version" --arg sv "$stable_version" --arg home "$rustup_home" \
+        --arg nightly "$nightly" --arg test_panics "$allow_test_panics" \
+        --arg nv "$nightly_version" --arg home "$rustup_home" \
         '{repo:$repo,target:$target,base:$base,workroot:$workroot,id:$id,registry:$registry,
-          smoke:$smoke,skills_revision:$skills,nightly:$nightly,stable:$stable,rustup_home:$home,
-          nightly_version:$nv,stable_version:$sv,allow_test_panics:$test_panics}' >"$state/config.json"
+          smoke:$smoke,skills_revision:$skills,nightly:$nightly,rustup_home:$home,
+          nightly_version:$nv,allow_test_panics:$test_panics}' >"$state/config.json"
     if [[ -n "$manifest" ]]; then
         cp -- "$manifest" "$state/issues.json"
         # Do not register an issue campaign on a nonzero strict baseline.
@@ -424,8 +410,8 @@ repo=$(jq -er .repo "$config"); target=$(jq -er .target "$config")
 base=$(jq -er .base "$config"); id=$(jq -er .id "$config")
 workroot=$(jq -er .workroot "$config"); registry=$(jq -er .registry "$config")
 smoke=$(jq -er .smoke "$config"); nightly=$(jq -er .nightly "$config")
-stable=$(jq -er .stable "$config"); nightly_version=$(jq -er .nightly_version "$config")
-stable_version=$(jq -er .stable_version "$config"); skills_revision=$(jq -er .skills_revision "$config")
+nightly_version=$(jq -er .nightly_version "$config")
+skills_revision=$(jq -er .skills_revision "$config")
 allow_test_panics=$(jq -er .allow_test_panics "$config")
 rustup_home=$(jq -r '.rustup_home // ""' "$config")
 if [[ "$action" == serve && ! -e "$registry" && ( -f "$state/finished" || -f "$state/stopped" ) ]]; then exit 0; fi
@@ -449,8 +435,25 @@ case "$action" in
             die "lint policy changed; cannot reuse existing inventories"
         lock_claims
         mkdir -p "$state/queue"
+        if jq -e 'has("stable")' "$config" >/dev/null; then
+            [[ -e "$state/migrating" ]] || die "pause campaign before migrating compiler policy"
+            migration="$state/migrations/nightly-only"
+            mkdir -p "$migration/queue"
+            [[ -f "$migration/config.json" ]] || cp -- "$config" "$migration/config.json"
+            shopt -s nullglob
+            for record in "$state/queue/"*.json; do
+                case "$(jq -er .status "$record")" in
+                    staging|pending|running|failed)
+                        backup="$migration/queue/${record##*/}"
+                        [[ -f "$backup" ]] || cp -- "$record" "$backup"
+                        jq '.focused |= gsub("cargo \\+stable "; "cargo +nightly ")' "$record" >"$record.tmp"
+                        mv -- "$record.tmp" "$record"
+                        ;;
+                esac
+            done
+        fi
         jq --arg rev "$(git -C "$SKILLS" rev-parse HEAD)" --arg home "$rustup_home" \
-            '.skills_revision=$rev | .rustup_home=$home' "$config" >"$config.tmp"
+            '.skills_revision=$rev | .rustup_home=$home | if has("stable") then (.smoke |= gsub("cargo \\+stable "; "cargo +nightly ")) | del(.stable,.stable_version) else . end' "$config" >"$config.tmp"
         mv "$config.tmp" "$config"
         rm -f "$state/migrating"
         unlock_claims
@@ -653,6 +656,7 @@ case "$action" in
     publish)
         [[ $# -ge 1 && $# -le 2 ]] || die "publish requires WORKER [FOCUSED_TEST_COMMAND]"
         focused=${2:-:}
+        [[ "$focused" != *"cargo +stable"* ]] || die "campaign requires nightly: submit focused command using cargo +nightly"
         if [[ -f "$state/issues.json" ]]; then
             [[ $# == 2 && -n "$focused" && "$focused" != : ]] || die "issue submission requires focused regression command"
         fi
@@ -697,6 +701,7 @@ case "$action" in
         ;;
     finish)
         [[ $# -le 1 ]] || die "finish accepts an optional full test command"
+        [[ "${1:-}" != *"cargo +stable"* ]] || die "campaign requires nightly: use cargo +nightly"
         check_tools
         # Exclude the serial validator and assignments during final checks.
         validator_lock
@@ -720,7 +725,7 @@ case "$action" in
             export RUST_SKILLS2_CARGO_ARGS="--locked --workspace --all-targets"
             export RUST_SKILLS2_ALLOW_TEST_PANICS="$allow_test_panics"
             bash "$SKILLS/scripts/strict_clippy.sh" || exit
-            bash -euo pipefail -c "${1:-cargo +stable test --workspace --locked}"
+            bash -euo pipefail -c "${1:-cargo +nightly test --workspace --locked}"
         ) >"$state/logs/$tip.final.log" 2>&1 || die "final strict gate failed: $state/logs/$tip.final.log"
         [[ "$(remote_tip)" == "$tip" ]] || die "target advanced during final verification"
         printf '%s\n' "$tip" >"$state/finished"
