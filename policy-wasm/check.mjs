@@ -95,6 +95,9 @@ function packageSnapshot(pkg, root, guestPath) {
   return {
     root: packageRoot,
     package: {
+      id: pkg.id,
+      name: pkg.name,
+      version: pkg.version,
       manifest: guestPath(manifest),
       metadata: pkg.metadata,
       targets: pkg.targets.map((target) => {
@@ -106,7 +109,7 @@ function packageSnapshot(pkg, root, guestPath) {
   };
 }
 
-function snapshot(toolchain) {
+function snapshot(toolchain, testPolicy) {
   const cargo = ['+' + toolchain];
   const metadata = JSON.parse(capture('cargo', [...cargo, 'metadata', '--no-deps', '--format-version', '1']));
   const workspaceRoot = realpathSync(metadata.workspace_root);
@@ -129,15 +132,21 @@ function snapshot(toolchain) {
       packages: packages.map((pkg) => pkg.package),
       rustflags,
       cargo_config: configured,
+      workspace_request: testPolicy === null ? null : {
+        ...testPolicy,
+        default_members: metadata.workspace_default_members,
+        metadata: metadata.metadata,
+      },
     },
   };
 }
 
-const [modulePath, toolchain] = process.argv.slice(2);
-if (!modulePath || !/^nightly-\d{4}-\d{2}-\d{2}$/.test(toolchain ?? '') || process.argv.length !== 4) {
-  throw new Error('usage: node check.mjs MODULE.wasm|module.json nightly-YYYY-MM-DD');
+const [modulePath, toolchain, defaultPolicy, ...cargoArgs] = process.argv.slice(2);
+if (!modulePath || !/^nightly-\d{4}-\d{2}-\d{2}$/.test(toolchain ?? '') || (defaultPolicy !== undefined && !['true', 'false'].includes(defaultPolicy))) {
+  throw new Error('usage: node check.mjs MODULE.wasm|module.json nightly-YYYY-MM-DD [true|false [CARGO_SELECTOR...]]');
 }
-const {root, input} = snapshot(toolchain);
+const testPolicy = defaultPolicy === undefined ? null : {default_allow_test_panics: defaultPolicy === 'true', cargo_args: cargoArgs};
+const {root, input} = snapshot(toolchain, testPolicy);
 const runner = fileURLToPath(new URL('run.mjs', import.meta.url));
 const report = JSON.parse(capture(process.execPath, [runner, path.resolve(modulePath), root, 'check'], {input: JSON.stringify(input)}));
 if (report.violations.length > 0) {
@@ -145,5 +154,19 @@ if (report.violations.length > 0) {
   for (const violation of report.violations) console.error('  - ' + violation.replaceAll('/workspace/', root + path.sep));
   process.exitCode = 1;
 } else {
-  console.log('rust-skills2: source lint suppression policy OK (' + report.files + ' Rust files, ' + report.boundaries + ' generated lint boundaries, ' + report.suppression_attributes + ' suppression attributes)');
+  const summary = 'rust-skills2: source lint suppression policy OK (' + report.files + ' Rust files, ' + report.boundaries + ' generated lint boundaries, ' + report.suppression_attributes + ' suppression attributes)';
+  if (testPolicy === null) {
+    console.log(summary);
+  } else {
+    console.error(summary);
+    const policy = report.workspace_policy;
+    if (typeof policy?.Err === 'string') {
+      console.error('rust-skills2: ' + policy.Err.replaceAll('/workspace/', root + path.sep));
+      process.exitCode = 2;
+    } else if (Array.isArray(policy?.Ok) && policy.Ok.length > 0) {
+      for (const row of policy.Ok) console.log(row.policy + '\t' + row.spec);
+    } else {
+      throw new Error('workspace policy did not return selected packages');
+    }
+  }
 }

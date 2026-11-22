@@ -4,6 +4,7 @@ use std::sync::LazyLock;
 
 pub mod check;
 pub mod policy;
+mod workspace;
 
 static CHARACTER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"^(?:b)?'(?:[^'\\\n\r\t]|\\(?:[nrt\\0'"]|x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f_]+\}))'"#)

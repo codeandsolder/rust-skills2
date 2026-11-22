@@ -16,12 +16,16 @@ pub struct Input {
     packages: Vec<Package>,
     rustflags: BTreeMap<String, String>,
     cargo_config: Value,
+    workspace_request: Option<crate::workspace::Request>,
 }
 
 #[derive(Deserialize)]
-struct Package {
-    manifest: PathBuf,
-    metadata: Value,
+pub(crate) struct Package {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) version: String,
+    pub(crate) manifest: PathBuf,
+    pub(crate) metadata: Value,
     targets: Vec<PathBuf>,
     candidates: BTreeMap<String, Candidate>,
 }
@@ -39,6 +43,7 @@ pub struct Report {
     pub boundaries: usize,
     pub suppression_attributes: usize,
     pub violations: Vec<String>,
+    workspace_policy: Option<Result<Vec<crate::workspace::Row>, String>>,
 }
 
 fn lint_level(value: &toml::Value) -> Option<&str> {
@@ -309,6 +314,7 @@ pub fn check(input: Input) -> Result<Report, Box<dyn std::error::Error>> {
         boundaries: 0,
         suppression_attributes: 0,
         violations: Vec::new(),
+        workspace_policy: None,
     };
     check_flags(&input, &mut report.violations);
     let mut manifests = input
@@ -351,6 +357,12 @@ pub fn check(input: Input) -> Result<Report, Box<dyn std::error::Error>> {
             }
             policy.inspect(&path.to_string_lossy(), &attribute, &mut report.violations);
         }
+    }
+    if report.violations.is_empty() {
+        report.workspace_policy = input
+            .workspace_request
+            .as_ref()
+            .map(|request| crate::workspace::resolve(request, &input.packages));
     }
     Ok(report)
 }
