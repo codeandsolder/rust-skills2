@@ -40,9 +40,11 @@ HERE = pathlib.Path(__file__).resolve().parent
 RULES = (HERE.parent / "rules").resolve()
 FIXTURES = HERE / "fixtures"
 OUT = HERE / "examples"
-OUT.mkdir(exist_ok=True)
-for f in OUT.glob("*.rs"):
-    f.unlink()
+NIGHTLY_OUT = HERE / "nightly" / "examples"
+for output in (OUT, NIGHTLY_OUT):
+    output.mkdir(exist_ok=True)
+    for f in output.glob("*.rs"):
+        f.unlink()
 
 MARKER = re.compile(
     r"^<!--\s*rust-check:\s*"
@@ -149,8 +151,6 @@ def legacy_expectation(block, section):
         return "compile", "Good sections compile by default"
     if section.strip().lower().startswith("bad"):
         return "compile", "Bad sections compile by default"
-    if "#![feature" in block:
-        return "nightly", "legacy nightly feature gate"
     return "auto", "legacy classifier"
 
 
@@ -192,6 +192,12 @@ for md in sorted(RULES.glob("*.md")):
             expect, reason = resolve_expectation(
                 lines, i, fence_match, block, section, md.name
             )
+            if (
+                "#![feature" in block
+                and expect not in {"nightly", "compile_fail"}
+                and not expect.startswith("fixture:")
+            ):
+                raise SystemExit(f"{md.name}:{start + 1}: nightly feature gate needs an explicit contract")
             name = f"{md.stem.replace('-', '_')}__{file_index}"
             generated_expectation = (
                 expect not in {"ignore", "nightly"}
@@ -205,6 +211,18 @@ for md in sorted(RULES.glob("*.md")):
                 "reason": reason,
                 "generated": generated_expectation,
             }
+            if expect == "nightly":
+                attrs = {
+                    part.strip()
+                    for part in (fence_match.group("attrs") or "").strip().lstrip(",").split(",")
+                }
+                info["nightly_run"] = (
+                    re.search(r"\bfn\s+main\s*\(", block) is not None
+                    and not {"no_run", "should_panic"} & attrs
+                )
+                (NIGHTLY_OUT / f"{name}.rs").write_text(
+                    wrap(block), encoding="utf-8"
+                )
             manifest[name] = info
             if info["generated"]:
                 (OUT / f"{name}.rs").write_text(wrap(block), encoding="utf-8")

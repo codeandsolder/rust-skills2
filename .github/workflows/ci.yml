@@ -147,6 +147,55 @@ jobs:
           rust-toolchain: nightly
           rustflags: ""
 
+      - name: Attribute notes and reasons pass
+        uses: ./.github/actions/rust-strict
+        with:
+          working-directory: checks/fixtures/strict-ci-attribute-reasons
+          cargo-args: "--locked --lib"
+
+      - name: Build and execute nightly rule examples
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/checks/target
+        run: |
+          uv run --no-project python checks/gen.py
+          uv run --no-project python checks/run_nightly_contracts.py
+
+      - name: Attribute reasons remain mandatory in strict and relaxed tests
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-attribute-reasons
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          for relaxation in false true; do
+            if output=$(RUST_SKILLS2_ALLOW_TEST_PANICS="$relaxation" bash scripts/strict_clippy.sh 2>&1); then
+              echo "attribute documentation unexpectedly passed (relaxed=$relaxation)" >&2
+              exit 1
+            fi
+            printf '%s\n' "$output"
+            rg -q '^error:.*deprecated.*note' <<< "$output"
+            rg -q '^error:.*must_use.*reason' <<< "$output"
+            rg -q 'requested on the command line with .*clippy::deprecated-attributes-without-note' <<< "$output"
+            rg -q 'requested on the command line with .*clippy::must-use-without-reason' <<< "$output"
+          done
+
+      - name: Both attribute reason expectations are rejected
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-attribute-expect
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if output=$(bash scripts/strict_clippy.sh 2>&1); then
+            echo "attribute documentation suppression unexpectedly passed" >&2
+            exit 1
+          fi
+          printf '%s\n' "$output"
+          rg -q 'suppressing clippy::deprecated_attributes_without_note would weaken suppression policy' <<< "$output"
+          rg -q 'suppressing clippy::must_use_without_reason would weaken suppression policy' <<< "$output"
+
       - name: Passing fixture
         uses: ./.github/actions/rust-strict
         with:

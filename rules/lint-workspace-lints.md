@@ -116,6 +116,20 @@ private_intra_doc_links = "warn"
 missing_crate_level_docs = "warn"
 ```
 
+On the shared nightly Clippy gate, these restrictions also apply to every
+target, and handwritten suppressions are prohibited:
+
+```toml
+# Add to [workspace.lints.clippy] only on a compiler that provides the lints.
+[workspace.lints.clippy]
+deprecated_attributes_without_note = "deny"
+must_use_without_reason = "deny"
+```
+
+They are not available on Clippy 1.100.0. The central gate already supplies
+them as command-line denies; downstream callers do not need a duplicate
+manifest stanza.
+
 ## Cargo 1.100: Workspace-Level Manifest Lints
 
 The now-stable Cargo lint namespace may be inherited alongside rustc, Clippy,

@@ -7,6 +7,12 @@ semantic versioning for the rule set.
 ## [Unreleased]
 
 ### Added
+- Strict nightly Clippy denies `deprecated_attributes_without_note` and
+  `must_use_without_reason` in all targets, including relaxed tests. Both
+  are non-suppressible in handwritten source; regression fixtures verify
+  each specific diagnostic and suppression rejection.
+- Added actionable deprecation guidance and an independent CI package that
+  compiles and executes nightly examples instead of excluding them from validation.
 - Added a packaged, compiler-versioned nightly feature guide and a comparison of
   Rust/Clippy 1.100.0 versus 1.102.0-nightly, including new restriction-lint
   candidates and recorded upcoming stabilizations.

@@ -1,5 +1,5 @@
 /// Returns whether the fixture environment variable exists.
-#[must_use]
+#[must_use = "the returned fixture value is the result"]
 pub fn value() -> bool {
     std::env::var_os("STRICT_CI_UNUSED").is_some()
 }

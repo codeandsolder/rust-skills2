@@ -34,8 +34,8 @@ and [rustc lint documentation](https://doc.rust-lang.org/nightly/rustc/lints/lis
 | `unnecessary_box_pin` | perf | Already enabled |
 | `try_from_instead_of_from_str` | style | Already enabled |
 | `unnecessary_as_slice` | complexity | Already enabled |
-| `deprecated_attributes_without_note` | restriction | Recommended candidate; requires intentional deprecation guidance |
-| `must_use_without_reason` | restriction | Recommended candidate for API design; evaluate existing standard/generated patterns before enforcing globally |
+| `deprecated_attributes_without_note` | restriction | Explicitly denied; requires intentional deprecation guidance |
+| `must_use_without_reason` | restriction | Explicitly denied; requires an explanatory reason for must-use attributes |
 
 The description of `extend_with_drain` also broadens from vectors to collections.
 
@@ -44,9 +44,9 @@ complexity, pedantic and nursery. The default relaxed-test mode has a separate
 policy. In handwritten production source, correctness/suspicious/perf are
 unsuppressible except explicitly documented exceptions. Pedantic/nursery
 (including `use_self`) are fatal but permit narrow reasoned expectations.
-The two new restriction candidates are deliberately not added automatically:
-first probe representative repositories for their semantics and migration
-impact. Do not enable the entire restriction group.
+Both new restriction lints are explicitly denied (including relaxed tests)
+and non-suppressible in handwritten source. Existing generated-code
+boundaries still apply. Do not enable the entire restriction group.
 
 For current unstable feature guidance see
 [proj-nightly-features](../rules/proj-nightly-features.md).

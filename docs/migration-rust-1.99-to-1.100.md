@@ -137,7 +137,7 @@ Cargo 1.100 stabilizes `[lints.cargo]` and the new
 `cargo::unused_dependencies` lint (warn by default). It can only establish
 unused ordinary dependencies when **every relevant target** has been built;
 `dev-dependencies` do not currently receive this warning. Distinguish it
-from rustc's `unused_crate_dependencies` and the still-experimental
+from rustc's `unused_crate_dependencies` and the unrecognized
 `unused_features` Cargo lint.
 
 ```toml

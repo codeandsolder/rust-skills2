@@ -40,6 +40,22 @@ fn compiles_but_is_not_run() {}
 fn main() { panic!("runtime behavior is irrelevant to cargo check"); }
 ```
 
+## Nightly executable
+
+<!-- rust-check: nightly(iter_collect_into); reason=nightly API -->
+```rust
+#![feature(iter_collect_into)]
+fn main() {}
+```
+
+## Nightly compile only
+
+<!-- rust-check: nightly(iter_collect_into); reason=nightly API -->
+```rust,no_run
+#![feature(iter_collect_into)]
+fn main() {}
+```
+
 ## Fixture backed
 
 <!-- rust-check: fixture(feature-additive) -->
@@ -61,18 +77,25 @@ def main():
         run_gen()
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         prefix = "zz_verifier_metadata_fixture__"
-        rows = [manifest[f"{prefix}{i}"] for i in range(5)]
+        rows = [manifest[f"{prefix}{i}"] for i in range(7)]
         got = [(row["expect"], row["generated"]) for row in rows]
         want = [
             ("compile_fail", True),
             ("ignore", False),
             ("compile", True),
             ("compile", True),
+            ("nightly", False),
+            ("nightly", False),
             ("fixture:feature-additive", False),
         ]
         if got != want:
             raise AssertionError(f"native/fixture expectations: got {got!r}, want {want!r}")
-        print("OK: native rustdoc and fixture expectations")
+        if [row["nightly_run"] for row in rows[4:6]] != [True, False]:
+            raise AssertionError("nightly runtime metadata did not honor no_run")
+        for i in (4, 5):
+            if not (HERE / "nightly" / "examples" / f"{prefix}{i}.rs").is_file():
+                raise AssertionError("nightly source was not generated")
+        print("OK: native rustdoc, nightly and fixture expectations")
     finally:
         FIXTURE.unlink(missing_ok=True)
         # Restore generated state so the real corpus run that follows sees only

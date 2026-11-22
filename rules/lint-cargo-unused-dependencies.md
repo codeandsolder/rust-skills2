@@ -34,6 +34,6 @@ Members must opt into inherited workspace lints with `[lints] workspace = true`,
 
 ## See Also
 
-- [lint-cargo-unused-features](./lint-cargo-unused-features.md) — separate experimental feature lint
+- [lint-cargo-unused-features](./lint-cargo-unused-features.md) — manual feature audit; no recognized feature lint
 - [proj-workspace-deps](./proj-workspace-deps.md) — workspace inheritance
 - [Cargo 1.100 changelog](https://doc.rust-lang.org/cargo/CHANGELOG.html#cargo-1100-2026-11-12)

@@ -15,7 +15,7 @@ Rust 1.95 also adds `cfg_select!`, a standard-library macro for choosing the fir
 
 `#[doc(cfg(...))]` remains useful when the condition that is best for readers should deliberately differ from the exact implementation `cfg`. It is documentation only: `#[cfg(...)]` is still what actually includes or excludes the item.
 
-Because `doc_cfg` is unstable on stable Rust 1.98, crates that use this behavior on docs.rs should isolate the feature gate to that nightly documentation build.
+Because `doc_cfg` is unstable on stable Rust 1.100, crates that use this behavior on docs.rs should isolate the feature gate to that nightly documentation build.
 
 ## Rust 1.95+: Prefer `cfg_select!` for Mutually Exclusive Alternatives
 

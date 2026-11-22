@@ -116,7 +116,7 @@ fn main() {}
 
 The `#[cfg(feature = "network")]` attribute controls whether the module exists. Document the feature's meaning and defaults in module/crate prose so users can understand the API on stable Rust.
 
-## `#[doc(cfg(...))]` Is Still Unstable on Rust 1.98
+## `#[doc(cfg(...))]` Is Still Unstable on Rust 1.100
 
 Do not teach this as an ordinary stable attribute:
 
@@ -127,7 +127,7 @@ Do not teach this as an ordinary stable attribute:
 pub mod network;
 ```
 
-`#[doc(cfg(...))]` remains behind the unstable `doc_cfg` feature on Rust 1.98. Passing `--cfg docsrs` (for example through docs.rs metadata) only defines a cfg value; it does **not** enable the unstable language/rustdoc feature by itself.
+`#[doc(cfg(...))]` remains behind the unstable `doc_cfg` feature on Rust 1.100. Passing `--cfg docsrs` (for example through docs.rs metadata) only defines a cfg value; it does **not** enable the unstable language/rustdoc feature by itself.
 
 Projects that intentionally build documentation with nightly may opt into `doc_cfg`/related rustdoc features, but stable library guidance should not depend on them unless the nightly documentation toolchain is an explicit project choice.
 
