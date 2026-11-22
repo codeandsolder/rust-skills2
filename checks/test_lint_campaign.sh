@@ -187,7 +187,7 @@ state="$tmp/issue-state"
 run claim-issue one 101
 run claim-issue two 102
 if run claim-issue other 103; then echo "dependency bypass" >&2; exit 1; fi
-if run extend two src/alpha.rs; then echo "issue overlap accepted" >&2; exit 1; fi
+run extend two src/alpha.rs
 one="$tmp/issue-worktrees/one"
 two="$tmp/issue-worktrees/two"
 printf '# Refactor notes\n' >"$one/NOTES.md"
@@ -234,5 +234,38 @@ git -C "$one" commit --quiet -m 'document combined result'
 run publish one 'cargo +stable test --locked'
 run drain
 [[ "$(run issues | jq -r 'map(.status)|join(",")')" == 'published,published,published,published' ]]
+# Amend a live manifest; preserve completed records and reject bad DAGs.
+jq '. + [{"id":"105","title":"Concurrent alpha one","depends":[],"paths":["src/alpha.rs"]},
+         {"id":"106","title":"Concurrent alpha two","depends":[],"paths":["src/alpha.rs"]}]' "$tmp/issues.json" >"$tmp/expanded.json"
+run amend-issues "$tmp/expanded.json"
+if run amend-issues "$tmp/issues.json"; then echo "removed issue accepted" >&2; exit 1; fi
+jq '.[0].title="changed started issue"' "$tmp/expanded.json" >"$tmp/invalid.json"
+if run amend-issues "$tmp/invalid.json"; then echo "changed started issue accepted" >&2; exit 1; fi
+jq '.[5].depends=["999"]' "$tmp/expanded.json" >"$tmp/invalid.json"
+if run amend-issues "$tmp/invalid.json"; then echo "invalid dependency accepted" >&2; exit 1; fi
+run claim-issue one 105
+run claim-issue two 106
+if run claim-issue other 105; then echo "duplicate issue claim accepted" >&2; exit 1; fi
+grep -q '123_456' "$one/src/alpha.rs"
+sed -i 's/123_456/123_457/' "$one/src/alpha.rs"
+sed -i 's/123_456/123_458/' "$two/src/alpha.rs"
+for checkout in "$one" "$two"; do
+    git -C "$checkout" add src/alpha.rs
+    git -C "$checkout" commit --quiet -m 'overlapping alpha edit'
+done
+run publish one 'cargo +stable test --locked'
+run publish two 'cargo +stable test --locked'
+run drain
+[[ "$(jq -r .status "$state/queue/000000007.json")" == published ]]
+[[ "$(jq -r .status "$state/queue/000000008.json")" == failed ]]
+jq -e '.paths==["src/alpha.rs"]' "$state/logs/queue-000000008.conflict.json"
+run recover 000000008 two
+[[ "$(git -C "$two" diff --name-only --diff-filter=U)" == src/alpha.rs ]]
+printf 'pub const ALPHA: u32 = 123_459;\n// Refactor alpha.\n// Follow-up alpha.\n' >"$two/src/alpha.rs"
+git -C "$two" add src/alpha.rs
+git -C "$two" commit --quiet --no-edit
+run publish two 'cargo +stable test --locked'
+run drain
+[[ "$(run issues | jq -r 'map(.status)|join(",")')" == 'published,published,published,published,published,published' ]]
 run finish 'cargo +stable test --locked'
 printf 'Dependency-aware issue campaign integration test passed.\n'

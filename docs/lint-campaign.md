@@ -219,9 +219,10 @@ prefixes ending in / expand to tracked files at claim time.
 
 Workers use `issues STATE` to inspect readiness and `claim-issue STATE WORKER
 [ISSUE_ID]` to take the first ready task or an explicitly requested ready task.
-Only successfully published prerequisite tasks unblock dependants. Active,
-queued and failed tasks reserve their exact file scopes until publication,
-recovery or release. Extend a claim before editing additional files. The
+Only successfully published prerequisites unblock dependants. Issue IDs
+are exclusive, but file scopes may overlap; the scheduler prefers ready work
+without overlap, falling back to overlapping tasks. Extend a claim before
+editing additional files to retain scope auditing. The
 same publish/results/recover protocol applies; issue submissions require a
 focused regression command. Give the issue's acceptance evidence in the
 commits and link the accepted revision on GitHub after publication. A
@@ -231,5 +232,9 @@ a GitHub issue merely because a partial implementation passed.
 
 Every accepted issue revision must keep the strict inventory empty; the
 shared and focused gates still run on the merged candidate. Finish refuses
-while any task remains unpublished. Use a new manifest for the next wave,
-rather than editing a live plan or manually overriding dependencies.
+while any task remains unpublished. Use `amend-issues STATE MANIFEST` to add tasks or revise unstarted tasks.
+All existing IDs and started task definitions are retained, the DAG is validated,
+and manifest snapshots are preserved. Merge conflicts are recorded with their
+paths and target revision. `recover` merges the latest target into the recovered
+worker checkout, leaving conflicts for the worker to resolve and commit.
+Publication still checks the exact merged candidate. Lint mode remains file-exclusive.

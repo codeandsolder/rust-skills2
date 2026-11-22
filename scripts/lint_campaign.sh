@@ -12,6 +12,7 @@ Usage:
   lint_campaign.sh init-issues STATE TARGET WORKTREE_ROOT MANIFEST [SMOKE_COMMAND]
   lint_campaign.sh claim-issue STATE WORKER [ISSUE_ID]
   lint_campaign.sh issues STATE
+  lint_campaign.sh amend-issues STATE MANIFEST
   lint_campaign.sh refresh STATE
   lint_campaign.sh status STATE
   lint_campaign.sh claim STATE WORKER [LINT_BUDGET=20] [PATH_PREFIX] [MAX_FILES=4]
@@ -436,6 +437,10 @@ case "$action" in
         issue_status "$tip" | jq 'map(del(.files))'
         unlock_claims
         ;;
+    amend-issues)
+        [[ $# == 1 ]] || die "amend-issues requires MANIFEST"
+        amend_issues "$1"
+        ;;
     claim-issue)
         [[ $# -ge 1 && $# -le 2 ]] || die "claim-issue requires WORKER [ISSUE_ID]"
         claim_issue "${2:-}" "$1"
@@ -475,6 +480,17 @@ case "$action" in
         queue_update "$record" recovered "reassigned to $worker"
         unlock_claims
         cat "$claim"
+        if [[ -f "$state/logs/queue-$job.conflict.json" && -f "$state/issues.json" ]]; then
+            tip=$(remote_tip)
+            if git_work merge --no-edit "$tip"; then
+                say "recovered conflict job against $tip; inspect combined changes before publishing"
+            elif [[ -n "$(git_work diff --name-only --diff-filter=U)" ]]; then
+                say "resolve merge conflicts in $work, commit the merge, run focused tests and publish"
+                git_work status --short
+            else
+                die "merge failed without unmerged files; claim retained at $work"
+            fi
+        fi
         ;;
     refresh|status)
         [[ $# -eq 0 ]] || die "unexpected arguments"
@@ -565,11 +581,13 @@ case "$action" in
         extra=$(printf '%s\n' "$@" | jq -Rs 'split("\n") | map(select(length>0))')
         lock_claims
         shopt -s nullglob
-        claims=("$state/claims/"*.json)
-        jq -es --arg worker "$worker" --argjson extra "$extra" --argjson queued "$(reserved_queue)" '
-            ([.[]|select(.worker!=$worker)|.files[]]+$queued) as $other |
-            all($extra[]; . as $f | ($other|index($f))==null)
-        ' "${claims[@]}" >/dev/null || die "file already claimed by another worker"
+        if [[ ! -f "$state/issues.json" ]]; then
+            claims=("$state/claims/"*.json)
+            jq -es --arg worker "$worker" --argjson extra "$extra" --argjson queued "$(reserved_queue)" '
+                ([.[]|select(.worker!=$worker)|.files[]]+$queued) as $other |
+                all($extra[]; . as $f | ($other|index($f))==null)
+            ' "${claims[@]}" >/dev/null || die "file already claimed by another worker"
+        fi
         jq --argjson extra "$extra" '.files=(.files+$extra|unique)' "$claim" >"$claim.tmp"
         mv -- "$claim.tmp" "$claim"
         unlock_claims

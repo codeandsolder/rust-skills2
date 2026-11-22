@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034 # Shared state belongs to the calling campaign.
 # Issue-driven selection uses the existing durable queue/claims/validator.
-# The manifest is immutable for a campaign; an ordered DAG of issue tasks.
+# Ordered DAG; started tasks retain their definitions.
 validate_issue_manifest() {
     local manifest=$1 path
     jq -e '
@@ -28,8 +28,7 @@ issue_claims() {
 }
 
 # Caller holds claims.lock. Expand directory scopes at the actual target tip.
-# Paths are materialized as exact file reservations, so extend/publish use
-# precisely the same conflict checks and scope validation as lint workers.
+# Files define edit scope, not exclusion. Overlap is advisory in issue mode.
 issue_status() {
     local tip=$1
     jq -n --slurpfile tasks "$state/issues.json" \
@@ -54,7 +53,6 @@ issue_status() {
              status:(if ($done|index($task.id)) != null then "published"
                elif ($own|length)>0 then ($own[0].status // "claimed")
                elif ($missing|length)>0 then "blocked"
-               elif ($conflicts|length)>0 then "reserved"
                elif ($files|length)==0 then "empty-scope"
                else "ready" end)})
     '
@@ -79,7 +77,7 @@ claim_issue() {
     claim="$state/claims/$worker.json"
     [[ ! -e "$claim" ]] || die "worker already owns a claim"
     plan=$(issue_status "$tip")
-    chosen=$(jq -c --arg id "$request" '[.[] | select(.status=="ready" and ($id=="" or .id==$id))][0] // empty' <<<"$plan")
+    chosen=$(jq -c --arg id "$request" '[.[] | select(.status=="ready" and ($id=="" or .id==$id))] | (map(select(.conflicts|length==0))[0] // .[0] // empty)' <<<"$plan")
     [[ -n "$chosen" ]] || die "no ready issue matching request; inspect issues"
     issue=$(jq -er .id <<<"$chosen")
     title=$(jq -er .title <<<"$chosen")
@@ -94,7 +92,7 @@ claim_issue() {
     mv -- "$claim.tmp" "$claim"
     unlock_claims
     cat "$claim"
-    jq 'del(.files,.conflicts,.waiting_for,.status)' <<<"$chosen"
+    jq 'del(.files,.waiting_for,.status)' <<<"$chosen"
 }
 
 require_finished_issues() {
@@ -105,3 +103,37 @@ require_finished_issues() {
         ' "$state/issues.json" >/dev/null || die "unpublished issues remain"
     fi
 }
+
+# Atomic replacement; retain all IDs and definitions of started tasks.
+amend_issues() (
+    local input=$1 staged digest manifest
+    check_tools
+    [[ -f "$state/issues.json" ]] || die "not an issue campaign"
+    staged=$(mktemp "$state/.issues.XXXXXX")
+    trap 'rm -f -- "$staged"' EXIT
+    cp -- "$input" "$staged"
+    validate_issue_manifest "$staged"
+    lock_claims
+    [[ -f "$registry" && "$(cat "$registry")" == "$state" ]] || die "campaign closed during amendment"
+    [[ ! -e "$state/migrating" ]] || die "campaign migration in progress"
+    jq -e --slurpfile old "$state/issues.json" \
+        --slurpfile claims <(issue_claims) --slurpfile queue <(queue_records) '
+      . as $new |
+      ($old[0] | map({key:.id,value:.}) | from_entries) as $before |
+      ($new | map({key:.id,value:.}) | from_entries) as $after |
+      ([$claims[0][].issue, $queue[0][].issue] | map(select(. != null)) | unique) as $started |
+      if (($before|keys) - ($after|keys) | length) != 0 then error("cannot remove existing issues")
+      elif any($started[]; $before[.] != $after[.]) then error("cannot redefine started issues")
+      else true end
+    ' "$staged" >/dev/null || die "invalid live issue amendment"
+    mkdir -p "$state/manifests"
+    for manifest in "$state/issues.json" "$staged"; do
+        digest=$(git_repo hash-object "$manifest")
+        if [[ ! -f "$state/manifests/$digest.json" ]]; then
+            cp -- "$manifest" "$state/manifests/$digest.json"
+        fi
+    done
+    mv -- "$staged" "$state/issues.json"
+    unlock_claims
+    say "amended issue manifest to $(jq length "$state/issues.json") tasks; history $state/manifests"
+)

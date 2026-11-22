@@ -123,7 +123,20 @@ validate_job() {
         shared=$(git_repo merge-base "$tip" "$source")
         scope_diff "$shared" "$source"
         inventory "$work" "$tip" "$state/build/validator"
-        git_work merge --no-edit "$source"
+        if ! git_work merge --no-edit "$source"; then
+            if [[ -f "$state/issues.json" ]]; then
+                git_work diff --name-only --diff-filter=U -z |
+                    jq -Rs --arg tip "$tip" --arg source "$source" \
+                        '{target:$tip,source:$source,paths:(split("\u0000")|map(select(length>0)))}' \
+                        >"$state/logs/queue-$job.conflict.tmp"
+                if jq -e '.paths|length>0' "$state/logs/queue-$job.conflict.tmp" >/dev/null; then
+                    mv "$state/logs/queue-$job.conflict.tmp" "$state/logs/queue-$job.conflict.json"
+                else
+                    rm -f "$state/logs/queue-$job.conflict.tmp"
+                fi
+            fi
+            die "merge failed; recover job $job to reconcile against current target"
+        fi
         revision=$(git_work rev-parse HEAD)
         scope_diff "$tip" "$revision"
         inventory "$work" "$revision" "$state/build/validator"
@@ -170,6 +183,7 @@ drain_queue() {
             return
         fi
         record="$state/queue/$job.json"
+        rm -f "$state/logs/queue-$job.conflict.json"
         queue_update "$record" running "validating against latest target"
         unlock_claims
         say "validating queue job $job"
@@ -181,6 +195,8 @@ drain_queue() {
         lock_claims
         if ((rc==0)); then
             queue_update "$record" published "$(cat "$state/queue/$job.merged")"
+        elif [[ -f "$state/logs/queue-$job.conflict.json" ]]; then
+            queue_update "$record" failed "merge conflict; recover $job to reconcile against current target"
         else
             queue_update "$record" failed "exit $rc; see $state/logs/queue-$job.log"
         fi
