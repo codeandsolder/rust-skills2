@@ -51,6 +51,18 @@ jobs:
           cargo test --locked --manifest-path policy-wasm/Cargo.toml --target-dir "$RUNNER_TEMP/source-policy"
           cargo build --locked --release --target wasm32-wasip1 --manifest-path policy-wasm/Cargo.toml --target-dir "$RUNNER_TEMP/source-policy"
           uv run --no-project python checks/compare_source_policy.py "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" . --fixtures "${{ steps.compiler.outputs.channel }}"
+      - name: Upload portable policy for cross-platform validation
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: source-policy-wasm
+          path: ${{ runner.temp }}/source-policy/wasm32-wasip1/release/source-policy.wasm
+          if-no-files-found: error
+      - name: Strict lint portable policy
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: policy-wasm
+        run: |
+          bash scripts/strict_clippy.sh --toolchain "${{ steps.compiler.outputs.channel }}"
       - name: Validate packed skill
         run: uv run --no-project python scripts/package_skill.py
 
