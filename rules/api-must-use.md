@@ -76,7 +76,7 @@ fn main() {
 }
 ```
 
-Ignoring `parse_port("443")` already warns because `Result` is must-use. Likewise, iterator adapters inherit the iterator type's must-use behavior.
+Ignoring `parse_port("443")` already warns because `Result` is must-use. Likewise, must-use iterator return types warn when discarded; do not assume every custom type implementing `Iterator` automatically inherits an attribute.
 
 ## When the Return Value Is Optional Information
 
@@ -154,7 +154,7 @@ fn main() {
 
 An explicit `let _ = ...` communicates that discarding was intentional. Reserve stronger local handling (`?`, `match`, logging, propagation) for cases where the value actually matters.
 
-Clippy's `must_use_candidate`, `return_self_not_must_use`, and `double_must_use` can help review API consistency, but enabling them is a project choice rather than a universal requirement.
+The shared gate already enables `must_use_candidate`, `return_self_not_must_use`, and `double_must_use` through its lint groups. A genuine false positive may use a narrow explanation where that lint is suppressible. Do not add meaningless attributes just to silence a candidate diagnostic.
 
 ## See Also
 

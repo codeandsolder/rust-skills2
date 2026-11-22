@@ -74,6 +74,9 @@ run_python analyze.py check.json \
 echo "==> fixture-backed contracts"
 run_python run_fixture_contracts.py "$TARGET"
 
+echo "==> stable example runtime contracts"
+run_python run_example_contracts.py stable --target "$TARGET"
+
 echo "==> cancellation example runtime contracts"
 run_python test_async_cancel_safety.py
 

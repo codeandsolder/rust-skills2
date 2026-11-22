@@ -18,8 +18,7 @@ pub fn read_all(path: &std::path::Path) -> std::io::Result<Vec<u8>> {
 }
 ```
 
-The compiler warns that the API is deprecated but does not explain why or
-how to migrate.
+The compiler warns at uses of this deprecated API outside exempt contexts, not at the mere declaration, and the warning supplies no migration advice.
 
 ## Good
 

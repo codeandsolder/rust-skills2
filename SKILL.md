@@ -213,7 +213,7 @@ Reference these guidelines when:
 - [`opt-inline-always-rare`](rules/opt-inline-always-rare.md) - Treat `#[inline(always)]` as a strong optimization hint, not a command; use it only when measurement justifies it.
 - [`opt-inline-never-cold`](rules/opt-inline-never-cold.md) - Use cold-path and inlining annotations as measured optimization hints, not source-level guarantees
 - [`opt-cold-unlikely`](rules/opt-cold-unlikely.md) - Use `#[cold]` or `core::hint::cold_path()` only when an unlikely path is known or measured to matter.
-- [`opt-likely-hint`](rules/opt-likely-hint.md) - Use `cold_path()` and `select_unpredictable` for branch hints on stable Rust
+- [`opt-likely-hint`](rules/opt-likely-hint.md) - Use measured branch-probability hints when ordinary code and profiles do not already convey the useful information
 - [`opt-lto-release`](rules/opt-lto-release.md) - Enable LTO in release builds
 - [`opt-codegen-units`](rules/opt-codegen-units.md) - Set `codegen-units = 1` for maximum optimization in release builds
 - [`opt-pgo-profile`](rules/opt-pgo-profile.md) - Use Profile-Guided Optimization (PGO) for maximum performance
@@ -221,8 +221,8 @@ Reference these guidelines when:
 - [`opt-bounds-check`](rules/opt-bounds-check.md) - Structure hot loops so bounds are easy to prove; verify optimized code before using unchecked indexing
 - [`opt-simd-portable`](rules/opt-simd-portable.md) - Treat portable SIMD as a semantic abstraction, not a speed guarantee: preserve scalar behavior, use safe vector memory operations, dispatch CPU-specific kernels correctly, and verify code generation and measured performance.
 - [`opt-cache-friendly`](rules/opt-cache-friendly.md) - Shape data around measured access patterns and working sets; do not assume one layout is universally cache-friendly
-- [`opt-cold-path`](rules/opt-cold-path.md) - Use `core::hint::cold_path()` to mark unlikely inline paths (Rust 1.95+)
-- [`opt-select-unpredictable`](rules/opt-select-unpredictable.md) - Use `core::hint::select_unpredictable()` for branchless conditional moves (Rust 1.88+)
+- [`opt-cold-path`](rules/opt-cold-path.md) - Use `core::hint::cold_path()` to describe a measured unlikely path without extracting a function just to attach an attribute (Rust 1.95+)
+- [`opt-select-unpredictable`](rules/opt-select-unpredictable.md) - Consider `core::hint::select_unpredictable` for measured, hard-to-predict value selections; neither branchless lowering nor constant-time execution is guaranteed (Rust 1.88+)
 - [`opt-sample-profile`](rules/opt-sample-profile.md) - Use stable Rust 1.100 `-Cprofile-sample-use` for measured sample-based PGO when the profiler and target match the build
 
 ### 9. Numeric & Arithmetic Safety (HIGH)
@@ -458,7 +458,7 @@ Reference these guidelines when:
 - [`lint-rustfmt-check`](rules/lint-rustfmt-check.md) - Run cargo fmt --check in CI
 - [`lint-workspace-lints`](rules/lint-workspace-lints.md) - Configure lints at workspace level for consistent enforcement
 - [`lint-cfg-check`](rules/lint-cfg-check.md) - Enable `unexpected_cfgs` and declare known cfgs to catch feature-gate typos
-- [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Enable `clippy::nursery` lints selectively and re-check group membership when the toolchain changes
+- [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Keep all nursery lints enabled in shared strict CI; review genuine heuristic exceptions individually and re-check group membership when the toolchain changes
 - [`lint-cargo-unused-features`](rules/lint-cargo-unused-features.md) - Audit unused Cargo feature flags using their actual activation graph; Cargo 1.100 and the reviewed 1.102 nightly do not recognize an `unused_features` lint
 - [`lint-dylint-custom`](rules/lint-dylint-custom.md) - Use Dylint for compiler-resolved project-specific lints when existing Clippy and simpler static checks cannot express the contract
 - [`lint-edition-2024`](rules/lint-edition-2024.md) - Use the `rust_2024_compatibility` lint group and `cargo fix --edition` to audit edition-sensitive code before switching to Rust 2024

@@ -6,7 +6,7 @@
 
 ## Why It Matters
 
-RFC 3389 (stable since Rust 1.74+) provides native `[lints]` and `[workspace.lints]` tables in Cargo.toml. This replaces `RUSTFLAGS`, `.cargo/config.toml`, and `clippy.toml` for most lint configuration. Centralizing lints in the manifest keeps configuration visible, version-controlled, and inheritable across workspace members.
+RFC 3389 (stable since Rust 1.74+) provides native `[lints]` and `[workspace.lints]` tables in Cargo.toml. This replaces ad hoc compiler flags for lint severity. Lint-specific thresholds and settings still belong in `clippy.toml`; the manifest controls levels, not lint parameters. Centralizing lints in the manifest keeps configuration visible, version-controlled, and inheritable across workspace members.
 
 ## Bad
 
@@ -16,7 +16,7 @@ RFC 3389 (stable since Rust 1.74+) provides native `[lints]` and `[workspace.lin
 
 # Or clippy.toml — separate file, easy to forget
 # clippy.toml:
-# disallowed-macros = ["unwrap", "expect"]
+# disallowed-methods = ["core::option::Option::unwrap"]
 ```
 
 Lint configuration scattered across files is hard to discover, hard to enforce in CI, and cannot be inherited by workspace members.
@@ -31,8 +31,9 @@ missing_docs = "warn"
 missing_copy_implementations = "warn"
 
 [workspace.lints.clippy]
-all = "warn"
-pedantic = { level = "warn", priority = -1 }
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
 wildcard_imports = "deny"
@@ -124,8 +125,9 @@ unused_lifetimes = "warn"
 unused_qualifications = "warn"
 
 [workspace.lints.clippy]
-all = "warn"
-pedantic = { level = "warn", priority = -1 }
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
@@ -149,19 +151,22 @@ workspace = true
 
 ```toml
 # Before: clippy.toml
-# disallowed-macros = ["unwrap", "expect"]
+# disallowed-methods = ["core::option::Option::unwrap"]
 # too-many-arguments-threshold = 10
 
 # After: Root Cargo.toml
 [workspace.lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
-too_many_arguments = "warn"
+too_many_arguments = "deny"
+
+# clippy.toml — retain the threshold separately
+# too-many-arguments-threshold = 10
 ```
 
 ## Known Limitation
 
-Some clippy configuration flags have no `[lints.clippy]` equivalent (e.g., `allow-unwrap-in-tests` in `clippy.toml`). For those, `clippy.toml` may still be needed alongside the manifest lints.
+A lint level does not replace configuration of that lint. For example, `too_many_arguments = "deny"` sets severity, whereas `too-many-arguments-threshold` sets the threshold. The shared gate owns its own Clippy settings; do not use local configuration to weaken it.
 
 ## See Also
 

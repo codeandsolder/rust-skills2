@@ -1,172 +1,110 @@
 # opt-select-unpredictable
 
-> Use `core::hint::select_unpredictable()` for branchless conditional moves (Rust 1.88+)
+> Consider `core::hint::select_unpredictable` for measured, hard-to-predict value selections; neither branchless lowering nor constant-time execution is guaranteed (Rust 1.88+)
 
 ## Why It Matters
 
-Branch mispredictions cost 10-20 cycles each on modern CPUs. For truly unpredictable branches (binary search midpoints, hash table probing, SIMD-style selections), `select_unpredictable()` generates branchless `cmov`/`csel` instructions that execute in constant time regardless of input data — eliminating misprediction penalties.
+A mispredicted branch can waste CPU work. When a condition is frequently
+mispredicted, the optimizer may instead use a conditional move or select
+instruction. `select_unpredictable` conveys that probability information;
+it does not require any particular instruction or ensure faster code.
 
-## Bad
+## Ordinary Baseline
+
+Prefer the standard search when its semantics fit:
 
 ```rust
-// Unpredictable branch — frequent mispredictions
-fn midpoint(data: &[i32], target: i32) -> usize {
-    let mut base = 0;
-    let mut size = data.len();
-    
-    while size > 1 {
-        let half = size / 2;
-        // This branch is unpredictable — data-dependent
-        if data[base + half] < target {
-            base = base + half;  // Mispredictions stall the pipeline
-        }
-        size -= half;
-    }
-    base
+fn search(data: &[i32], target: i32) -> Option<usize> {
+    data.binary_search(&target).ok()
 }
 ```
 
-## Good
+The slice must be sorted. When duplicates exist, any matching index is
+acceptable. Benchmark before reimplementing this operation.
 
+## Good: Measured Value Selection
+
+The following illustrates the selection inside a search for the last element
+less than or equal to the target. Check the selected index for equality.
+The initial empty-slice/first-element guard is necessary to establish the
+invariant that the base is a valid candidate.
+
+<!-- rust-check: run -->
 ```rust
 use core::hint::select_unpredictable;
 
-fn midpoint(data: &[i32], target: i32) -> usize {
+fn search(data: &[i32], target: i32) -> Option<usize> {
+    if data.is_empty() || data[0] > target {
+        return None;
+    }
+
     let mut base = 0;
     let mut size = data.len();
-    
     while size > 1 {
         let half = size / 2;
-        // Branchless! Compiler generates cmov/csel
-        base = select_unpredictable(
-            data[base + half] < target,  // Condition
-            base + half,                  // Value if true
-            base,                         // Value if false
-        );
+        let mid = base + half;
+        base = select_unpredictable(data[mid] <= target, mid, base);
         size -= half;
     }
-    base
+
+    (data[base] == target).then_some(base)
+}
+
+fn main() {
+    // Exercise empty, singleton, even and odd lengths, duplicates and misses.
+    for len in 0..=65 {
+        let data: Vec<i32> = (0..len).map(|i| i / 3 - 10).collect();
+        for target in -12..=14 {
+            assert_eq!(
+                search(&data, target),
+                data.iter().rposition(|&value| value == target),
+            );
+        }
+    }
 }
 ```
+
+This code chooses a specific duplicate (the last matching element). A plain
+`if` with the same update is a useful comparison in the benchmark. A
+strict-less-than comparison would incorrectly miss exact upper elements
+in this algorithm.
 
 ## How It Works
 
-`select_unpredictable(cond, a, b)` tells the compiler:
-- The result of `cond` is unpredictable — don't try to predict it
-- Generate a conditional move (`cmov` on x86, `csel` on ARM) instead of a branch
-- Both `a` and `b` are evaluated (no short-circuiting), so avoid expensive computations
+Both arguments are evaluated before `select_unpredictable` is called,
+unlike the mutually exclusive arms of an `if` expression. Avoid expensive
+or side-effecting operands and do not use this function to guard invalid
+memory accesses. The unselected value is dropped.
 
-## Common Use Cases
-
-```rust
-use core::hint::select_unpredictable;
-
-// 1. Binary search midpoint
-fn binary_search(data: &[i32], target: i32) -> Option<usize> {
-    let mut base = 0usize;
-    let mut size = data.len();
-    
-    while size > 1 {
-        let half = size / 2;
-        base = select_unpredictable(
-            data[base + half] < target,
-            base + half,
-            base,
-        );
-        size -= half;
-    }
-    
-    if size > 0 && data[base] == target { Some(base) } else { None }
-}
-
-// 2. Hash table probing
-fn probe(hash: u64, slots: &[(u64, Value)]) -> Option<Value> {
-    let mut idx = (hash as usize) % slots.len();
-    for _ in 0..slots.len() {
-        let found = slots[idx].0 == hash;
-        if found {
-            return Some(slots[idx].1.clone());
-        }
-        idx = select_unpredictable(
-            idx + 1 >= slots.len(),
-            0,
-            idx + 1,
-        );
-    }
-    None
-}
-
-// 3. Clamping / bounds checks (branchless)
-fn clamp(value: i32, min: i32, max: i32) -> i32 {
-    select_unpredictable(
-        value < min,
-        min,
-        select_unpredictable(value > max, max, value),
-    )
-}
-
-// 4. Conditional dispatch (constant-time)
-fn select_dispatch(cond: bool, fast: fn(), slow: fn()) {
-    // For function pointers, not closures
-    let selected = select_unpredictable(cond, fast as usize, slow as usize);
-    let f: fn() = unsafe { std::mem::transmute(selected) };
-    f();
-}
-```
-
-## When NOT to Use
+Select typed values directly, including function pointers if appropriate:
 
 ```rust
 use core::hint::select_unpredictable;
 
-// ❌ Predictable branches — let the compiler optimize normally
-fn error_check(data: &[u8]) -> Result<(), Error> {
-    // This branch is almost never taken — normal prediction works fine
-    if data.is_empty() {
-        return Err(Error::Empty);
-    }
-    Ok(())
-}
-
-// ❌ Expensive operands — both arms are always evaluated
-fn expensive_select(x: i32) -> i32 {
-    // Both heavy_compute(x) and light_compute(x) execute every time!
-    select_unpredictable(
-        x < 0,
-        heavy_compute(x),   // Always runs
-        light_compute(x),   // Always runs
-    )
-}
-
-// ❌ Cold/infrequent paths — overhead not worth it
-fn rarely_called() {
-    // Not performance-sensitive; branch overhead is negligible
-    if some_condition() {
-        do_something();
-    }
+fn dispatch(condition: bool, fast: fn(), slow: fn()) {
+    let selected = select_unpredictable(condition, fast, slow);
+    selected();
 }
 ```
 
-## Performance Comparison
+No pointer-to-integer conversion or unsafe transmutation is necessary.
+An indirect call need not be faster than an ordinary conditional call.
+Neither a data-dependent search nor this dispatch is a constant-time
+cryptographic primitive.
 
-| Aspect | Branch (`if/else`) | `select_unpredictable()` |
-|--------|-------------------|--------------------------|
-| Predictable branches | ✅ Fast (0-2 cycle mispredict) | ⚠️ Slower (evaluates both arms) |
-| Unpredictable branches | ❌ Slow (10-20 cycle mispredict) | ✅ Fast (constant time) |
-| Code size | Smaller (one path) | Larger (both paths inlined) |
-| When to use | Most branches | After profiling shows mispredictions |
+## When to Use
 
-## Verifying Branchless Code
-
-```bash
-# Check that select_unpredictable generates cmov (x86) or csel (ARM)
-cargo show-asm --rust --release my_crate::hot_function | grep -E 'cmov|csel|cset'
-```
-
-If you see `je`/`jne`/`b.cc` instead of `cmov`/`csel`, the compiler didn't honor the hint.
+- Measure a hard-to-predict selection in a hot path; compare against ordinary control flow.
+- Use simple, cheap candidates. Predictable branches or expensive arms may favor an `if`.
+- Inspect optimized assembly for the actual target and benchmark representative inputs.
+  A conditional move can increase data dependencies; a branch can be faster.
+- Do not interpret the presence or absence of one instruction as a proof of
+  whole-function performance, side-channel behavior, or correctness.
 
 ## See Also
 
-- [opt-likely-hint](./opt-likely-hint.md) - Branch hinting with cold_path()
-- [opt-cold-path](./opt-cold-path.md) - Marking unlikely inline paths
-- [perf-profile-first](./perf-profile-first.md) - Profile before optimizing
+- [opt-likely-hint](./opt-likely-hint.md) — branch probability hints
+- [opt-cold-path](./opt-cold-path.md) — cold inline paths
+- [perf-hint-apis](./perf-hint-apis.md) — semantics of the compiler hint APIs
+- [perf-profile-first](./perf-profile-first.md) — profile before optimizing
+- [Standard library: select_unpredictable](https://doc.rust-lang.org/std/hint/fn.select_unpredictable.html)

@@ -37,6 +37,7 @@ use crate::domain::Request;
 Supported expectations:
 
 - `compile` — must produce zero compiler errors.
+- `run` — must compile and execute successfully on the pinned stable compiler; requires an explicit runnable `fn main()`. Use assertions to verify behavior.
 - `fragment` — may fail only because surrounding names/context are absent.
 - `compile_fail` — must fail to compile.
 - `ignore` — not compiled; an explicit `rust-check` marker requires a reason.
@@ -47,6 +48,7 @@ Examples:
 
 ```markdown
 <!-- rust-check: compile -->
+<!-- rust-check: run -->
 <!-- rust-check: compile_fail; reason=demonstrates ownership error -->
 <!-- rust-check: ignore; reason=requires a proc-macro crate -->
 <!-- rust-check: nightly(portable_simd); reason=nightly-only API -->
@@ -130,8 +132,9 @@ stale legacy debt; the generated diff should be treated as code-review material.
 - Generated `examples/`, `check.json`, `check.err`, and `manifest.json` are ignored.
 - Outside strict `Good`/`Bad` sections, `gen.py` keeps legacy examples as
   `auto`. Unstable feature examples require an explicit nightly contract.
-  After generation, run `uv run --no-project python checks/run_nightly_contracts.py`
-  to verify the nightly package. Special environments should use fixture contracts.
+  After generation, run `uv run --no-project python checks/run_example_contracts.py nightly`
+  to verify the nightly package. The stable runtime lane is part of `check.sh` and
+  runs only explicitly marked examples. Special environments should use fixture contracts.
 - `test_gen_metadata.py` creates a temporary rule file, verifies native fence
   parsing, removes it, and restores the generated manifest/examples before the
   real corpus compile begins.

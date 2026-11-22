@@ -54,10 +54,11 @@ fn main() {
 }
 ```
 
-It is functionally equivalent to `if condition { true_val } else { false_val }`, plus a hint that the condition is hard for a branch predictor to predict. The optimizer **might** lower this to a conditional move/select instruction on a suitable target, but that lowering is not guaranteed.
+It selects the same result as `if condition { true_val } else { false_val }` after both candidate values have been evaluated (the unselected value is dropped), plus a hint that the condition is hard for a branch predictor to predict. The optimizer **might** lower this to a conditional move/select instruction on a suitable target, but that lowering is not guaranteed.
 
-A binary-search-style update is another plausible use:
+A binary-search-style update is another plausible use (for a sorted slice):
 
+<!-- rust-check: run -->
 ```rust
 use std::hint::select_unpredictable;
 
@@ -83,6 +84,15 @@ fn main() {
     let values = [10, 20, 30, 40];
     assert_eq!(floor_index(&values, 25), Some(1));
     assert_eq!(floor_index(&values, 40), Some(3));
+    for len in 0..=65 {
+        let data: Vec<u64> = (0..len).map(|i| i / 3 + 1).collect();
+        for needle in 0..=24 {
+            assert_eq!(
+                floor_index(&data, needle),
+                data.iter().rposition(|&value| value <= needle),
+            );
+        }
+    }
 }
 ```
 

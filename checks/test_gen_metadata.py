@@ -56,6 +56,13 @@ fn main() {}
 fn main() {}
 ```
 
+## Stable executable
+
+<!-- rust-check: run -->
+```rust
+fn main() {}
+```
+
 ## Fixture backed
 
 <!-- rust-check: fixture(feature-additive) -->
@@ -77,7 +84,7 @@ def main():
         run_gen()
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         prefix = "zz_verifier_metadata_fixture__"
-        rows = [manifest[f"{prefix}{i}"] for i in range(7)]
+        rows = [manifest[f"{prefix}{i}"] for i in range(8)]
         got = [(row["expect"], row["generated"]) for row in rows]
         want = [
             ("compile_fail", True),
@@ -86,6 +93,7 @@ def main():
             ("compile", True),
             ("nightly", False),
             ("nightly", False),
+            ("compile", True),
             ("fixture:feature-additive", False),
         ]
         if got != want:
@@ -95,7 +103,9 @@ def main():
         for i in (4, 5):
             if not (HERE / "nightly" / "examples" / f"{prefix}{i}.rs").is_file():
                 raise AssertionError("nightly source was not generated")
-        print("OK: native rustdoc, nightly and fixture expectations")
+        if not rows[6].get("stable_run") or rows[2].get("stable_run"):
+            raise AssertionError("stable runtime metadata did not distinguish compile-only examples")
+        print("OK: native rustdoc, runtime, nightly and fixture expectations")
     finally:
         FIXTURE.unlink(missing_ok=True)
         # Restore generated state so the real corpus run that follows sees only
