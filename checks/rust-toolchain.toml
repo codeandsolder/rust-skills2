@@ -2,4 +2,5 @@
 # match CI exactly. Any `cargo` invocation in this directory uses this.
 [toolchain]
 channel = "1.100.0"
+components = ["clippy"]
 targets = ["x86_64-unknown-linux-gnu"]
