@@ -1,0 +1,243 @@
+{
+  "schema": 1,
+  "description": "First 12 cases frozen from the retired independent Python oracle; extra cases test real Cargo semantics and rejected selectors.",
+  "historical": 12,
+  "cases": [
+    {
+      "fixture": "strict-ci-pass",
+      "default": false,
+      "selectors": [],
+      "status": 0,
+      "rows": [
+        "strict\tstrict-ci-pass@0.0.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-pass",
+      "default": true,
+      "selectors": [
+        "--workspace"
+      ],
+      "status": 0,
+      "rows": [
+        "relaxed\tstrict-ci-pass@0.0.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [],
+      "status": 0,
+      "rows": [
+        "relaxed\tlegacy-member@0.1.0",
+        "strict\tstrict-member@0.1.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [
+        "--workspace"
+      ],
+      "status": 0,
+      "rows": [
+        "relaxed\tlegacy-member@0.1.0",
+        "strict\tstrict-member@0.1.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": true,
+      "selectors": [
+        "--workspace"
+      ],
+      "status": 0,
+      "rows": [
+        "relaxed\tlegacy-member@0.1.0",
+        "relaxed\tstrict-member@0.1.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [
+        "--package=legacy-member"
+      ],
+      "status": 0,
+      "rows": [
+        "relaxed\tlegacy-member@0.1.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [
+        "-p",
+        "strict-member@0.1.0"
+      ],
+      "status": 0,
+      "rows": [
+        "strict\tstrict-member@0.1.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [
+        "--workspace",
+        "--exclude",
+        "legacy-member"
+      ],
+      "status": 0,
+      "rows": [
+        "strict\tstrict-member@0.1.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [
+        "-p",
+        "missing"
+      ],
+      "status": 2,
+      "rows": []
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [
+        "--workspace",
+        "--exclude=missing"
+      ],
+      "status": 2,
+      "rows": []
+    },
+    {
+      "fixture": "strict-ci-workspace-default-panics",
+      "default": false,
+      "selectors": [
+        "--workspace"
+      ],
+      "status": 0,
+      "rows": [
+        "relaxed\tlegacy-member@0.1.0",
+        "strict\tstrict-member@0.1.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-workspace-default-panics",
+      "default": true,
+      "selectors": [
+        "--workspace"
+      ],
+      "status": 0,
+      "rows": [
+        "relaxed\tlegacy-member@0.1.0",
+        "strict\tstrict-member@0.1.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [
+        "--workspace",
+        "-p",
+        "strict-member"
+      ],
+      "status": 0,
+      "rows": [
+        "relaxed\tlegacy-member@0.1.0",
+        "strict\tstrict-member@0.1.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [
+        "--package=legacy-member",
+        "--package",
+        "strict-member"
+      ],
+      "status": 0,
+      "rows": [
+        "relaxed\tlegacy-member@0.1.0",
+        "strict\tstrict-member@0.1.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [
+        "--workspace",
+        "--exclude=legacy-member"
+      ],
+      "status": 0,
+      "rows": [
+        "strict\tstrict-member@0.1.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [
+        "--exclude=legacy-member"
+      ],
+      "status": 2,
+      "rows": []
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [
+        "--workspace",
+        "--exclude=legacy-member",
+        "--exclude=strict-member"
+      ],
+      "status": 2,
+      "rows": []
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [
+        "--package"
+      ],
+      "status": 2,
+      "rows": []
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": false,
+      "selectors": [
+        "--workspace",
+        "-p",
+        "missing"
+      ],
+      "status": 2,
+      "rows": []
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": true,
+      "selectors": [
+        "--workspace",
+        "--exclude=strict-member"
+      ],
+      "status": 0,
+      "rows": [
+        "relaxed\tlegacy-member@0.1.0"
+      ]
+    },
+    {
+      "fixture": "strict-ci-workspace-overrides",
+      "default": true,
+      "selectors": [],
+      "status": 0,
+      "rows": [
+        "relaxed\tlegacy-member@0.1.0",
+        "relaxed\tstrict-member@0.1.0"
+      ]
+    }
+  ]
+}

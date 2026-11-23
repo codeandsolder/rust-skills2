@@ -14,8 +14,8 @@ Rule validation, example generation, Cargo compiler-evidence validation,
 exact baseline checks, and runtime contract generation are native Rust commands
 in `checks/ci-tool`, with ordinary Cargo tests and strict Clippy. Native Node
 orchestrates Cargo and executable fixtures; no Python or Zipp runtime is used
-by `check.sh`. The independent workspace policy oracle runs separately in Zipp
-on CI until its native replacement is integrated.
+by `check.sh`. Workspace policy is verified against frozen acceptance cases and Cargo unit graphs
+on Linux, macOS and Windows, with the bundled Rust/WASI module under test.
 
 The command runs structural/link/index checks, regression-tests the expectation
 extractor, extracts examples, compiles them with the pinned nightly toolchain,
