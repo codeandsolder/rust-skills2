@@ -48,6 +48,11 @@ on:
         required: false
         type: boolean
         default: false
+      dependency-quality:
+        description: "Enable informational RustSec and unused-dependency reporting; disable on redundant matrix legs"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -149,6 +154,12 @@ jobs:
           allow-test-panics: ${{ inputs.allow-test-panics }}
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
           install-toolchain: "false"
+
+      - name: Report dependency advisories and unused dependencies
+        if: inputs.dependency-quality
+        uses: codeandsolder/ci-workflows/.github/actions/rust-dependency-quality@c53a0d48021708f896272fdf378fbf5132a55328 # main
+        with:
+          working-directory: ${{ inputs.working-directory }}
 
       - name: Show Cargo future-incompatibility report
         if: failure()
