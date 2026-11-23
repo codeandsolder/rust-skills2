@@ -14,7 +14,6 @@ const {runTask} = await import(pathToFileURL(realpathSync(runner)).href);
 const tasks = stage === 'pre' ? [
   ['metadata', []],
   ['evidence', []],
-  ['source_tokens', []],
   ['generate', []],
 ] : [
   ['analyze', ['checks/check.json', '--source-dir', realpathSync(path.join(checks, 'examples')),

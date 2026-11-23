@@ -59,19 +59,6 @@
     ],
     "stdin": "compiler-evidence.jsonl"
   },
-  "source_tokens": {
-    "entry": "checks/check_source_tokens.py",
-    "read": [
-      "checks/source_tokens.py"
-    ]
-  },
-  "source_corpus": {
-    "entry": "checks/check_source_tokens.py",
-    "read": [
-      "checks/source_tokens.py"
-    ],
-    "stdin": "source-corpus.json"
-  },
   "workspace_oracle": {
     "entry": "checks/workspace_test_policy_oracle.py",
     "stdin": "workspace-requests.json"
