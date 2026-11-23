@@ -65,7 +65,7 @@ Run the same checks CI runs:
 Use a sibling checkout of the pinned `codeandsolder/ci-workflows` provider.
 
 ```bash
-bash checks/check.sh ../ci-workflows/zipp-python/run.mjs
+bash checks/check.sh
 ```
 
 If the compile gate reports a real bug, fix the example. If you intentionally

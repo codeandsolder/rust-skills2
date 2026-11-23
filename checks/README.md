@@ -7,14 +7,15 @@ fragment, compile-fail example, ignored snippet, or nightly-only example.
 ## Run
 
 ```bash
-bash checks/check.sh ../ci-workflows/zipp-python/run.mjs
+bash checks/check.sh
 ```
 
-Rule validation, the index, example generation, and expectation metadata
-are native Rust commands in checks/ci-tool, with ordinary cargo tests. Zipp
-currently handles the remaining compiler-evidence classifier; native Node
-orchestrates Cargo and runtime fixtures.
-Independent reference-policy checks are being migrated to Rust acceptance tests.
+Rule validation, example generation, Cargo compiler-evidence validation,
+exact baseline checks, and runtime contract generation are native Rust commands
+in `checks/ci-tool`, with ordinary Cargo tests and strict Clippy. Native Node
+orchestrates Cargo and executable fixtures; no Python or Zipp runtime is used
+by `check.sh`. The independent workspace policy oracle runs separately in Zipp
+on CI until its native replacement is integrated.
 
 The command runs structural/link/index checks, regression-tests the expectation
 extractor, extracts examples, compiles them with the pinned nightly toolchain,
@@ -116,17 +117,17 @@ To inspect current state:
 cargo run --locked --manifest-path checks/ci-tool/Cargo.toml -- . generate
 (cd checks && cargo check --examples --target x86_64-unknown-linux-gnu --keep-going \
   --message-format=json > check.json 2> check.err || true)
-node ../ci-workflows/zipp-python/run.mjs . checks/zipp-tasks.json analyze \
-  checks/check.json --source-dir "$(realpath checks/examples)"
+cargo run --locked --manifest-path checks/ci-tool/Cargo.toml -- . analyze \
+  --input checks/check.json --source-dir "$(realpath checks/examples)"
 ```
 
 Migration helpers (review their output before committing it):
 
 ```bash
-node ../ci-workflows/zipp-python/run.mjs . checks/zipp-tasks.json analyze \
-  checks/check.json --source-dir "$(realpath checks/examples)" --emit-baseline > checks/baseline.generated.txt
-node ../ci-workflows/zipp-python/run.mjs . checks/zipp-tasks.json analyze \
-  checks/check.json --source-dir "$(realpath checks/examples)" --emit-good-exceptions > checks/good-exceptions.generated.txt
+cargo run --locked --manifest-path checks/ci-tool/Cargo.toml -- . analyze \
+  --input checks/check.json --source-dir "$(realpath checks/examples)" --emit-baseline > checks/baseline.generated.txt
+cargo run --locked --manifest-path checks/ci-tool/Cargo.toml -- . analyze \
+  --input checks/check.json --source-dir "$(realpath checks/examples)" --emit-good-exceptions > checks/good-exceptions.generated.txt
 ```
 
 Do **not** regenerate either debt file merely to make CI green. Fix real example
@@ -142,8 +143,8 @@ stale legacy debt; the generated diff should be treated as code-review material.
   `auto`. Unstable feature examples require an explicit nightly contract.
   The ordinary and nightly runtime lanes are part of `check.sh` and
   run only explicitly marked examples. Special environments should use fixture contracts.
-- `checks/ci-tool/src/generator.rs` contains ordinary Rust tests of native fence parsing, run/nightly metadata, generated source, and invalid contracts
-  scratch directory, without modifying the real corpus.
+- `checks/ci-tool/src/generator.rs` tests native fence parsing, runtime/nightly metadata,
+  emitted source, and invalid contracts without modifying the real corpus.
 
 ## Native runtime and compiler-evidence contracts
 
@@ -157,6 +158,8 @@ stale legacy debt; the generated diff should be treated as code-review material.
   `clippy::disallowed_methods` primary spans with annotated `// audit` lines.
   The fixture compiler invocation uses the centrally configured sccache.
 
-Both are ordinary Rust code with Cargo unit tests, no Python/Zipp interpreter
-or duplicated policy reference. Other remaining Zipp tasks are being migrated
-separately.
+Both are ordinary Rust code with Cargo unit tests and no Python/Zipp
+interpreter or duplicated policy reference. The Cargo evidence analyzer is also
+native Rust: `rust-skills-ci ROOT analyze` verifies that every generated example
+has actual compiler evidence, rejects foreign errors, and enforces both exact
+baseline and good-exception signatures (including stale entries).

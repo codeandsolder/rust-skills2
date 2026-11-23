@@ -1,19 +1,4 @@
 {
-  "analyze": {
-    "entry": "checks/analyze.py",
-    "read": [
-      "checks/manifest.json",
-      "checks/check.json",
-      "checks/baseline.txt",
-      "checks/good-exceptions.txt"
-    ]
-  },
-  "evidence": {
-    "entry": "checks/check_analyze.py",
-    "read": [
-      "checks/analyze.py"
-    ]
-  },
   "workspace_oracle": {
     "entry": "checks/workspace_test_policy_oracle.py",
     "stdin": "workspace-requests.json"
