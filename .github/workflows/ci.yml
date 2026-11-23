@@ -34,9 +34,6 @@ jobs:
         with:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
-      - name: Locate portable Zipp Python runtime
-        id: zipp
-        uses: codeandsolder/ci-workflows/.github/actions/zipp-python@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
       # The exact same command contributors run locally.
       - name: Run checks
         env:
@@ -60,9 +57,9 @@ jobs:
         run: |
           node --test policy-wasm/gitlink.test.mjs
           node --test policy-wasm/token-golden.test.mjs
-          node checks/compare_workspace_policy.mjs "${{ steps.zipp.outputs.runner }}" "${{ steps.compiler.outputs.channel }}" "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm"
+          node checks/compare_workspace_policy.mjs "${{ steps.compiler.outputs.channel }}" "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm"
           node policy-wasm/package.mjs verify "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" "${{ steps.compiler.outputs.channel }}"
-          node checks/compare_workspace_policy.mjs "${{ steps.zipp.outputs.runner }}" "${{ steps.compiler.outputs.channel }}" policy-wasm/module.json
+          node checks/compare_workspace_policy.mjs "${{ steps.compiler.outputs.channel }}" policy-wasm/module.json
       - name: Strict lint portable policy
         shell: bash
         env:
@@ -110,9 +107,6 @@ jobs:
         with:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
-      - name: Locate portable Zipp Python runtime
-        id: zipp
-        uses: codeandsolder/ci-workflows/.github/actions/zipp-python@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
       - name: Native Rust rules and compiler evidence regression tests
         shell: bash
         run: cargo test --locked --manifest-path checks/ci-tool/Cargo.toml --target-dir "$RUNNER_TEMP/ci-tool"
@@ -125,7 +119,7 @@ jobs:
       - name: Validate the exact bundled artifact
         shell: bash
         run: |
-          node checks/compare_workspace_policy.mjs "${{ steps.zipp.outputs.runner }}" "${{ steps.compiler.outputs.channel }}" policy-wasm/module.json
+          node checks/compare_workspace_policy.mjs "${{ steps.compiler.outputs.channel }}" policy-wasm/module.json
 
       - name: Finalize mandatory sccache
         if: always()

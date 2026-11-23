@@ -49,8 +49,10 @@ cargo test --locked --manifest-path policy-wasm/Cargo.toml --test source_policy_
 
 Frozen independent source-token expectations are checked by Rust unit tests
 against the native implementation and by a Node test that runs the bundled
-WASI scanner over all 213 cases; no Python or Zipp reference runtime is needed. Workspace policy comparison also uses Zipp against actual Cargo metadata and
-unit-graph evidence. Native-source policy acceptance fixtures use ordinary Rust integration tests
+WASI scanner over all 213 cases; no Python or Zipp reference runtime is needed.
+Workspace policy is checked against 21 frozen decisions from real Cargo fixtures,
+including independent Cargo unit-graph evidence for `--workspace`/`-p` precedence.
+Native-source policy acceptance fixtures use ordinary Rust integration tests
 against the bundled policy-WASI artifact; all fixture statuses and diagnostics
 are explicit, reviewed expectations.
 The original independent Python oracle was retired after freezing its decisions across every source-policy fixture. `tests/golden/source-policy.json` contains reviewed expected exit statuses, counts and diagnostics. The Rust integration test calls the real bundled policy-WASI module and rejects missing/new fixture cases. It deliberately retains the extra forbidden `#[allow]` diagnostics the old oracle omitted for invalid generated boundaries.
