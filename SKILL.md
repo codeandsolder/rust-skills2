@@ -1,7 +1,7 @@
 ---
 name: rust-skills
 description: >
-  Comprehensive Rust coding guidelines with 353 rules across 26 categories.
+  Comprehensive Rust coding guidelines with 354 rules across 26 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
@@ -23,7 +23,7 @@ metadata:
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 353 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.100 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 354 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.100 (2024 edition).
 
 ## When to Apply
 
@@ -63,7 +63,7 @@ Reference these guidelines when:
 | 20 | Testing | MEDIUM | `test-` | 23 |
 | 21 | Documentation | MEDIUM | `doc-` | 17 |
 | 22 | Observability | MEDIUM | `obs-` | 8 |
-| 23 | Performance Patterns | MEDIUM | `perf-` | 19 |
+| 23 | Performance Patterns | MEDIUM | `perf-` | 20 |
 | 24 | Project Structure | LOW | `proj-` | 24 |
 | 25 | Clippy & Linting | LOW | `lint-` | 20 |
 | 26 | Anti-patterns | REFERENCE | `anti-` | 21 |
@@ -427,6 +427,7 @@ Reference these guidelines when:
 - [`perf-copy-range`](rules/perf-copy-range.md) - Treat `Copy` ranges as an ownership and ergonomics choice, not an automatic performance optimization
 - [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` when matching elements should be removed while their ownership is yielded to the caller.
 - [`perf-hint-apis`](rules/perf-hint-apis.md) - Use compiler hint APIs only when their semantics match a measured hot path; they are advisory optimizations, not code-generation guarantees
+- [`perf-equivalent-benchmarks`](rules/perf-equivalent-benchmarks.md) - Benchmark equivalent semantics and work; isolate architecture costs and validate numerical accuracy before adopting faster algorithms
 - [`perf-benchmark-regression`](rules/perf-benchmark-regression.md) - Define representative performance contracts and detect regressions using reproducible, complementary measurements rather than a single timing or arbitrary threshold
 
 ### 24. Project Structure (LOW)
