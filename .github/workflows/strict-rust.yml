@@ -89,16 +89,16 @@ jobs:
           python-ci-paths: ${{ inputs.python-ci-paths }}
 
       - name: Enforce PR workflow supersession across all caller workflows
-        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
 
       - name: Enforce canonical Rust CI caching
-        uses: codeandsolder/ci-workflows/.github/actions/rust-ci-sccache-policy@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/rust-ci-sccache-policy@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
         with:
           strict-ref: ${{ job.workflow_sha }}
 
       - name: Quarantine newly introduced crates.io versions across all workspaces
         if: github.event_name == 'pull_request'
-        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
         with:
           base-ref: ${{ github.event.pull_request.base.sha }}
           lockfile: auto
@@ -116,7 +116,7 @@ jobs:
 
       - name: Resolve one quarantined compiler
         id: compiler
-        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
         with:
           rust-toolchain: ${{ inputs.rust-toolchain }}
 
@@ -128,7 +128,7 @@ jobs:
           targets: ${{ inputs.rust-targets }}
 
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
         with:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
@@ -162,4 +162,4 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main

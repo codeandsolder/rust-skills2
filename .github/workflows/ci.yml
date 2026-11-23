@@ -23,24 +23,24 @@ jobs:
           version: latest-known
           enable-cache: false
       - name: Enforce PR workflow supersession across all caller workflows
-        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
 
       - name: Resolve one quarantined compiler
         id: compiler
-        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
           toolchain: ${{ steps.compiler.outputs.channel }}
           targets: x86_64-unknown-linux-gnu,wasm32-wasip1
           components: clippy,rustfmt
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
         with:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
       - name: Locate portable Zipp Python runtime
         id: zipp
-        uses: codeandsolder/ci-workflows/.github/actions/zipp-python@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/zipp-python@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
       # The exact same command contributors run locally.
       - name: Run checks
         env:
@@ -79,11 +79,11 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
 
   cargo-release-age:
     if: github.event_name == 'pull_request'
-    uses: codeandsolder/ci-workflows/.github/workflows/cargo-release-quarantine.yml@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+    uses: codeandsolder/ci-workflows/.github/workflows/cargo-release-quarantine.yml@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
 
   portable-source-policy:
     name: Portable source policy (${{ matrix.os }})
@@ -102,14 +102,14 @@ jobs:
           enable-cache: false
       - name: Resolve one quarantined compiler
         id: compiler
-        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
           toolchain: ${{ steps.compiler.outputs.channel }}
           components: clippy
       - name: Locate portable Zipp Python runtime
         id: zipp
-        uses: codeandsolder/ci-workflows/.github/actions/zipp-python@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/zipp-python@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
       - name: Exercise documentation checks in Zipp
         shell: bash
         run: node checks/run_zipp.mjs "${{ steps.zipp.outputs.runner }}" pre
@@ -131,7 +131,7 @@ jobs:
 
       - name: Resolve one quarantined compiler
         id: compiler
-        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
 
       - name: Source-only lint policy action accepts generated-boundary fixture
         uses: ./.github/actions/source-lint-policy
@@ -233,7 +233,7 @@ jobs:
           echo "Python gate correctly rejected a ty violation"
 
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
         with:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
@@ -650,5 +650,5 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@436a7b79fe974fd4e7549c945eefbb9b00c2522b # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
 
