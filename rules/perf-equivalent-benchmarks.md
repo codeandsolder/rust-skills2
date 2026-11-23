@@ -54,4 +54,4 @@ Use Criterion or a comparable harness for repeated, randomized-order measurement
 - [less_slow.rs source](https://github.com/ashvardanian/less_slow.rs/blob/main/less_slow.rs) — original experiments; uses nightly-only coroutine and core-intrinsic features, so it is not a stable-Rust implementation template.
 - [Criterion.rs](https://bheisler.github.io/criterion.rs/book/) — statistical benchmarking.
 - [Rust Performance Book](https://nnethercote.github.io/perf-book/) — profiling and measurement.
-- [`test-criterion-bench`](test-criterion-bench.md) if present in the installed rule set.
+- [`perf-benchmark-regression`](perf-benchmark-regression.md) — regression measurement contracts.
