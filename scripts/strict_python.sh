@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+MODE=lint
+if [[ $# == 1 && $1 == --probe ]]; then
+    MODE=probe
+elif (( $# != 0 )); then
+    echo "usage: strict_python.sh [--probe]" >&2
+    exit 2
+fi
+
 ROOT="${RUST_SKILLS2_REPOSITORY_ROOT:-${GITHUB_WORKSPACE:-$(pwd)}}"
 ACTION_DIR="${RUST_SKILLS2_PYTHON_ACTION_DIR:-}"
 
@@ -24,9 +32,20 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     exit 2
 fi
 
-mapfile -d '' PYTHON_FILES < <(git ls-files -z -- '*.py' '*.pyi' '*.pyw')
+TEMP_ROOT="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/rust-skills2-python.XXXXXX")"
+cleanup_python_envs() {
+    rm -rf -- "$TEMP_ROOT"
+}
+trap cleanup_python_envs EXIT
+
+# Capture the producer status before treating an empty inventory as a no-op.
+# Process substitution alone loses Git errors.
+git ls-files -z -- '*.py' '*.pyi' '*.pyw' > "$TEMP_ROOT/inventory"
+mapfile -d '' PYTHON_FILES < "$TEMP_ROOT/inventory"
+rm -- "$TEMP_ROOT/inventory"
 if (( ${#PYTHON_FILES[@]} == 0 )); then
-    echo "rust-skills2: no tracked Python files; Python policy is a no-op"
+    echo "rust-skills2: no tracked Python files; Python policy is a no-op" >&2
+    if [[ "$MODE" == probe ]]; then printf 'false\n'; fi
     exit 0
 fi
 
@@ -86,6 +105,11 @@ if [[ "$BAN_PYTHON_OUTSIDE_CI" == true ]]; then
     fi
 fi
 
+if [[ "$MODE" == probe ]]; then
+    printf 'true\n'
+    exit 0
+fi
+
 # ALL is intentionally the starting point. The ignored families are either
 # formatter-conflicting, documentation/process policy, highly heuristic security
 # checks, or broad style/refactor preferences with routine legitimate exceptions.
@@ -95,7 +119,7 @@ RUFF_IGNORE=(
     D DOC CPY001
     T20 ERA FIX TD
     C90 PLR
-    FBT EM TRY PTH SLF N PT TCH ARG S
+    FBT EM TRY PTH SLF N PT TC ARG S
     INP001 E501
     W191 E111 E114 E117
     Q000 Q001 Q002 Q003 Q004
@@ -175,12 +199,6 @@ for path in "${PYTHON_FILES[@]}"; do
         UNPROJECTED_FILES+=("$path")
     fi
 done
-
-TEMP_ROOT="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/rust-skills2-python.XXXXXX")"
-cleanup_python_envs() {
-    rm -rf -- "$TEMP_ROOT"
-}
-trap cleanup_python_envs EXIT
 
 run_ty() {
     local project=$1

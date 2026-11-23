@@ -156,12 +156,38 @@ jobs:
           cd checks/fixtures/strict-ci-generated-boundary
           node "$gate/policy-wasm/check.mjs" "$gate/policy-wasm/module.json" "${{ steps.compiler.outputs.channel }}" false --all-targets
 
+      - name: Python gate skips setup for a Rust-only checkout
+        id: no-python
+        uses: ./.github/actions/python-strict
+        env:
+          RUST_SKILLS2_REPOSITORY_ROOT: ${{ github.workspace }}/checks/fixtures/strict-ci-pass
+
+      - name: Reject a broken Git inventory instead of skipping the gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          broken="$(mktemp -d "$RUNNER_TEMP/python-index.XXXXXX")"
+          trap 'rm -rf -- "$broken"' EXIT
+          git init -q "$broken"
+          printf invalid > "$broken/.git/index"
+          if RUST_SKILLS2_REPOSITORY_ROOT="$broken" bash scripts/strict_python.sh --probe; then
+            echo "Python gate accepted a broken Git index" >&2
+            exit 1
+          fi
+
       - name: Python action accepts strict CI-only Python
+        id: python-present
         uses: ./.github/actions/python-strict
         env:
           RUST_SKILLS2_REPOSITORY_ROOT: ${{ github.workspace }}/checks/fixtures/strict-python-pass
         with:
           ban-python-outside-ci: "true"
+
+      - name: Assert both Python inventory outcomes
+        shell: bash
+        run: |
+          test "${{ steps.no-python.outputs.has-python }}" = false
+          test "${{ steps.python-present.outputs.has-python }}" = true
 
       - name: Python gate resolves locked project dependencies without polluting the checkout
         shell: bash
