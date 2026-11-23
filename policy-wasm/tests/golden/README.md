@@ -36,3 +36,27 @@ and attribute extraction. `policy-wasm/token-golden.test.mjs` sends the same
 inputs to the actual bundled WASI scanner on Linux/macOS/Windows and verifies
 every result. Updating the frozen expectations requires an intentional review
 of the semantic differences, not mechanically copying scanner output.
+
+
+## Workspace test-panic policy acceptance
+
+`workspace-policy.json` freezes 21 selected-package outcomes: the 12 original
+independent Python oracle cases (10 accepted and 2 rejected) plus 9 cases
+exercising real Cargo selector semantics, including `--workspace` overriding
+`-p`, exact package versions, default members, exclusions and malformed
+selectors. Each case records the fixture, inherited default, selectors, exit
+status and exact ordered strict/relaxed rows.
+
+`checks/compare_workspace_policy.mjs` reads these **reviewed literal
+expectations**, obtains fresh real `cargo metadata` for each fixture,
+validates the workspace member inventory, and invokes the compiled Rust/WASI
+policy for every case. The extra `--workspace -p` overlap is independently
+checked against Cargo's actual `--unit-graph`, not against the retired
+oracle, which had an incorrect precedence rule. Native Rust unit tests in
+`src/workspace.rs` also cover malformed metadata, reasons for relaxing
+panics, exact-version and duplicate package selectors, default-member
+precedence, and empty selection.
+
+The test runs against both the freshly rebuilt WASI module and the
+byte-identity-verified packaged module on Linux, and against the bundled module
+on macOS and Windows. No CPython or Zipp runtime is required.

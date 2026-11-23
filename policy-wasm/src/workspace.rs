@@ -291,4 +291,69 @@ mod tests {
         assert!(resolve(&request, &packages).is_err());
         Ok(())
     }
+    #[test]
+    fn package_selectors_defaults_and_exact_versions() -> Result<(), Box<dyn std::error::Error>> {
+        let packages = [member("a", &Value::Null)?, member("b", &Value::Null)?];
+        let mut request = Request {
+            default_allow_test_panics: false,
+            cargo_args: vec![],
+            default_members: vec!["a".into()],
+            metadata: Value::Null,
+        };
+        assert_eq!(resolve(&request, &packages)?.len(), 1);
+        assert_eq!(resolve(&request, &packages)?[0].spec, "a@1.0.0");
+        request.cargo_args = vec![
+            "--package=b@1.0.0".into(),
+            "-p".into(),
+            "a".into(),
+            "--package=b".into(),
+        ];
+        let rows = resolve(&request, &packages)?;
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].spec, "a@1.0.0");
+        assert_eq!(rows[1].spec, "b@1.0.0");
+        request.cargo_args = vec!["-p".into(), "missing".into()];
+        assert!(resolve(&request, &packages).is_err());
+        request.cargo_args = vec!["-p".into()];
+        assert!(resolve(&request, &packages).is_err());
+        request.cargo_args = vec!["--exclude=a".into()];
+        assert!(resolve(&request, &packages).is_err());
+        request.cargo_args = vec![
+            "--workspace".into(),
+            "--exclude=a".into(),
+            "--exclude=b".into(),
+        ];
+        assert!(resolve(&request, &packages).is_err());
+        request.cargo_args = vec!["--workspace".into(), "-p".into(), "missing".into()];
+        assert!(resolve(&request, &packages).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn metadata_must_be_typed_and_relaxations_explained() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let packages = [member("a", &Value::Null)?];
+        let mut request = Request {
+            default_allow_test_panics: false,
+            cargo_args: vec!["--workspace".into()],
+            default_members: vec![],
+            metadata: json!({"rust-skills2":{"allow-test-panics":"yes"}}),
+        };
+        assert!(resolve(&request, &packages).is_err());
+        request.metadata = json!({"rust-skills2":{"allow-test-panics-reason":" "}});
+        assert!(resolve(&request, &packages).is_err());
+        request.metadata = json!({"rust-skills2":{"allow-test-panics":true}});
+        assert!(resolve(&request, &packages).is_err());
+        request.metadata = json!({"rust-skills2":{
+            "allow-test-panics":true,"allow-test-panics-reason":"upstream migration"
+        }});
+        assert_eq!(resolve(&request, &packages)?[0].policy, Policy::Relaxed);
+        let no_reason = member("a", &json!({"rust-skills2":{"allow-test-panics":true}}))?;
+        request.metadata = Value::Null;
+        assert!(resolve(&request, &[no_reason]).is_err());
+        let strict = member("a", &json!({"rust-skills2":{"allow-test-panics":false}}))?;
+        request.default_allow_test_panics = true;
+        assert_eq!(resolve(&request, &[strict])?[0].policy, Policy::Strict);
+        Ok(())
+    }
 }
