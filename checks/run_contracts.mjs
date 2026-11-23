@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, realpathSync, rmSync, rmdirSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const checks = fileURLToPath(new URL('.', import.meta.url));
 const root = realpathSync(path.join(checks, '..'));
@@ -18,7 +18,7 @@ function run(bin, args, cwd, capture = false, timeout) {
   return result.stdout;
 }
 
-function fixtures(manifest, target, runner) {
+function fixtures(manifest, target, ciTool) {
   const names = [...new Set(Object.values(manifest)
     .map(info => info.expect)
     .filter(expect => expect.startsWith('fixture:'))
@@ -28,7 +28,7 @@ function fixtures(manifest, target, runner) {
     const verifier = path.join(checks, 'fixtures', name, 'verify.sh');
     if (!existsSync(verifier)) throw new Error('fixture lacks verifier: ' + name);
     console.log('==> fixture contract: ' + name);
-    run('bash', [verifier, root, target, runner], root);
+    run('bash', [verifier, root, target, ciTool], root);
   }
   console.log('OK: ' + names.length + ' fixture contract(s)');
 }
@@ -73,15 +73,14 @@ function examples(manifest, mode, target) {
   console.log('OK: ' + names.size + ' ' + mode + ' examples built; ' + ran + ' executable contracts passed');
 }
 
-async function cancellation(target, runner, config) {
-  const {runTask} = await import(pathToFileURL(runner).href);
+function cancellation(target, ciTool) {
   const name = 'cancel_contract_generated';
   const directory = path.join(checks, 'tests');
   const createdDir = !existsSync(directory);
   const file = 'checks/tests/' + name + '.rs';
   if (existsSync(path.join(root, file))) throw new Error("refusing to overwrite existing cancellation fixture");
   try {
-    await runTask(root, config.cancellation, [file]);
+    run(ciTool, [root, 'cancellation', path.join(root, file)], root);
     run('cargo', ['test', '--locked', '--test', name, '--target', target], checks);
   } finally {
     rmSync(path.join(root, file), {force:true});
@@ -89,12 +88,11 @@ async function cancellation(target, runner, config) {
   }
 }
 
-const [runnerOption, target] = process.argv.slice(2);
-if (!runnerOption || !target || process.argv.length !== 4) throw new Error('usage: node run_contracts.mjs ZIPP_RUNNER TARGET');
-const runner = realpathSync(runnerOption);
+const [ciToolOption, target] = process.argv.slice(2);
+if (!ciToolOption || !target || process.argv.length !== 4) throw new Error('usage: node run_contracts.mjs CI_TOOL TARGET');
+const ciTool = realpathSync(ciToolOption);
 const manifest = JSON.parse(readFileSync(path.join(checks, 'manifest.json'), 'utf8'));
-const config = JSON.parse(readFileSync(path.join(checks, 'zipp-tasks.json'), 'utf8'));
-fixtures(manifest, target, runner);
+fixtures(manifest, target, ciTool);
 examples(manifest, 'stable', target);
 examples(manifest, 'nightly', target);
-await cancellation(target, runner, config);
+cancellation(target, ciTool);

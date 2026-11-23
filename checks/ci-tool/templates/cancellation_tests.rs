@@ -1,11 +1,4 @@
-#!/usr/bin/env python3
-"""Execute the actual recommended cancellation example against in-memory I/O."""
-from pathlib import Path
-import re
-import sys
 
-ROOT = Path(__file__).resolve().parents[1]
-TESTS = r'''
 #[tokio::test]
 async fn eof_and_closed_channel_terminate() -> std::io::Result<()> {
     use tokio::io::AsyncWriteExt;
@@ -49,19 +42,3 @@ async fn partial_read_survives_message_branch() -> std::io::Result<()> {
     assert_eq!(frames, vec![[vec![7; 17], vec![8; 1007]].concat(), vec![9; 1024]]);
     Ok(())
 }
-'''
-
-
-def main():
-    source = (ROOT / "rules/async-cancel-safety.md").read_text()
-    section = source.split("## Good\n", 1)[1].split("\n## ", 1)[0]
-    example = re.search(r"```rust\n(.*?)\n```", section, re.DOTALL)
-    if example is None:
-        raise SystemExit("missing recommended cancellation example")
-    output = Path(sys.argv[1])
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(example.group(1) + "\n" + TESTS, encoding="utf-8")
-
-
-if __name__ == "__main__":
-    main()

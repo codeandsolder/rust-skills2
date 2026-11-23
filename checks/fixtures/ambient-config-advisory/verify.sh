@@ -10,4 +10,4 @@ TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/checks/target}/ambient-config-advisory"
 bash "$ROOT/scripts/audit_ambient_config.sh" \
     --manifest-path "$FIXTURE/Cargo.toml" --locked --target "$TARGET" \
     --target-dir "$TARGET_DIR" --message-format=json |
-    node "${3:?Zipp runner required}" "$ROOT" "$ROOT/checks/zipp-tasks.json" ambient
+    "${3:?Rust CI tool required}" "$ROOT" ambient

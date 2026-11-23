@@ -1,4 +1,6 @@
 //! Rule-library CI checks with explicit, testable inputs and no Python runtime.
+pub mod ambient;
+pub mod cancellation;
 pub mod generator;
 pub mod pins;
 use regex::Regex;
