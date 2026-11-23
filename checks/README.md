@@ -10,10 +10,11 @@ fragment, compile-fail example, ignored snippet, or nightly-only example.
 bash checks/check.sh ../ci-workflows/zipp-python/run.mjs
 ```
 
-The runner comes from the pinned shared ci-workflows checkout. Zipp executes the
-file-local Python checks in a scoped virtual filesystem; native Node orchestration
-runs Cargo and fixture programs. Independent source-policy comparison tests still
-use CPython through uv until Zipp supports their standard-library dependencies.
+Rule and link validation, index regeneration and expectation-inventory checks
+are native Rust commands in checks/ci-tool, with regular cargo tests. Zipp
+currently executes the remaining Python example generator and compiler-evidence
+analysis in a confined filesystem; native Node orchestrates Cargo and fixtures.
+Independent reference-policy checks are being migrated to Rust acceptance tests.
 
 The command runs structural/link/index checks, regression-tests the expectation
 extractor, extracts examples, compiles them with the pinned nightly toolchain,

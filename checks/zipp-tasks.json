@@ -1,32 +1,4 @@
 {
-  "structure": {
-    "entry": "checks/validate.py",
-    "read": [
-      "rules/*.md",
-      "SKILL.md"
-    ]
-  },
-  "index": {
-    "entry": "checks/gen_index.py",
-    "read": [
-      "rules/*.md",
-      "SKILL.md",
-      "README.md"
-    ],
-    "write": [
-      "SKILL.md",
-      "README.md"
-    ]
-  },
-  "pins": {
-    "entry": "checks/check_action_pins.py",
-    "read": [
-      ".github/workflows/strict-rust.yml",
-      ".github/actions/rust-strict/action.yml",
-      ".github/actions/python-strict/action.yml",
-      ".github/actions/source-lint-policy/action.yml"
-    ]
-  },
   "generate": {
     "entry": "checks/gen.py",
     "read": [
@@ -42,12 +14,6 @@
     "write": [
       "checks/examples/*.rs",
       "checks/nightly/examples/*.rs",
-      "checks/manifest.json"
-    ]
-  },
-  "inventory": {
-    "entry": "checks/check_contract_inventory.py",
-    "read": [
       "checks/manifest.json"
     ]
   },

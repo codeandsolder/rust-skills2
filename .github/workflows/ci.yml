@@ -77,6 +77,13 @@ jobs:
         run: |
           bash scripts/strict_clippy.sh --toolchain "${{ steps.compiler.outputs.channel }}"
 
+      - name: Strict lint native Rust CI tooling
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/ci-tool
+          CARGO_TARGET_DIR: ${{ runner.temp }}/ci-tool
+        run: bash scripts/strict_clippy.sh --toolchain "${{ steps.compiler.outputs.channel }}"
+
       - name: Finalize mandatory sccache
         if: always()
         uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main

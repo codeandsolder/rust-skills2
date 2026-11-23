@@ -37,8 +37,18 @@ if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
     }
 fi
 
-echo "==> documentation and compiler-evidence preparation in Zipp"
+echo "==> native Rust rule tooling and regression tests"
+TOOLS_TARGET="${CARGO_TARGET_DIR:-$ROOT/checks/target}"
+cargo test --locked --manifest-path "$ROOT/checks/ci-tool/Cargo.toml" --target-dir "$TOOLS_TARGET"
+cargo build --locked --manifest-path "$ROOT/checks/ci-tool/Cargo.toml" --target-dir "$TOOLS_TARGET"
+CI_TOOL="$TOOLS_TARGET/debug/rust-skills-ci"
+"$CI_TOOL" "$ROOT" validate
+"$CI_TOOL" "$ROOT" index --check
+"$CI_TOOL" "$ROOT" pins
+
+echo "==> remaining compiler-evidence preparation in Zipp"
 node "$ROOT/checks/run_zipp.mjs" "$ZIPP_RUNNER" pre
+"$CI_TOOL" "$ROOT" inventory
 
 echo "==> independent CPython source-policy oracle"
 uv run --no-project python -B "$ROOT/checks/test_source_lint_policy.py"
