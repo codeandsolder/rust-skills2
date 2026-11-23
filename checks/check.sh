@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One command that reproduces CI locally. Run from anywhere:
 #
-#     bash checks/check.sh ../ci-workflows/zipp-python/run.mjs
+#     bash checks/check.sh
 #
 # Toolchain/target are pinned by rust-toolchain.toml and
 # x86_64-unknown-linux-gnu. `cargo check` type-checks without linking.
@@ -9,7 +9,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET="x86_64-unknown-linux-gnu"
-ZIPP_RUNNER="$(realpath "${1:?usage: bash checks/check.sh ZIPP_RUNNER}")"
+if (( $# != 0 )); then
+    echo "usage: bash checks/check.sh" >&2
+    exit 2
+fi
 
 # Cargo resolves an environment-provided relative target directory from each
 # process's current working directory. This script deliberately changes cwd,
@@ -49,16 +52,15 @@ CI_TOOL="$TOOLS_TARGET/debug/rust-skills-ci"
 echo "==> generate checked examples in native Rust"
 "$CI_TOOL" "$ROOT" generate
 
-echo "==> remaining compiler-evidence checks in Zipp"
-node "$ROOT/checks/run_zipp.mjs" "$ZIPP_RUNNER" pre
+echo "==> compiler-evidence regression contracts covered by native Rust tests"
 "$CI_TOOL" "$ROOT" inventory
 
 echo "==> compile-checking ordinary examples (target: $TARGET)"
 cd "$ROOT/checks"
 cargo check --examples --target "$TARGET" --keep-going --message-format=json > check.json 2> check.err || true
 
-echo "==> enforcing expectations and legacy baseline in Zipp"
-node "$ROOT/checks/run_zipp.mjs" "$ZIPP_RUNNER" analyze
+echo "==> enforcing compiled-example expectations and exact legacy debt in Rust"
+"$CI_TOOL" "$ROOT" analyze --source-dir "$ROOT/checks/examples" --check-baseline "$ROOT/checks/baseline.txt" --good-exceptions "$ROOT/checks/good-exceptions.txt"
 
 echo "==> fixture, example and cancellation runtime contracts"
 node "$ROOT/checks/run_contracts.mjs" "$CI_TOOL" "$TARGET"
