@@ -157,7 +157,7 @@ jobs:
 
       - name: Report dependency advisories and unused dependencies
         if: inputs.dependency-quality
-        uses: codeandsolder/ci-workflows/.github/actions/rust-dependency-quality@c53a0d48021708f896272fdf378fbf5132a55328 # main
+        uses: codeandsolder/ci-workflows/.github/actions/rust-dependency-quality@1b2f1b00b57515b73210d8e7c8e32dbea1e6dc1a # main
         with:
           working-directory: ${{ inputs.working-directory }}
 
