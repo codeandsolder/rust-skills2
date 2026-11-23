@@ -1,4 +1,5 @@
 //! Rule-library CI checks with explicit, testable inputs and no Python runtime.
+pub mod generator;
 pub mod pins;
 use regex::Regex;
 use serde_json::Value;
