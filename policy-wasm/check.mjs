@@ -20,8 +20,11 @@ function capture(command, args, options = {}) {
 }
 
 function gitRoot(cwd) {
-  const result = spawnSync('git', ['-C', cwd, 'rev-parse', '--show-toplevel'], {encoding: 'utf8'});
-  return result.status === 0 ? realpathSync(result.stdout.trim()) : null;
+  // Use a relative path from Cargo's canonical workspace directory rather than
+  // Git's absolute --show-toplevel, which can switch between Windows 8.3 and
+  // long path spellings for the same directory. Do not weaken containment.
+  const result = spawnSync('git', ['-C', cwd, 'rev-parse', '--show-cdup'], {encoding: 'utf8'});
+  return result.status === 0 ? realpathSync(path.resolve(cwd, result.stdout.trim() || '.')) : null;
 }
 
 function inside(root, candidate) {
