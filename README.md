@@ -39,6 +39,8 @@ lint boundary via package metadata; the generated file still runs through strict
 Clippy. See [docs/strict-ci.md](./docs/strict-ci.md) for the policy and
 customization points.
 
+The reusable gate also publishes a **non-blocking RustSec and unused-dependency report** using the shared `cargo-deny` and `cargo-machete` scanners, without a second compilation pass. Set `dependency-quality: false` on redundant target-matrix legs to avoid duplicate scanning.
+
 Migrating a codebase? Start with [Rust 1.99 → 1.100](./docs/migration-rust-1.99-to-1.100.md) for the current stable upgrade, or the historical [Rust 1.88 → 1.99 guide](./docs/migration-rust-1.88-to-1.99.md).
 
 For nightly development, see the [nightly feature guide](./rules/proj-nightly-features.md) and [current lint review](./docs/nightly-lint-review.md).

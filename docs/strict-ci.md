@@ -147,6 +147,32 @@ jobs:
       checkout-submodules: "true"
 ```
 
+## Informational dependency checks
+
+After a successful strict Rust lint/build pass, the reusable workflow calls
+the pinned shared [dependency-quality action](https://github.com/codeandsolder/ci-workflows/blob/main/.github/actions/rust-dependency-quality/action.yml).
+The scan runs on the **same runner** without compiling the package again:
+`cargo-deny` audits RustSec advisories (including relevant unsound,
+unmaintained and yanked dependency records), while `cargo-machete` flags
+possibly unused direct dependencies using Cargo metadata. Neither report
+adds a mandatory pass threshold, and tool failures are marked *unavailable*
+rather than presented as clean scans. Summaries are written to GitHub Actions;
+JSON diagnostics are uploaded as short-lived artifacts.
+
+To avoid duplicate scanning when a caller has several jobs for the same
+Cargo workspace (for example, a native build and two cross-target compile
+checks), keep `dependency-quality` enabled on one job and set
+`dependency-quality: false` on redundant legs. It defaults to `true`.
+The external registry 72-hour quarantine stays a separate mandatory check.
+
+`cargo-machete` only reads source and metadata, so an apparent unused
+dependency could be referenced by build-generated code, FFI, special target
+configurations, or features. Inspect candidates before removing them.
+Individual false positives can be documented via
+`[package.metadata.cargo-machete]` or
+`[workspace.metadata.cargo-machete]` with
+`ignored = ["dependency_name"]`. Such ignores do not affect the RustSec scan.
+
 ## Policy
 
 The gate always runs the latest nightly rustfmt and Clippy so formatting drift and new diagnostics are surfaced
