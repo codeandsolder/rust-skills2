@@ -43,7 +43,7 @@ jobs:
           # Exercise the relative-path contract permanently: check.sh must
           # normalize this before it changes cwd or dispatches fixture builds.
           CARGO_TARGET_DIR: checks/target
-        run: bash checks/check.sh "${{ steps.zipp.outputs.runner }}"
+        run: bash checks/check.sh
       - name: Build portable source policy
         shell: bash
         run: |
@@ -105,12 +105,17 @@ jobs:
         with:
           toolchain: ${{ steps.compiler.outputs.channel }}
           components: clippy
+      - name: Setup mandatory sccache
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@8d5c7643c8eade74ba6a16a93c79f0c48b97c619 # main
+        with:
+          rust-toolchain: ${{ steps.compiler.outputs.channel }}
+          rustflags: ""
       - name: Locate portable Zipp Python runtime
         id: zipp
         uses: codeandsolder/ci-workflows/.github/actions/zipp-python@8d5c7643c8eade74ba6a16a93c79f0c48b97c619 # main
-      - name: Exercise documentation checks in Zipp
+      - name: Native Rust rules and compiler evidence regression tests
         shell: bash
-        run: node checks/run_zipp.mjs "${{ steps.zipp.outputs.runner }}" pre
+        run: cargo test --locked --manifest-path checks/ci-tool/Cargo.toml --target-dir "$RUNNER_TEMP/ci-tool"
       - name: Validate frozen Rust policy acceptance fixtures and Gitlink isolation
         shell: bash
         run: |
@@ -121,6 +126,10 @@ jobs:
         shell: bash
         run: |
           node checks/compare_workspace_policy.mjs "${{ steps.zipp.outputs.runner }}" "${{ steps.compiler.outputs.channel }}" policy-wasm/module.json
+
+      - name: Finalize mandatory sccache
+        if: always()
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@8d5c7643c8eade74ba6a16a93c79f0c48b97c619 # main
 
   strict-gate-self-test:
     name: Strict reusable gate self-test

@@ -4,15 +4,16 @@ fn run() -> Result<(), Box<dyn Error>> {
     let mut args = env::args().skip(1);
     let root = PathBuf::from(
         args.next()
-            .ok_or("usage: rust-skills-ci ROOT validate|index|inventory|pins|generate|ambient|cancellation [--check]")?,
+            .ok_or("usage: rust-skills-ci ROOT validate|index|inventory|pins|generate|ambient|cancellation|analyze [--check]")?,
     );
     let action = args
         .next()
-        .ok_or("usage: rust-skills-ci ROOT validate|index|inventory|pins|generate|ambient|cancellation [--check]")?;
+        .ok_or("usage: rust-skills-ci ROOT validate|index|inventory|pins|generate|ambient|cancellation|analyze [--check]")?;
     match action.as_str() {
         "validate" if args.next().is_none() => rust_skills_ci::validate(&root),
         "inventory" if args.next().is_none() => rust_skills_ci::inventory(&root),
         "pins" if args.next().is_none() => rust_skills_ci::pins::pins(&root),
+        "analyze" => rust_skills_ci::analyzer::run(&root, &args.collect::<Vec<_>>()),
         "ambient" if args.next().is_none() => rust_skills_ci::ambient::verify(&root, std::io::stdin().lock()),
         "cancellation" => {
             let file = PathBuf::from(args.next().ok_or("usage: rust-skills-ci ROOT cancellation OUTPUT")?);
@@ -43,7 +44,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             rust_skills_ci::index(&root, check)
         }
         _ => Err(
-            "usage: rust-skills-ci ROOT validate|index|inventory|pins|generate|ambient|cancellation [--check]".into(),
+            "usage: rust-skills-ci ROOT validate|index|inventory|pins|generate|ambient|cancellation|analyze [--check]".into(),
         ),
     }
 }
