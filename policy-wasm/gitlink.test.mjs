@@ -36,3 +36,21 @@ test('registered Git submodules cannot contribute first-party lint source', t =>
   assert.equal(checked.status,0,checked.stdout+'\n'+checked.stderr);
   assert.match(checked.stdout,/\(1 Rust files, 0 generated lint boundaries, 0 suppression attributes\)/);
 });
+
+test('Cargo package inside a parent Git repository retains canonical root spelling', t => {
+  const repo = mkdtempSync(path.join(tmpdir(), 'source-policy-nested-git-'));
+  t.after(() => rmSync(repo, {recursive: true, force: true}));
+  assert.equal(command('git', ['init', '-q', repo], repo).status, 0);
+  const pkg = path.join(repo, 'nested', 'package');
+  mkdirSync(path.join(pkg, 'src'), {recursive: true});
+  writeFileSync(path.join(pkg, 'Cargo.toml'),
+    '[package]\nname = "nested-git-root"\nversion = "0.1.0"\nedition = "2024"\n');
+  writeFileSync(path.join(pkg, 'src', 'lib.rs'), 'pub fn valid() {}\n');
+  const pin = readFileSync(path.join(checkout, 'rust-toolchain.toml'), 'utf8');
+  const toolchain = /^channel\s*=\s*"(nightly-\d{4}-\d\d-\d\d)"$/m.exec(pin)?.[1];
+  assert.ok(toolchain);
+  const checked = command(process.execPath, [policy, rootModule, toolchain], pkg);
+  assert.equal(checked.status, 0, checked.stdout + '\n' + checked.stderr);
+  assert.match(checked.stdout,
+    /\(1 Rust files, 0 generated lint boundaries, 0 suppression attributes\)/);
+});
