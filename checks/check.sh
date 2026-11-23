@@ -19,7 +19,8 @@ fi
 # and fixture runners execute from the repository root, so normalize once at
 # the caller boundary to keep every build under the same target tree.
 if [[ -n "${CARGO_TARGET_DIR:-}" && "$CARGO_TARGET_DIR" != /* ]]; then
-    export CARGO_TARGET_DIR="$(pwd -P)/$CARGO_TARGET_DIR"
+    CARGO_TARGET_DIR="$(pwd -P)/$CARGO_TARGET_DIR"
+    export CARGO_TARGET_DIR
 fi
 
 # CI owns compiler caching centrally. Public jobs use runner-local sccache;
