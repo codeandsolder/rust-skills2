@@ -61,6 +61,6 @@ echo "==> enforcing expectations and legacy baseline in Zipp"
 node "$ROOT/checks/run_zipp.mjs" "$ZIPP_RUNNER" analyze
 
 echo "==> fixture, example and cancellation runtime contracts"
-node "$ROOT/checks/run_contracts.mjs" "$ZIPP_RUNNER" "$TARGET"
+node "$ROOT/checks/run_contracts.mjs" "$CI_TOOL" "$TARGET"
 
 echo "All checks passed."

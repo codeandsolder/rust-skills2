@@ -144,3 +144,19 @@ stale legacy debt; the generated diff should be treated as code-review material.
   run only explicitly marked examples. Special environments should use fixture contracts.
 - `checks/ci-tool/src/generator.rs` contains ordinary Rust tests of native fence parsing, run/nightly metadata, generated source, and invalid contracts
   scratch directory, without modifying the real corpus.
+
+## Native runtime and compiler-evidence contracts
+
+`checks/ci-tool` owns two additional first-party test helpers:
+
+- `rust-skills-ci ROOT cancellation OUTPUT` extracts the **actual** recommended
+  cancellation example from `rules/async-cancel-safety.md` and attaches the
+  maintained Tokio runtime regression template. The Node harness compiles and
+  executes the resulting Rust tests, then removes only its own generated file.
+- `rust-skills-ci ROOT ambient` reads Cargo JSONL from stdin and compares real
+  `clippy::disallowed_methods` primary spans with annotated `// audit` lines.
+  The fixture compiler invocation uses the centrally configured sccache.
+
+Both are ordinary Rust code with Cargo unit tests, no Python/Zipp interpreter
+or duplicated policy reference. Other remaining Zipp tasks are being migrated
+separately.

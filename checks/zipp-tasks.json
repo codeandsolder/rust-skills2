@@ -14,22 +14,6 @@
       "checks/analyze.py"
     ]
   },
-  "cancellation": {
-    "entry": "checks/generate_cancel_contract.py",
-    "read": [
-      "rules/async-cancel-safety.md"
-    ],
-    "write": [
-      "checks/tests/cancel_contract_*.rs"
-    ]
-  },
-  "ambient": {
-    "entry": "checks/check_ambient_config.py",
-    "read": [
-      "checks/fixtures/ambient-config-advisory/src/lib.rs"
-    ],
-    "stdin": "compiler-evidence.jsonl"
-  },
   "workspace_oracle": {
     "entry": "checks/workspace_test_policy_oracle.py",
     "stdin": "workspace-requests.json"
