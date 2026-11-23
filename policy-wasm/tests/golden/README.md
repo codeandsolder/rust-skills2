@@ -21,3 +21,18 @@ Update the fixture expectations only when the intended policy semantics
 change. Review the resulting diff and explain each behavioral change.
 The Linux rebuild is independently checked for byte identity with the
 bundled module by `policy-wasm/package.mjs verify`.
+
+## Source-token reference corpus
+
+`source-tokens.json` holds 213 independently computed acceptance cases: 200
+historically captured mixed-token inputs and 13 manually chosen cases
+covering nested comments, raw and byte strings, lifetimes, Unicode, malformed
+tokens, and lint attributes. Each entry records its source text, byte-accurate
+mask and ordered lint attributes. This was generated once using the retired
+Python tokenizer; it is **not** recomputed from the production Rust scanner.
+
+The Rust unit tests in `policy-wasm/src/token_golden.rs` check both the mask
+and attribute extraction. `policy-wasm/token-golden.test.mjs` sends the same
+inputs to the actual bundled WASI scanner on Linux/macOS/Windows and verifies
+every result. Updating the frozen expectations requires an intentional review
+of the semantic differences, not mechanically copying scanner output.

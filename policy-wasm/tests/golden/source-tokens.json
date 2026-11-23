@@ -1,0 +1,2587 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "id": "random-000",
+      "source": "b\"\r🦀c\nu{22}\"####c\"r\\\n\\\\\"####x\n#[allow(unused)]rrb\nc漢//\"####é\n漢\\\néu{22}u{22}b\"r####\"*/bx\r\nb\"",
+      "masked": "        \n      ####    \n   ####x\n#[allow(unused)]rrb\nc漢         \n漢\\\néu{22}u{22}        */bx\r\n  ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "random-001",
+      "source": "c\"#[allow(unused)]u{22}\r\n🦀r\r\nr####\"\\\n\\\\rc\"cx\"####r####\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]*/\\r####\"//b\"////r\nc\"u{22}\\*/#",
+      "masked": "                        \n      \n      \\\n\\\\r     ####                                                                            \n           ",
+      "attributes": []
+    },
+    {
+      "id": "random-002",
+      "source": "' #//é\"//r####\"x",
+      "masked": "' #              ",
+      "attributes": []
+    },
+    {
+      "id": "random-003",
+      "source": "c\"//\"####🦀*/漢#\\c",
+      "masked": "     ####🦀*/漢#\\c",
+      "attributes": []
+    },
+    {
+      "id": "random-004",
+      "source": "ér####\"é/*🦀#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\ é🦀\"####\né/*xr####\"\r\"#[allow(unused)]bb//#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\ru{22}🦀",
+      "masked": "é                                                                               \né                                                                                             ",
+      "attributes": []
+    },
+    {
+      "id": "random-005",
+      "source": "x\r\n \"/*\\\\#",
+      "masked": "x\r\n       ",
+      "attributes": []
+    },
+    {
+      "id": "random-006",
+      "source": "/*\\\n#\\\\éb#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]漢r####\"#\ru{22}\rb\"漢\nb\"#xc\"c\"\"\r\n#r####\"\\\nu{22}r#[allow(unused)]\"🦀",
+      "masked": "   \n                                                                                \n          \n        \n                           ",
+      "attributes": []
+    },
+    {
+      "id": "random-007",
+      "source": "\"####*/\rb//*/\r\n\"\"\"//\\cu{22}\"*/*/r####\"\"####\rx#é*/\\\nc\"r'#\\🦀漢\r\nr####\"'b\"#\r\n\\\\\\r",
+      "masked": "              \n                                    \n              \n      '    \n    ",
+      "attributes": []
+    },
+    {
+      "id": "random-008",
+      "source": "\\\\/*\r\nb*/'\\c\"c\"\rrx\\\n//r####\"#[allow(unused)]*/##\\\\\nrb\"漢r####\" */\" u{22}'\\\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]//r####\"漢*/",
+      "masked": "\\\\   \n   '\\    \rrx\\\n                              \nr            */                                                         x            漢*/",
+      "attributes": []
+    },
+    {
+      "id": "random-009",
+      "source": "\\\\c\" //'#[allow(unused)]'*/x\\xu{22}'#[allow(unused)]'\\\nb\"rrr####\"\r\nr #[allow(unused)]éu{22}\n\\bb\"ru{22}/*/**/漢*/bc\"*/\\\nc//\"####",
+      "masked": "\\\\                                                    \n  rr       \n                         \n                           \n        ",
+      "attributes": []
+    },
+    {
+      "id": "random-010",
+      "source": "\\\\\"\r\"####\\\\b\\\nx#\r\nu{22}\\\\x\"\\\\b/*\\r\n c\"\\\n\r \"####\"####🦀r####\"c\"\r\\\n\"\"####\"u{22}b\"é\\\\/*",
+      "masked": "\\\\   ####\\\\b\\\nx#\r\nu{22}\\\\x        \n   \\\n\r       ####🦀          \n              é\\\\  ",
+      "attributes": []
+    },
+    {
+      "id": "random-011",
+      "source": "b\"🦀#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]##[allow(unused)]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b/*u{22}#\"é🦀#\\\\ré/*\"####b\"r####\"/*\"#[allow(unused)]éb\"#c\"/*#[allow(unused)]b\"b#/* '",
+      "masked": "                                                     x                                                                    x              é🦀#\\\\ré                                                                   ",
+      "attributes": []
+    },
+    {
+      "id": "random-012",
+      "source": "//cr####\"b\"u{22}x #[allow(unused)]\r\"####",
+      "masked": "                                        ",
+      "attributes": []
+    },
+    {
+      "id": "random-013",
+      "source": "\\b\"cu{22}//é\"*/b*/#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]é/*/*🦀b🦀c\"b#\r\n//rr####\"'r####\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]*/u{22}",
+      "masked": "\\             */b*/#[cfg_attr(test, expect(clippy::panic, reason=   ))]#[cfg_attr(test, expect(clippy::panic, reason=   ))]é                  \n                                                                           ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-014",
+      "source": "r####\"//\r\n*/é#[allow(unused)]b\\\r\n🦀/*\"bx#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[allow(unused)]é'u{22}/*u{22}\"🦀c\"\"\\\nc\"#\r#u{22}\\\\b\"r####\"éb\"🦀\r\nr####\"",
+      "masked": "         \n                       \n                                                                                                     \n                             \n      ",
+      "attributes": []
+    },
+    {
+      "id": "random-015",
+      "source": "\r\n🦀*/u{22}/*\\\\*/#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\r\n\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[allow(unused)]*/ \nr####\"\\\\\r\nu{22}\\\n*/// r####\"\\\"####'ér####\"c\"\\\"漢b\"u{22}c\"r####\"\r漢#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]🦀\\\n漢",
+      "masked": "\r\n🦀*/u{22}      #[cfg_attr(test, expect(clippy::panic, reason=   ))]\r\n\\#[cfg_attr(test, expect(clippy::panic, reason=   ))]#[allow(unused)]*/ \n         \n      \n                 'é                                                                                         \n   ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 3
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "id": "random-016",
+      "source": "\r\n",
+      "masked": "\r\n",
+      "attributes": []
+    },
+    {
+      "id": "random-017",
+      "source": "ér//*/b\"u{22}# 漢\"'r🦀u{22}b/*b\"b\" \r\n\"####\n\\\\#漢bc\"\\//\"#####[allow(unused)]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]",
+      "masked": "ér                                     \n     \n         \\                                                                           ",
+      "attributes": []
+    },
+    {
+      "id": "random-018",
+      "source": "\\\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#cr*/\"u{22}#",
+      "masked": "\\\n#[cfg_attr(test, expect(clippy::panic, reason=   ))]#cr*/       ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-019",
+      "source": "\"####/*\\\nu{22}#[allow(unused)]xc*/b\"u{22}u{22}u{22}\r\\🦀#[allow(unused)]//\n///*br####\"#u{22}\r\n\\\\#c\r\"####\"####\\\né \rr🦀",
+      "masked": "        \n                           u{22}u{22}u{22}\r\\🦀#[allow(unused)]  \n                  \n\\\\#c\r      ####\\\né \rr🦀",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-020",
+      "source": "\\c\"#\r\n//\\\\ru{22}éu{22}\"#xb\"\"r漢\n\"#r\\\\r#[allow(unused)]\\\r\ncu{22}c\"\"🦀//c\"#[allow(unused)]\"/*\\\nr\r\\\\\r//\\\\\r漢 \"####",
+      "masked": "\\    \n                  #x   r漢\n                        \n                 #[allow(unused)]    \n               ####",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "random-021",
+      "source": "*/\\##[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]",
+      "masked": "*/\\##[cfg_attr(test, expect(clippy::panic, reason=   ))]",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-022",
+      "source": " \"c\"\n\r\n",
+      "masked": "    \n\r\n",
+      "attributes": []
+    },
+    {
+      "id": "random-023",
+      "source": "c\\\n#[allow(unused)]' c\"\r\r\nr\\//  //r####\"\\漢r####\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]/**/🦀r//#[allow(unused)]c//b\"b\"b//'\r \r\n\"####\"xc\"",
+      "masked": "c\\\n#[allow(unused)]'     \n              \\漢                                                                                                                                                       \n         ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-024",
+      "source": "/*",
+      "masked": "  ",
+      "attributes": []
+    },
+    {
+      "id": "random-025",
+      "source": "#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]🦀\rb\"#####[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[allow(unused)]'x#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]é//\\ é\nb\"",
+      "masked": "#[cfg_attr(test, expect(clippy::panic, reason=   ))]🦀\r                                                     x                                                                     x            \n  ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-026",
+      "source": "\"####\n🦀#[allow(unused)]r####\"\"#### \n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\r\néx//b\"c\"\r#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]//é\r\nu{22}*/b\"\"####\rc#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]éu{22}\r\n\r/*//#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c\"\\\\\\\n🦀",
+      "masked": "     \n                                \n                                               x     \n                                                         x         \n                                                               x            \n                                                    x      \\\\\\\n🦀",
+      "attributes": []
+    },
+    {
+      "id": "random-027",
+      "source": "\n\r#[allow(unused)]#[allow(unused)]\nc\" */\\\\\"b\"\\\nu{22}\r\n'#[allow(unused)]🦀🦀b\"u{22}r\\\n\\\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b\n\r\n#[allow(unused)]\\\\u{22}\"",
+      "masked": "\n\r#[allow(unused)]#[allow(unused)]\n           \n      \n                           u{22}r\\\n\\\\#[cfg_attr(test, expect(clippy::panic, reason=   ))]b\n\r\n#[allow(unused)]\\\\u{22} ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 6
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 8
+        }
+      ]
+    },
+    {
+      "id": "random-028",
+      "source": "'\"####c\"bx\\u{22}\\\ncb\"\r\\\\r  漢b\"\"#x\"####\né#[allow(unused)]x\\\n\"c\r\\\nb\"#[allow(unused)]\"#\\\\\\\\\nc",
+      "masked": "'       bx\\u{22}\\\nc                 ####\né#[allow(unused)]x\\\n    \n  #[allow(unused)]      \n ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 3
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 5
+        }
+      ]
+    },
+    {
+      "id": "random-029",
+      "source": "#[allow(unused)]/*\\\\\n漢/*#[allow(unused)] ",
+      "masked": "#[allow(unused)]    \n                      ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-030",
+      "source": "\\\\\r\nb\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]*/🦀\"\"####u{22}\"####\r\n\\\\ééb\"x\\c\"漢 \\\\*/\\\r\nx\"####c*/\\\nr\"'\\",
+      "masked": "\\\\\r\n                                                 x                      ####\r\n\\\\éé      漢 \\\\*/\\\r\nx         \n  '\\",
+      "attributes": []
+    },
+    {
+      "id": "random-031",
+      "source": "#[allow(unused)]b\"\"",
+      "masked": "#[allow(unused)]   ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-032",
+      "source": " r####\"",
+      "masked": "       ",
+      "attributes": []
+    },
+    {
+      "id": "random-033",
+      "source": "r'u{22}\n\r\n",
+      "masked": "r'u{22}\n\r\n",
+      "attributes": []
+    },
+    {
+      "id": "random-034",
+      "source": "\r#[allow(unused)]漢*/xu{22}",
+      "masked": "\r#[allow(unused)]漢*/xu{22}",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-035",
+      "source": "\rx#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]x\r\n #cb\"漢漢\r\n\\\n#[allow(unused)]",
+      "masked": "\rx#[cfg_attr(test, expect(clippy::panic, reason=   ))]x\r\n #c         \n \n                ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-036",
+      "source": "u{22}🦀éc\"b",
+      "masked": "u{22}🦀é   ",
+      "attributes": []
+    },
+    {
+      "id": "random-037",
+      "source": "u{22}\\\\#b\"ér####\"//\\\\éc\"'",
+      "masked": "u{22}\\\\#                   ",
+      "attributes": []
+    },
+    {
+      "id": "random-038",
+      "source": "b*/c\"#####[allow(unused)]\\\nr####\"\\#\\\\'b\"\\\\#*/漢*//*#x漢u{22}*///\\\nc\"\nbb\"\r\n\r\\\n🦀c\"ré\\\nu{22}c\"\\\\##[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]",
+      "masked": "b*/                       \n      \\#\\\\'                             \n  \nb   \n  \n      ré\\\nu{22}                                                    x    ",
+      "attributes": []
+    },
+    {
+      "id": "random-039",
+      "source": "/*",
+      "masked": "  ",
+      "attributes": []
+    },
+    {
+      "id": "random-040",
+      "source": "u{22}🦀\n \"####/*c\"#u{22}#[allow(unused)]漢r####\"cc\\漢\\\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[allow(unused)]\\\n",
+      "masked": "u{22}🦀\n          #u{22}#[allow(unused)]漢                                                                                   \n",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-041",
+      "source": "#[allow(unused)]r🦀#[allow(unused)]\"\\ r /*\n/*\\\\*/\rb\\b\"\\#[allow(unused)]\"\\b\n\"####漢u{22}\r/*",
+      "masked": "#[allow(unused)]r🦀#[allow(unused)]       \n           \\#[allow(unused)]   \n ####漢u{22}\r  ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-042",
+      "source": "\n/*cc\"\\\n#r */\"####\"####b\"\r\"#### /*é\\\\漢/*漢\\\n\\\n//🦀 \"",
+      "masked": "\n      \n           ####    ####                \n \n        ",
+      "attributes": []
+    },
+    {
+      "id": "random-043",
+      "source": " *///\\\n*/ccr####\"//r####\"b\"r#r####\"r####\"///*cxu{22}\\ \rc\"\n\r\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[allow(unused)]c\"\"####🦀#[allow(unused)]\\\\\\\nx\nr####\"/*'c\"🦀'b\"r\\\\b",
+      "masked": " *    \n*/c                                               \n \n                                                                           🦀#[allow(unused)]\\\\\\\nx\n                      ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "random-044",
+      "source": "u{22} x漢u{22}\"\\\\ c\"# /*r####\"b\"b\\\\r####\"rr####\"\\\n\n\n\\\\🦀\r\n#[allow(unused)]'\"#### u{22}\\\n\r\néxu{22}\nxc\"r####\"\"c 漢漢\\\\'\\",
+      "masked": "u{22} x漢u{22}      #                            \n\n\n       \n                             \n \n        \n                      ",
+      "attributes": []
+    },
+    {
+      "id": "random-045",
+      "source": "//br\"'bé漢 \r\n*/u{22}*/c#",
+      "masked": "              \n*/u{22}*/c#",
+      "attributes": []
+    },
+    {
+      "id": "random-046",
+      "source": "b\r#[allow(unused)]*/#\\\nx\r\n\"####\\éc\"\nr'//c漢*/\"####\"####cr####\"#[allow(unused)]\r🦀\"r*/x漢////r\\\né''\n\r\nr####\"r####\"\n/*\\\\\r\n",
+      "masked": "b\r#[allow(unused)]*/#\\\nx\r\n          \nr'                                                            \né''\n\r\n            \n     \n",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-047",
+      "source": "##[allow(unused)]//x\rb\"*/🦀r\"",
+      "masked": "##[allow(unused)]              ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-048",
+      "source": "#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\\n\"#####[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b\"漢\\\nb\"#//u{22}c\\c#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]漢\n#[allow(unused)]'x*/\\b*/\"b\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c\"\r\nb\" \r'",
+      "masked": "#[cfg_attr(test, expect(clippy::panic, reason=   ))]#[cfg_attr(test, expect(clippy::panic, reason=   ))]\\\n                                                    x      漢\\\n                                                            x       \n                                                                          x      \r\n     ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-049",
+      "source": "rb\"\r\n#[allow(unused)]\r\nr\nu{22}\nb\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]'\\/*\nr####\"\\b\\\"####\"\"\"\\\\\\\"\r\n#[allow(unused)]r####\"'",
+      "masked": "r   \n                 \n \n     \n  #[cfg_attr(test, expect(clippy::panic, reason=   ))]'\\  \n                      \n                       ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 5
+        }
+      ]
+    },
+    {
+      "id": "random-050",
+      "source": "'\r'ru{22}\\\\c\"r####\"",
+      "masked": "'\r'ru{22}\\\\        ",
+      "attributes": []
+    },
+    {
+      "id": "random-051",
+      "source": "b\"é#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\\\bxxr####\"'#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]//c\"b\"c\"#\"####r####\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]ér####\"//\\\n#[allow(unused)]漢r####\"\r\nc\"b\"\\\n\\é'#🦀////b\"*/r####\"/*\\c\r",
+      "masked": "                                                   x               '#[cfg_attr(test, expect(clippy::panic, reason=   ))]                                                                                   \n#[allow(unused)]漢       \n     \n                            ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-052",
+      "source": " c//éu{22}🦀'u{22}'u{22}\r\ncc\"\\r####\"x//r\\\\\r\nc🦀漢#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]rxéé# é'\\\n🦀\\\n/*é*/u{22}c\"r🦀#[allow(unused)]🦀#c\nr'",
+      "masked": " c                          \nc         x      \nc🦀漢#[cfg_attr(test, expect(clippy::panic, reason=   ))]rxéé# é'\\\n🦀\\\n      u{22}                             \n  ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "id": "random-053",
+      "source": "  *///b\"#[allow(unused)]b\"b\"// #\"bc\r\n\n🦀\r\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]u{22}b\"r####\"*/",
+      "masked": "  *                                 \n\n🦀\r\n#[cfg_attr(test, expect(clippy::panic, reason=   ))]u{22}        */",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "random-054",
+      "source": "🦀/**/'#[allow(unused)]u{22}\\\n//\\\"####u{22}r🦀\\\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\b\"u{22}#[allow(unused)]\\\\bb\"\"r\\\\x\r\nc\"#r####\"\"####b\\\n\\*/b\"\\\\'/* \\u{22} \"x'#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\",
+      "masked": "🦀    '#[allow(unused)]u{22}\\\n                   \n#[cfg_attr(test, expect(clippy::panic, reason=   ))]\\                                  \n  #           b\\\n\\*/                x'#[cfg_attr(test, expect(clippy::panic, reason=   ))]\\",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 3
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 5
+        }
+      ]
+    },
+    {
+      "id": "random-055",
+      "source": "#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]u{22}réb\"\"'漢c\"\r#[allow(unused)]\"####b*/c*/#\"#####[allow(unused)]x//🦀\nb \r🦀#[allow(unused)]漢//\\\\r#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b*/ */\\\\\n\nb\"b\"u{22}",
+      "masked": "#[cfg_attr(test, expect(clippy::panic, reason=   ))]u{22}ré   '漢                    ####b*/c*/#                            \n                                                                              x            \n\n         ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-056",
+      "source": "//*/r####\"éc'*/\\\nc\"\\\\\n/*r\\\n",
+      "masked": "                 \n    \n    \n",
+      "attributes": []
+    },
+    {
+      "id": "random-057",
+      "source": "#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\"####éb/*\\\nr####\"\"漢\n/*\"####/*\r\n\r\n 漢ééb\\\n漢c\"####b\"/*b\"b\"u{22}\"####b\"#[allow(unused)]x\n\\\n漢c\"ru{22}\né\r\n//ccc\" r####\"",
+      "masked": "#[cfg_attr(test, expect(clippy::panic, reason=   ))]           \n          \n   ####   \n \n          \n                                              \n \n           \n   \n             ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-058",
+      "source": "#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\\\\ncé\"####u{22} x\"#####[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\\n\\\\'*/u{22}'\n",
+      "masked": "#[cfg_attr(test, expect(clippy::panic, reason=   ))]\\\\\ncé             #####[cfg_attr(test, expect(clippy::panic, reason=   ))]\\\n\\\\'*/u{22}'\n",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-059",
+      "source": "r####\"c\n 漢 /*#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\"####u{22} r####\"*/r\\\\🦀\"####\r\r\\\n*/c\r\nb\"cxb\"r####\"#[allow(unused)]'b\"\\\\\\",
+      "masked": "       \n                                                                                                                    u{22}                     \r\r\\\n*/c\r\n                                  ",
+      "attributes": []
+    },
+    {
+      "id": "random-060",
+      "source": " 漢漢c\"'\\\n/*r####\"//*/#br\"####*/b漢éb#[allow(unused)]b\"",
+      "masked": " 漢漢    \n                                               ",
+      "attributes": []
+    },
+    {
+      "id": "random-061",
+      "source": "//\r/*\rc#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]/*\\\\'//#[allow(unused)]br####\"#\n#[allow(unused)]'#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))] *///\r\n b\"🦀é'c\"b#\r\n x\"",
+      "masked": "                                                                                          \n#[allow(unused)]'#[cfg_attr(test, expect(clippy::panic, reason=   ))] *    \n            b#\r\n x ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-062",
+      "source": "\"b\"b\"//b\"b\"🦀/* \"####'r\\\\*/\nc\"//\\#[allow(unused)]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]xx\\\\\r\nb\"r\\\"*/#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]'b\"#\r\n\r\n",
+      "masked": "                   ####'r\\\\*/\n                                                                    x         \n  r\\                                                  x       #\r\n\r\n",
+      "attributes": []
+    },
+    {
+      "id": "random-063",
+      "source": "*/\\\\'#'\nb\"c\r\ncb\\\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]é*/#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]🦀xc\"é*/🦀u{22}##c\"\"####漢\\\nu{22}\n#[allow(unused)]",
+      "masked": "*/\\\\   \n    \n                                                   x                                                       x           é*/🦀u{22}##   ####漢\\\nu{22}\n#[allow(unused)]",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 5
+        }
+      ]
+    },
+    {
+      "id": "random-064",
+      "source": "c\"//\"🦀\\\n\\\nr####\"bc#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\"\"####\\u{22}",
+      "masked": "     🦀\\\n\\\n                                                                  \\u{22}",
+      "attributes": []
+    },
+    {
+      "id": "random-065",
+      "source": "r####\"//\\\"####//漢b##[allow(unused)]b/*c\"cu{22}c\"\\\\\n\n é#[allow(unused)]x\r\n#é#[allow(unused)]",
+      "masked": "                                                    \n\n é#[allow(unused)]x\r\n#é#[allow(unused)]",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 3
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "random-066",
+      "source": "\\\\b\"\"//u{22}🦀c'\\\\b\"c\"c\"c\"é ru{22}\r\nr*/b\"\\\\r####\"\\\nr####\"r####\"u{22}#[allow(unused)]*/ b\"b\"\"####c\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c\\\n\r\nr####\"漢/*漢\\\n#[allow(unused)]c",
+      "masked": "\\\\                                    \nr*/          \\\n                                                                                              x      \n \n      漢      \n                 ",
+      "attributes": []
+    },
+    {
+      "id": "random-067",
+      "source": "#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]ér####\"\r\n#[allow(unused)]\\\nxbx\"#[allow(unused)] \nb\"b\"🦀u{22}/**/\\\\ */\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\\\c\n\r\r\r\\\\r####\"\n🦀\"//",
+      "masked": "#[cfg_attr(test, expect(clippy::panic, reason=   ))]é       \n                 \n                     \n                                                                              \n           \n       ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-068",
+      "source": "\r c\"*///'#[allow(unused)]",
+      "masked": "\r                        ",
+      "attributes": []
+    },
+    {
+      "id": "random-069",
+      "source": "\"####\r\"####//漢r\r\n//c\"b🦀\n #[allow(unused)]c\"br####\"\r\n\r\n//\\\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]//bx'\r",
+      "masked": "       ####       \n         \n #[allow(unused)]         \r\n\r\n                                                                                                                                                                      ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "id": "random-070",
+      "source": "\"####\"####\"####r'r\rcr漢\\\\\\ u{22}#[allow(unused)]u{22}//b\"*/b\"b\n*/\r \r\ncbb \"#####c\"cé\"",
+      "masked": "      ####                                                */   \n     \n     #####      ",
+      "attributes": []
+    },
+    {
+      "id": "random-071",
+      "source": "\n🦀*/r####\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]x\\\\//\\c\"u{22}🦀\r\ré\"#####[allow(unused)]cb\"####/*#\r#[allow(unused)]*/c\"é\r/*",
+      "masked": "\n🦀*/                                                                                    #[allow(unused)]c                              é\r  ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-072",
+      "source": "\r\nr####\"//r####\"",
+      "masked": "\r\n              ",
+      "attributes": []
+    },
+    {
+      "id": "random-073",
+      "source": "\nr🦀r",
+      "masked": "\nr🦀r",
+      "attributes": []
+    },
+    {
+      "id": "random-074",
+      "source": "u{22}\\\r\nr\"é/*x/*/*#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]ér🦀c//\r\nb\"c\"/*r#x\nb\"#[allow(unused)]##\"\\\\éb#rr####\"'\\\\\\\n/* ",
+      "masked": "u{22}\\\r\n                                                          x               \n         \n  #[allow(unused)]##              '\\\\\\\n   ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "random-075",
+      "source": "\r\n \"####c\"\\\\écx\n\r\n//r####\"\\\n\"x##[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c\\\\r",
+      "masked": "\r\n        \\\\écx\n\r\n         \n                                                  x        ",
+      "attributes": []
+    },
+    {
+      "id": "random-076",
+      "source": "\"b##漢r####\"r####\"bu{22}漢\\\n\n*/r//\"####\r\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\"####c漢é\"\\\nr####\"\r\"#[allow(unused)]\"rb\"\\\\ \" *//*c\"🦀x🦀c\"#[allow(unused)]c\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c\"",
+      "masked": "                             \n\n          \r\n#[cfg_attr(test, expect(clippy::panic, reason=   ))]            \\\n                                                                                                                          ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "random-077",
+      "source": "r####\"\"####🦀é#\\\\\"####\\\\\rb\"r####\"éb\"éc\"漢\n\\\nr####\"xb\"c\"b\"xx\r\n \"c//*/x漢/*crb#[allow(unused)]x",
+      "masked": "           🦀é#\\\\                           \n \n                \n                                 ",
+      "attributes": []
+    },
+    {
+      "id": "random-078",
+      "source": "\n*/🦀#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]é\"r\r\n//\\\\\"\\\n*/\\u{22}\n\\\\b\\r####\"\"####",
+      "masked": "\n*/🦀#[cfg_attr(test, expect(clippy::panic, reason=   ))]é   \n     \\\n*/\\u{22}\n\\\\b\\           ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-079",
+      "source": "*/#[allow(unused)]\r\n/*c\n\\\\//\"#####[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]' é u{22}r####\"///*\r\n 🦀🦀\"\\\\r####\"rcc\"#[allow(unused)]\r\nb\"'b\"r####\"\\\\ #[allow(unused)]漢\r/* ",
+      "masked": "*/#[allow(unused)]\r\n   \n                                                                                                                                      \n                                       \n                                     ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-080",
+      "source": "b\"/*/*#[allow(unused)]\\\\cxr#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b\n*/r\nb\rr#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\nu{22}\\c\"\r#\\\\//#b/*#[allow(unused)]/* \nxx\r\n\nx🦀",
+      "masked": "                                                                          x     \n   \n                                                  x    \n        \r#\\\\                         \nxx\r\n\nx🦀",
+      "attributes": []
+    },
+    {
+      "id": "random-081",
+      "source": "\\u{22}b\"*/\r\nr####\"x\r\nrr####\"/*r####\"'\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))] '\\*/\n''éécx漢c\"##[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]r\"####漢c#[allow(unused)]",
+      "masked": "\\u{22}     \n      x\r\nr               \n                                                         \n                                                                        漢c#[allow(unused)]",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 5
+        }
+      ]
+    },
+    {
+      "id": "random-082",
+      "source": "\"####r\r\n🦀/*\r\n#漢c#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\\\'*/\"c\n\\\nr####\"r*///b\"*///\nbb#*/ éb\"'xc\"漢 \r\n",
+      "masked": "       \n       \n                                                    x                                                   x          c\n\\\n                 \n                   \n",
+      "attributes": []
+    },
+    {
+      "id": "random-083",
+      "source": "#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]'\rr####\"cx\\\\#[allow(unused)]\\\\\né //x\"####é\"####/*b\"\\/*/*'\"c\"#b\"'/*\\u{22}#[allow(unused)]c\"",
+      "masked": "#[cfg_attr(test, expect(clippy::panic, reason=   ))]'\r                            \n           é         \\                                      ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-084",
+      "source": "/*#",
+      "masked": "   ",
+      "attributes": []
+    },
+    {
+      "id": "random-085",
+      "source": "x#bé\\\n#[allow(unused)]\\\nx\"####\r\rb\"ér####\"b🦀 \\\\\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c\"\\u{22}r####\"\r\n\"####\r\n\\\\\\\n#🦀é' \"\r\n ",
+      "masked": "x#bé\\\n#[allow(unused)]\\\nx         é                                                                                  \n     \r\n\\\\\\\n#🦀é'   \n ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-086",
+      "source": "b\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[allow(unused)]\\\nc#[allow(unused)]\"u{22}c\"🦀🦀#[allow(unused)]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\"####' c\"u{22}é\n\"####rr####\"/*🦀/*#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))] \n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]",
+      "masked": "                                                 x                     \n                  u{22}                                                                         x     ####'          \n ####r                                                                   \n                                                    ",
+      "attributes": []
+    },
+    {
+      "id": "random-087",
+      "source": "b\"漢漢漢\\\\u{22}#/*bu{22}\\b\"\nc\"\\ \\\n//\r\"/*u{22}#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\\n\\\\*/\\\\ //éc\"\" \\\\b #u{22}\\\\\\\\\\\\é//b\\\n\\\\\r",
+      "masked": "                              \n     \n                                                                \n    \\\\                               \n\\\\\r",
+      "attributes": []
+    },
+    {
+      "id": "random-088",
+      "source": "漢\r*/r####\"/*'\r\n/*#bc'🦀#//🦀/*'#\\\n\\\\\"####\\\n\"r####\"b\"\"####",
+      "masked": "漢\r*/          \n                      \n       \\\n          ####",
+      "attributes": []
+    },
+    {
+      "id": "random-089",
+      "source": "c\"#\\\\/*/*漢u{22}'\\\\u{22}b\\\\\\\n#[allow(unused)]\r\n\\\\bu{22} #[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c\"漢//",
+      "masked": "                             \n                 \n                                                        x      漢  ",
+      "attributes": []
+    },
+    {
+      "id": "random-090",
+      "source": "\\#[allow(unused)]\"####'\\\n#\r\"####\r\n漢\\\"####///*\n'b\"\\\nb\"é\r漢'b\"u{22}🦀",
+      "masked": "\\#[allow(unused)]       \n   ####\r\n漢\\         \n   \\\n           u{22}🦀",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-091",
+      "source": "éb\"b\"/*\r#u{22}#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\n\"\"\r\"\r\\\\#[allow(unused)]#c#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]cé*/c\"éb'/* \"*/*/ //'\\🦀🦀r\r\né\r\n漢u{22}🦀",
+      "masked": "é                                                                 \n                                                                                            *                  \n   \n            ",
+      "attributes": []
+    },
+    {
+      "id": "random-092",
+      "source": "b #//\\\\\\\\#[allow(unused)]\"\\\\\"####é🦀b\"c\"####\n🦀'#[allow(unused)]*/\"####xéxé",
+      "masked": "b #                                            \n🦀'#[allow(unused)]*/           ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-093",
+      "source": "🦀//\"####'漢🦀漢\r\nc*///\\u{22}\n'x🦀b\"\r\n#[allow(unused)]r####\"🦀#\\\n#[allow(unused)]bc*/é\nbc\"\\//漢\\\\ */b*/#[allow(unused)]",
+      "masked": "🦀                   \nc*         \n'x🦀   \n                      🦀#\\\n#[allow(unused)]bc*/é\nb                                ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 5
+        }
+      ]
+    },
+    {
+      "id": "random-094",
+      "source": "\r\n\\\"\\\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b\"漢\\\\ c\"//\r\n//\\\n\"#####r####\"cb\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c/*'\r\n#[allow(unused)]r\\\\'\\\n\"漢\nbb#//漢#*/\"####*/",
+      "masked": "\r\n\\                                                  x      漢\\\\      \n   \n #####                                                                  \n                     \n    \n                */",
+      "attributes": []
+    },
+    {
+      "id": "random-095",
+      "source": "'\n/*\\\nc\"####c🦀#b\"\\é",
+      "masked": "'\n   \n                 ",
+      "attributes": []
+    },
+    {
+      "id": "random-096",
+      "source": "//bxrr🦀\"\\\n \\\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\''r####\"b\"🦀 \\r\\\ncr####\"",
+      "masked": "            \n \\\n#[cfg_attr(test, expect(clippy::panic, reason=   ))]#[cfg_attr(test, expect(clippy::panic, reason=   ))]\\''                \n       ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 3
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "id": "random-097",
+      "source": "#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]*/xc\"*/\"'\r\n\r\n#[allow(unused)]b\"漢\"\"####/*\"#### r####\"/*\nrc\\\\\\",
+      "masked": "#[cfg_attr(test, expect(clippy::panic, reason=   ))]*/x     '\r\n\r\n#[allow(unused)]              ####         \n     ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "id": "random-098",
+      "source": "\nu{22}🦀\"####'*/ ##r'é\r\n\\b\"u{22}u{22}ébr#\\\r\nc\"\\\\#\r\nu{22}\\\n\"u{22}r🦀c\"x\\\né",
+      "masked": "\nu{22}🦀                \n   u{22}u{22}ébr#\\\r\n      \n      \n u{22}r🦀    \n  ",
+      "attributes": []
+    },
+    {
+      "id": "random-099",
+      "source": "#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]r#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b#[allow(unused)]b*/'r\\\nc\"éc\n\"####r'\n/*#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]bc\"r🦀\\\n\\\n//漢b\"\"'b\"r\\\nc\"\"b\"cx\\\\\r\n#\\\\🦀\"####*/#[allow(unused)]",
+      "masked": "#[cfg_attr(test, expect(clippy::panic, reason=   ))]#[cfg_attr(test, expect(clippy::panic, reason=   ))]r#[cfg_attr(test, expect(clippy::panic, reason=   ))]b#[allow(unused)]b*/'r\\\n     \n ####r'\n                                                               \n \n             \n          \n              #[allow(unused)]",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 8
+        }
+      ]
+    },
+    {
+      "id": "random-100",
+      "source": " 🦀'\r\né#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]'\r\nu{22}🦀🦀 //u{22}u{22}\\\"",
+      "masked": " 🦀'\r\né#[cfg_attr(test, expect(clippy::panic, reason=   ))]'\r\nu{22}🦀🦀               ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-101",
+      "source": "\r\n",
+      "masked": "\r\n",
+      "attributes": []
+    },
+    {
+      "id": "random-102",
+      "source": "*/🦀/*//'\r#*///*/ #[allow(unused)]\"\\é*/#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\\\ ",
+      "masked": "*/🦀                                                                                                                                               ",
+      "attributes": []
+    },
+    {
+      "id": "random-103",
+      "source": "u{22}/*\\//bc\"//x\rrb'漢cu{22}\r\n/*c\"rr//c\"b */r\r#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]rrb\"\r#[allow(unused)]c\"c\"漢\"bc\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]éu{22}r####\"c\"",
+      "masked": "u{22}                         \n                                                                                                                                                                       ",
+      "attributes": []
+    },
+    {
+      "id": "random-104",
+      "source": "\"\n*/\\\\' \" #[allow(unused)]r\n/*漢r####\"b\"#c\\\nu{22}c\réx#[allow(unused)]/*//🦀",
+      "masked": " \n        #[allow(unused)]r\n                \n                                  ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-105",
+      "source": "🦀\"\\b\"c\"\\\n",
+      "masked": "🦀       \n",
+      "attributes": []
+    },
+    {
+      "id": "random-106",
+      "source": " brb\"x\"\"####cb\"\"#####[allow(unused)] /*",
+      "masked": " br                                    ",
+      "attributes": []
+    },
+    {
+      "id": "random-107",
+      "source": "/*#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]'\"\"\"r##[allow(unused)]bé🦀\nr\n\r\n#[allow(unused)]x\"x\\\\/*漢c\"\"####\\*/ c\"b\"\\\\\"x*/ccu{22}#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c//\\\n/*\n\"####bu{22}\"####u{22}",
+      "masked": "                                                                                   \n \n \n                                               ccu{22}#[cfg_attr(test, expect(clippy::panic, reason=   ))]c   \n  \n                     ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "random-108",
+      "source": "é\\#[allow(unused)]🦀u{22}#[allow(unused)]r\r\n #\r\n\"/*é🦀\r\n\"/*\"####r\"####\r\nrr\"é\"####\nr####\"/*漢c\"\\\r\n*/#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]r####\"c\" ",
+      "masked": "é\\#[allow(unused)]🦀u{22}#[allow(unused)]r\r\n #\r\n          \n               \n          \n               \n                                                               ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-109",
+      "source": "\\\nr####\"*/b\"éé\r\nc\"\"u{22}#c\"#bc//#*/#[allow(unused)]\r\nc\ru{22}#\"",
+      "masked": "\\\n               \n                                    \n         ",
+      "attributes": []
+    },
+    {
+      "id": "random-110",
+      "source": "c\"\r\"####c\" c\"\\\n'🦀 \\\n \\\\\r\n\\\n'u{22}\\\\",
+      "masked": "    ####     \\\n'🦀 \\\n \\\\\r\n\\\n'u{22}\\\\",
+      "attributes": []
+    },
+    {
+      "id": "random-111",
+      "source": "🦀\nb\"漢\\\n\\\n\\\nr####\"\\\n\\\nr\\\\*/r漢\ru{22}xb\"漢 b//céu{22}#[allow(unused)]b\"\\\\'\r\nu{22}x#[allow(unused)]r🦀漢c\"r####\"#[allow(unused)]r///*é\\\n//b",
+      "masked": "🦀\n      \n \n \n      \\\n\\\nr\\\\*/r漢\ru{22}x                                   \\\\'\r\nu{22}x#[allow(unused)]r🦀漢        #[allow(unused)]r       \n   ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 8
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 8
+        }
+      ]
+    },
+    {
+      "id": "random-112",
+      "source": "u{22}#\r\nb\"\\\r\r\nr",
+      "masked": "u{22}#\r\n     \n ",
+      "attributes": []
+    },
+    {
+      "id": "random-113",
+      "source": "#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]r####\"é//x#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[allow(unused)]'#漢//c\"\\\\\r\"\\",
+      "masked": "#[cfg_attr(test, expect(clippy::panic, reason=   ))]                                                                                             ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-114",
+      "source": "b\"c\"#[allow(unused)]//🦀c//b\"#[allow(unused)]/*r####\"\\ ",
+      "masked": "    #[allow(unused)]                                     ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-115",
+      "source": "\"\\\\*/#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\"####u{22}\n// '\\\\#\"##### */",
+      "masked": "                                                    x     ####u{22}\n                ",
+      "attributes": []
+    },
+    {
+      "id": "random-116",
+      "source": "xb\"\\\\#/*c'r*/ ",
+      "masked": "x             ",
+      "attributes": []
+    },
+    {
+      "id": "random-117",
+      "source": "漢b\"\"####b\"u{22}c//漢xc",
+      "masked": "漢   ####               ",
+      "attributes": []
+    },
+    {
+      "id": "random-118",
+      "source": "bér\\\n\r\\\\\n/*\"####c\"x\\\\c\"x'//\\cu{22}r####\"\"x#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]*/\"x\"b///*c\"  c\" */#/*漢u{22}🦀\\\nxxér####\"#b\"c\"",
+      "masked": "bér\\\n\r\\\\\n                                                                                          b                             \nxxé           ",
+      "attributes": []
+    },
+    {
+      "id": "random-119",
+      "source": "//\\\\u{22}\\u{22}漢#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]*/\"\r/*\r\n\n🦀x'\r\n\rc\"🦀\nrrx r////c\r漢 '//#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\rc*/b\"#",
+      "masked": "                                                                             \n\n🦀x'\r\n\r      \n                                                                 x           #",
+      "attributes": []
+    },
+    {
+      "id": "random-120",
+      "source": "ru{22}\"b#////漢/*\r//🦀\\#\r\r\"#### b#\r\nc\"c\\*/r####\"/* /*x cu{22}c\"",
+      "masked": "ru{22}                        #### b#\r\n                           ",
+      "attributes": []
+    },
+    {
+      "id": "random-121",
+      "source": "c\"\r// 漢\"####",
+      "masked": "          ####",
+      "attributes": []
+    },
+    {
+      "id": "random-122",
+      "source": "\r*/u{22}c\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\"####b#[allow(unused)]c\"x*/écc\"\ru{22}\"r🦀c\r//cc\"#\\\\\r#[allow(unused)]\\x\nr####\"\\\\漢b\"\\\n/*\n'*/\\cc\"xé\\\\é\"u{22}",
+      "masked": "\r*/u{22}                                                 x     ####b#[allow(unused)]          \ru{22}             #\\\\\r#[allow(unused)]\\x\n              \n  \n                    ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-123",
+      "source": "\\c#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#u{22}c\"b",
+      "masked": "\\c#[cfg_attr(test, expect(clippy::panic, reason=   ))]#u{22}   ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-124",
+      "source": "b\"####*/🦀\\🦀é",
+      "masked": "                   ",
+      "attributes": []
+    },
+    {
+      "id": "random-125",
+      "source": "漢é\r漢\\\\xx'🦀'\n'r####\"'c\"####*/漢\"\\🦀\"#\\'\rr####\"🦀/*bb",
+      "masked": "漢é\r漢\\\\xx      \n'             */漢       #\\'\r              ",
+      "attributes": []
+    },
+    {
+      "id": "random-126",
+      "source": "🦀\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\"#####[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b#\\\\c\"r\"/*r####\"\\\n*/r####\"r####\"\\c\"\\\\#[allow(unused)]u{22}'",
+      "masked": "🦀\\#[cfg_attr(test, expect(clippy::panic, reason=   ))]                                                    x                    \\\n*/                                       ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-127",
+      "source": "c",
+      "masked": "c",
+      "attributes": []
+    },
+    {
+      "id": "random-128",
+      "source": "\r'x cb\"#[allow(unused)]r####\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\\n//\\\\\n 漢\r\n#/* \"c\"u{22}bc\"r####\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]*/#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\r\n\"\\\n'//r####\"c#\\\\b\"#'",
+      "masked": "\r'x c                        #[cfg_attr(test, expect(clippy::panic, reason=   ))]\\\n    \n 漢\r\n#                                                                          #[cfg_attr(test, expect(clippy::panic, reason=   ))]\r\n  \n         c#\\\\    ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "random-129",
+      "source": "c\" ##[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]é//xu{22}#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\nr####\"é\\\\\n//\n\r\n\"\\é#🦀",
+      "masked": "                                                   x                                                             x    \n      é\\\\\n  \n\r\n         ",
+      "attributes": []
+    },
+    {
+      "id": "random-130",
+      "source": "c\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b\"#b\"#b\"\\\\\\#[allow(unused)]漢'c🦀b\"🦀#[allow(unused)]\n\r//  \\漢\\\nu{22}",
+      "masked": "                                                 x      #     \\\\\\#[allow(unused)]漢'c🦀                      \n          \n     ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-131",
+      "source": "c\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]r####\"c\"'bé\"\\\\//'*/\\\nr####\"éxc🦀\"éb\"漢'/*\\\nc\"\"*/\rr####\"漢\\\nr漢\\//\\\nr####\" \"éé\\\n\"b",
+      "masked": "                                                 x                 \\\\      \n                          \n                \n        \n             \n  ",
+      "attributes": []
+    },
+    {
+      "id": "random-132",
+      "source": "\r\nc\"\"####r####\"#\"",
+      "masked": "\r\n   ####        ",
+      "attributes": []
+    },
+    {
+      "id": "random-133",
+      "source": "éb\"c\"/*b\"c🦀bx// 漢c漢r##r####\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]//\\\"🦀\\r\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\ru{22}\\\\",
+      "masked": "é                                                                                                                                                             ",
+      "attributes": []
+    },
+    {
+      "id": "random-134",
+      "source": "c\"\"####\\\\\"####u{22}*/b\"r####\"\n\\\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))] ",
+      "masked": "   ####\\\\                    \n                                                       ",
+      "attributes": []
+    },
+    {
+      "id": "random-135",
+      "source": "\\x\"é#*///b\r\n\\\nx漢\\\\\"x\nb\"\r\"####/*\n\r\n\"#####[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\n漢b#[allow(unused)]\\\n#\\\n/*'é\"",
+      "masked": "\\x          \n \n       x\n    ####  \n \n                                                         \n                     \n  \n      ",
+      "attributes": []
+    },
+    {
+      "id": "random-136",
+      "source": "\\\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\\\u{22}\rc//r####\"\r\n#[allow(unused)]\"####/*//\"#####[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]/*\n\"####漢\\\n*/漢\r\"/*\\\\🦀\"cb🦀*/c🦀\r*/'/*#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]r*/#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]'\"",
+      "masked": "\\\n#[cfg_attr(test, expect(clippy::panic, reason=   ))]\\\\u{22}\rc         \n#[allow(unused)]          #####[cfg_attr(test, expect(clippy::panic, reason=   ))]  \n         \n  漢\r          cb🦀*/c🦀\r*/'                                                         #[cfg_attr(test, expect(clippy::panic, reason=   ))]' ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 3
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 3
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 5
+        }
+      ]
+    },
+    {
+      "id": "random-137",
+      "source": "éb\"xc\"r\" /*r漢x\\\\\\\\\r\n/*c\"b \\\n\rb\\#[allow(unused)]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\r\nc\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#u{22}c/*u{22}/*éc/*xb\"c\"\"####/*\n漢#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c",
+      "masked": "é                    \n    b \\\n\rb\\#[allow(unused)]#[cfg_attr(test, expect(clippy::panic, reason=   ))]\r\n                                                 x                               ####  \n                                                        ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 3
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "id": "random-138",
+      "source": "/*\nr####\"///*b\"//*//*#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\"*/\"#[allow(unused)]\\\n\r\n'c\"*/'*/u{22}\nc\"\\\\r",
+      "masked": "  \n                                                                                           \n \n             \n     ",
+      "attributes": []
+    },
+    {
+      "id": "random-139",
+      "source": "\n\\\n🦀*/#r####\" \r",
+      "masked": "\n\\\n🦀*/#        ",
+      "attributes": []
+    },
+    {
+      "id": "random-140",
+      "source": "\\\n\"\"#####[allow(unused)]c\\\n//\r\n/**/#[allow(unused)]u{22}\"####\\\\éu{22}#[allow(unused)]\\漢br####\"x\"\"####\\\\\r\né\"c",
+      "masked": "\\\n  #####[allow(unused)]c\\\n   \n    #[allow(unused)]u{22}                                         x  ####\\\\\r\né  ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "random-141",
+      "source": "\n漢\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]/*🦀c\"x",
+      "masked": "\n漢                                                x            x",
+      "attributes": []
+    },
+    {
+      "id": "random-142",
+      "source": "\\\\\rxé\rr\r\"b\"////c\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]/*#\r//#漢\"####'#c'\r\n#[allow(unused)]🦀\"",
+      "masked": "\\\\\rxé\rr\r                                                                                 \n#[allow(unused)]🦀 ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-143",
+      "source": "\n'\"####c\n\n*/\"\r*/'b\"\\\n/*x#[allow(unused)]r r####\"#x#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]r\\\\x\nr\r\n🦀\r\n\\\nb\"*/\\\\r####\"/*r####\"*/",
+      "masked": "\n'      \n\n   \r*/'   \n                           #x#[cfg_attr(test, expect(clippy::panic, reason=   ))]r\\\\x\nr\r\n🦀\r\n\\\n                      ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 5
+        }
+      ]
+    },
+    {
+      "id": "random-144",
+      "source": "//#u{22}\\\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c🦀c\"#[allow(unused)]r####\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]xc",
+      "masked": "         \n#[cfg_attr(test, expect(clippy::panic, reason=   ))]c🦀                        #[cfg_attr(test, expect(clippy::panic, reason=   ))]xc",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-145",
+      "source": "b\"####\r\n#\r\n\\\\é'/*\\\\\\\n\"####\\\n\"漢b\"/*c//r\\\\\n//\\\\r####\"漢x \r\n\\漢\n */\\\\\r\n#[allow(unused)]#[allow(unused)]*/r####\"",
+      "masked": "       \n  \n          \n ####\\\n              \n                \n    \n   \\\\\r\n#[allow(unused)]#[allow(unused)]*/      ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 9
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 9
+        }
+      ]
+    },
+    {
+      "id": "random-146",
+      "source": " #[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]🦀\r\n\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c\"b\"r####\"\"####éb\"c'\\\n ééb\"cb\"漢x\\\nc\"",
+      "masked": " #[cfg_attr(test, expect(clippy::panic, reason=   ))]#[cfg_attr(test, expect(clippy::panic, reason=   ))]🦀\r\n\\#[cfg_attr(test, expect(clippy::panic, reason=   ))]               é     \n       c       \n  ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-147",
+      "source": "/*\\\\🦀/*\\'漢'//\\\\\"\\\\'\\\nc漢*/c\"####\"####é#[allow(unused)]\"\\\\#[allow(unused)]b\"u{22}*/c//b\"*/b\"漢\\\\\nx\\#c\"#[allow(unused)]c\"#[allow(unused)]",
+      "masked": "                         \n                                                               c             \nx\\#                    #[allow(unused)]",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "id": "random-148",
+      "source": "x\"//r####\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\r\n漢b\"bb\"\"####é\"\"\r\n#\r\n",
+      "masked": "x         #[cfg_attr(test, expect(clippy::panic, reason=   ))]\r\n漢               \n  \n",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-149",
+      "source": " b\" é\\\nx\"####\"",
+      "masked": "       \n  #### ",
+      "attributes": []
+    },
+    {
+      "id": "random-150",
+      "source": "\"####\rc\\x\r\nx#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\r\n/*\"####",
+      "masked": "          \n                                                x     \n   ####",
+      "attributes": []
+    },
+    {
+      "id": "random-151",
+      "source": "b//#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]r####\"cr🦀b\\\n\\\\\\\n*/é cbu{22}\\b\"rrc\"\n🦀\"\\\\\r\r\r#[allow(unused)]é#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]/*''\\*/",
+      "masked": "b                                                                    \n\\\\\\\n*/é cbu{22}\\      \n🦀                                                                       x           ",
+      "attributes": []
+    },
+    {
+      "id": "random-152",
+      "source": "\"",
+      "masked": " ",
+      "attributes": []
+    },
+    {
+      "id": "random-153",
+      "source": "#\\\\\nxr\\u{22}é",
+      "masked": "#\\\\\nxr\\u{22}é",
+      "attributes": []
+    },
+    {
+      "id": "random-154",
+      "source": "  ' \\\\\\\\br\"#####[allow(unused)]\r\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]cu{22}x\\\n漢é\néér🦀*/ u{22}\r\"####c\n\\\né éc#\\\\\n\"####漢\"é//",
+      "masked": "  ' \\\\\\\\                        \n                                               x            \n     \n                   ####c\n\\\né éc#\\\\\n         é  ",
+      "attributes": []
+    },
+    {
+      "id": "random-155",
+      "source": "x\\/*u{22}#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))] 'xu{22}rb\"c\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\"'\\\nc\\//c\"\\\n\\*/\rc\"\\\n#[allow(unused)]\\\nc\"\\\n\n\"####\\\n#[allow(unused)]/*🦀🦀#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]u{22}r####\"\"b\"u{22}u{22}",
+      "masked": "x\\                                                                                                                               \n       \n   \r   \n                 \n  \\\n\n      \n                                                                         x                  u{22}u{22}",
+      "attributes": []
+    },
+    {
+      "id": "random-156",
+      "source": "#'c\"b\" \r\n #c\"/*#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]x#[allow(unused)]c\\\n\"####//\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]//#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]r u{22}\\\\\\ r\\\\/*r#b#b\"\r\"br####\" \"####u{22}\n\\\nc\"\n\\\\b",
+      "masked": "#'     \r\n #                                                   x                       \n ####                                                                                                                                                       \n\\\n  \n   ",
+      "attributes": []
+    },
+    {
+      "id": "random-157",
+      "source": "\n'c\\\\\nb\"\n\\\\漢r####\"\\\n\nr\\#[allow(unused)]r####\"\\\nr#\r",
+      "masked": "\n'c\\\\\n  \n           \\\n\nr\\#[allow(unused)]       \n   ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 6
+        }
+      ]
+    },
+    {
+      "id": "random-158",
+      "source": "\"",
+      "masked": " ",
+      "attributes": []
+    },
+    {
+      "id": "random-159",
+      "source": "x#x\"####",
+      "masked": "x#x     ",
+      "attributes": []
+    },
+    {
+      "id": "random-160",
+      "source": "*/\"####b\"\"####\nr####\"'/*r漢🦀\r\n'🦀u{22}*/\rb\" é//'b#\\\nb\"/*x🦀🦀#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]漢漢x#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\nu{22}*//*\\\n\r\n\\\\\\\\\"####xr####\"漢*/",
+      "masked": "*/            \n      '           \n            \r           \n                                                                                                                            \n          \n \n                     ",
+      "attributes": []
+    },
+    {
+      "id": "random-161",
+      "source": "#\\bbb\"u{22}\"####c\" r\r*/ \\\nér####\"/*\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\r🦀🦀漢 \"####u{22}\\\r\n#[allow(unused)]\r\n\\\\é'#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c\r\nr#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]",
+      "masked": "#\\bb        ####         \n                                                                                        \n                 \n                                                           \n                                                     ",
+      "attributes": []
+    },
+    {
+      "id": "random-162",
+      "source": "漢//\"####c//cu{22}r####\"//\nr####\"\\*/c\"#[allow(unused)]\"\\\\\n#[allow(unused)]\"r####\"\rb#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]漢\\\n",
+      "masked": "漢                        \n                              \n                                                                                 \n",
+      "attributes": []
+    },
+    {
+      "id": "random-163",
+      "source": "🦀\r\n\r/*r b\rb\"\\\n\\\nr\\\r\\\\/*u{22}c\"x'/*'\nc\"\r\n",
+      "masked": "🦀\r\n\r         \n \n                   \n   \n",
+      "attributes": []
+    },
+    {
+      "id": "random-164",
+      "source": "r####\"\r\n\r\\\\\n\"####*/  #[allow(unused)] u{22}\r\n\r\nr'c \\\\#[allow(unused)]#b#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c🦀b\"#[allow(unused)]\r\"#[allow(unused)]🦀x*/🦀u{22}\\\\\néu{22}b\"u{22}",
+      "masked": "       \n   \n     */  #[allow(unused)] u{22}\r\n\r\nr'c \\\\#[allow(unused)]#b#[cfg_attr(test, expect(clippy::panic, reason=   ))]c🦀                    #[allow(unused)]🦀x*/🦀u{22}\\\\\néu{22}       ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 3
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 5
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 5
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 5
+        }
+      ]
+    },
+    {
+      "id": "random-165",
+      "source": "\"####漢c\r#\\\n🦀\"####r####\"/*#[allow(unused)]ru{22}//c\"\r\n漢*/r####\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b\"\"####'#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\\\c\\\n*/\n\nbb\"\r*/u{22}\r\n\r",
+      "masked": "            \n     ####                                   \n                                                                      '#[cfg_attr(test, expect(clippy::panic, reason=   ))]\\\\c\\\n*/\n\nb           \n ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "id": "random-166",
+      "source": "\n\\\\b\"x\n\r\nb\"\"cb\"\\\n#[allow(unused)]\\\nb##[allow(unused)]cb\"\"#####\\\n\nx\\\\\r/*bbé#\\\nr\\\\\rr####\"ér漢漢/*\\\n//漢/*/*",
+      "masked": "\n\\\\   \n \n      \\\n#[allow(unused)]\\\nb##[allow(unused)]c   #####\\\n\nx\\\\\r        \n                      \n         ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 5
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 6
+        }
+      ]
+    },
+    {
+      "id": "random-167",
+      "source": "c\"c\"\"####\n*/#b\"#\\\\#[allow(unused)]ru{22}#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\"//🦀 ",
+      "masked": "         \n     #\\\\#[allow(unused)]ru{22}#[cfg_attr(test, expect(clippy::panic, reason=   ))]        ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-168",
+      "source": "u{22}c\\\\b/*cc\r\nb\"\\\\\\\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]é\rbr\r\nu{22}\\\n\\\\漢\\\\c\r漢漢",
+      "masked": "u{22}c\\\\b     \n                                                                \n      \n               ",
+      "attributes": []
+    },
+    {
+      "id": "random-169",
+      "source": "\r\\x\\b\"r####\"/*//\r\n\r'#[allow(unused)]é'/*\\\\\\\\\rr\\\n#[allow(unused)]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\r\nc\"#[allow(unused)]'é//'r####\"rc\"####\"é\"b\"#[allow(unused)]/*b\"c\"\\\n\r\\\\漢\r\n",
+      "masked": "\r\\x\\             \n                              \n                                                                     \n                                                                  \n       \n",
+      "attributes": []
+    },
+    {
+      "id": "random-170",
+      "source": "漢'//#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]//xb\"\"####rbb\"b/*/*\\\n漢c\"\\\n🦀éb\"####/* //*/c\\\"b\"'u{22}bu{22}/*x\\\\\n#[allow(unused)]\rb",
+      "masked": "漢'                                                                          \n漢   \n        ####                             \n                  ",
+      "attributes": []
+    },
+    {
+      "id": "random-171",
+      "source": "//#[allow(unused)]c\\\n''\r\\\né\\\nr\n'b\"\n*/\"//u{22}///*🦀rc\\\nc\"/*b\"####bééé\"\n\r*/\r\n\r\n/*\né#[allow(unused)]\r\r\n\\漢漢",
+      "masked": "                    \n''\r\\\né\\\nr\n'  \n                     \n      ####bééé \n    \n \n  \n                    \n       ",
+      "attributes": []
+    },
+    {
+      "id": "random-172",
+      "source": "\\\r\n///*#bb\"r////éx\r漢漢#\\\nu{22}r",
+      "masked": "\\\r\n                         \nu{22}r",
+      "attributes": []
+    },
+    {
+      "id": "random-173",
+      "source": "🦀\"c\"\n\r\n \\//漢r\\\\//*/u{22}漢r####\"#[allow(unused)]\"\n\r/*b\"\\\\c\"r*/*/u{22}/* //\\\nx\\\né\\c",
+      "masked": "🦀   \n\r\n \\                                           \n\r           */u{22}      \n  \n    ",
+      "attributes": []
+    },
+    {
+      "id": "random-174",
+      "source": "r\\漢🦀u{22}b\"\r\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]🦀r//r#[allow(unused)]c\"\r\n##[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]r####\"r*/r####\"漢c'# /*\\\néé\"#####[allow(unused)]\\\n\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b\"u{22}#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))] u{22}u{22}\\\n//r'u{22}",
+      "masked": "r\\漢🦀u{22}   \n                                               x                              \r\n##[cfg_attr(test, expect(clippy::panic, reason=   ))]                         \n         #[allow(unused)]\\\n\n#[cfg_attr(test, expect(clippy::panic, reason=   ))]                                                      x                \n         ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 3
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 4
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 6
+        }
+      ]
+    },
+    {
+      "id": "random-175",
+      "source": "\n\"####\"\\\\\\#[allow(unused)]/*cx 漢\"####b\"🦀érb🦀\\\n//'#[allow(unused)]c\"c🦀b\"\\\n",
+      "masked": "\n      \\\\\\#[allow(unused)]                            \n                             \n",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-176",
+      "source": "x*/bb\" \\\nxb\"*/#[allow(unused)]r\\\"u{22}#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\\nb\"\\\n\"####c\"#[allow(unused)] b\"u{22}/*\r\n\r\n\n\\\n\\u{22}/*",
+      "masked": "x*/b    \n   */#[allow(unused)]r\\                                                     x     \n  \\\n       #[allow(unused)]           \n \n\n \n        ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 4
+        }
+      ]
+    },
+    {
+      "id": "random-177",
+      "source": "\"####r漢\\r*/#",
+      "masked": "              ",
+      "attributes": []
+    },
+    {
+      "id": "random-178",
+      "source": "é\n\\x*/#\r \\\\r#[allow(unused)]🦀\\\nér####\"\\/*\rr \\\\r\\\\\r\n\\\n🦀#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]🦀",
+      "masked": "é\n\\x*/#\r \\\\r#[allow(unused)]🦀\\\né                  \n \n                                                            ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-179",
+      "source": "🦀'\"####/*漢ér####\"#[allow(unused)]\\/*\"####\\#[allow(unused)]#[allow(unused)] 漢#漢xu{22}漢ré\\\\cc//x漢\"u{22}#",
+      "masked": "🦀'                  #[allow(unused)]\\                                                                             ",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-180",
+      "source": "#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]x*/éx\\\\cb\"b'",
+      "masked": "#[cfg_attr(test, expect(clippy::panic, reason=   ))]x*/éx\\\\c    ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-181",
+      "source": "*/#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]u{22}c\" #[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]",
+      "masked": "*/#[cfg_attr(test, expect(clippy::panic, reason=   ))]u{22}                                                  x                                                   x    ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-182",
+      "source": "c",
+      "masked": "c",
+      "attributes": []
+    },
+    {
+      "id": "random-183",
+      "source": "b",
+      "masked": "b",
+      "attributes": []
+    },
+    {
+      "id": "random-184",
+      "source": "\\\\#[allow(unused)]#r'\"#####\\\\#[allow(unused)]//\"####",
+      "masked": "\\\\#[allow(unused)]#r'                           ####",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-185",
+      "source": "#'//\r#\\漢\\\\/*'/*c#[allow(unused)]🦀'r####\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]*/r####\" */\r🦀\r\nu{22}##[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]ér####\"b'c#b\"r🦀//\\\\#[allow(unused)]c#[allow(unused)]c\"\rb漢 🦀\\c\"",
+      "masked": "#'                                                                                                                \nu{22}##[cfg_attr(test, expect(clippy::panic, reason=   ))]é                                                                     ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-186",
+      "source": "漢c\"r####\"\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\"bxb🦀//\rc\"r####\"\\\n c\r\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b\"b🦀c\"🦀érb\" \n",
+      "masked": "漢        \n#[cfg_attr(test, expect(clippy::panic, reason=   ))]                    \n   \n                                                                       \n",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-187",
+      "source": "rér#[allow(unused)]#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#r####\"#xc\"b\"é/*/*u{22}/*b\"\nc\"/**/\n#é\"\r\nx\\\\r#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))] c\"\\\\\\#[allow(unused)]\nbbé\r漢u{22}rb\"\\漢\n",
+      "masked": "rér#[allow(unused)]#[cfg_attr(test, expect(clippy::panic, reason=   ))]#                           \n      \n     \n                                                                              \n                    \n",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 1
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-188",
+      "source": "\\\\\\#'漢u{22}*/漢\\\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b/* #[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]",
+      "masked": "\\\\\\#'漢u{22}*/漢\\\n#[cfg_attr(test, expect(clippy::panic, reason=   ))]b                                                       ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-189",
+      "source": "\"####\r\"####c#c //🦀\r\n\\\\\\ x*///\"####\nb\"'//c\"u{22} \\\\",
+      "masked": "       ####c#c        \n\\\\\\ x*        \n       u{22} \\\\",
+      "attributes": []
+    },
+    {
+      "id": "random-190",
+      "source": "////\r\n\rcbéb\"cr####\"/*\\\nu{22}rbu{22}/*///* c \\x\n🦀\\漢r####\" b\"#[allow(unused)]b écx\r\n#[allow(unused)]🦀*/u{22}\r\nx/*",
+      "masked": "     \n\rcbé            \n                       \n                                        \n                            \n   ",
+      "attributes": []
+    },
+    {
+      "id": "random-191",
+      "source": "*/\\\nbu{22}*/🦀r####\"éc\"\"####' \rb\"/*",
+      "masked": "*/\\\nbu{22}*/🦀               ' \r    ",
+      "attributes": []
+    },
+    {
+      "id": "random-192",
+      "source": "b\\🦀\\#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]'\r\n#/*xc\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]'#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\u{22}#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\rc",
+      "masked": "b\\🦀\\#[cfg_attr(test, expect(clippy::panic, reason=   ))]'\r\n#                                                                                                                                                                          ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-193",
+      "source": "\r\n*/x#\r\n",
+      "masked": "\r\n*/x#\r\n",
+      "attributes": []
+    },
+    {
+      "id": "random-194",
+      "source": "'u{22}u{22}'\nb#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]c\"c\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]u{22}'\\\n*/ \"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]r\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]  *///é\"####c\"xb\n\"#\"####b🦀\"\n//",
+      "masked": "'u{22}u{22}'\nb#[cfg_attr(test, expect(clippy::panic, reason=   ))]    #[cfg_attr(test, expect(clippy::panic, reason=   ))]u{22}'\\\n*/                                                 x      #[cfg_attr(test, expect(clippy::panic, reason=   ))]  *              \n   ####b🦀 \n  ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "id": "random-195",
+      "source": "*/c\"u{22}\" x'r\"\"####c\r\n漢\r\nr\\c/*//*/\"####c#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]\\#[allow(unused)]b\"xcé\r\n\"é/*éx/**/",
+      "masked": "*/         x'   ####c\r\n漢\r\nr\\c                                                                                        \n            ",
+      "attributes": []
+    },
+    {
+      "id": "random-196",
+      "source": "é漢r####\"\ru{22}\"####\r\n#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]# u{22}\"#####*/*/#[allow(unused)]\n\"\"b\"",
+      "masked": "é漢                 \r\n#[cfg_attr(test, expect(clippy::panic, reason=   ))]# u{22}                          \n    ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "random-197",
+      "source": "\"漢 \\\\\\b\"r####\"🦀 🦀é/*漢cr\\",
+      "masked": "                                   ",
+      "attributes": []
+    },
+    {
+      "id": "random-198",
+      "source": "#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]b\"\r\r*/漢*/#[allow(unused)]b/*b\"//c #\\\nu{22}r####\"c\"\r#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))] c",
+      "masked": "#[cfg_attr(test, expect(clippy::panic, reason=   ))]                                      \nu{22}                                                               ",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::panic"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "random-199",
+      "source": "\\\\#\"####r####\"\"\r\n漢é/*c\n//b\"b'b'rb//🦀漢\"\né\"####\r\r\nr####\"r####\"x\\\\b\"#[cfg_attr(test, expect(clippy::panic, reason=\"x\"))]#[allow(unused)]",
+      "masked": "\\\\#             \n        \n        rb          \né       \n                                                                                     ",
+      "attributes": []
+    },
+    {
+      "id": "literal-string",
+      "source": "const X: &str = \"#[allow(clippy::panic)]\";\n#[expect(clippy::too_many_lines, reason=\"documented\")]\nfn good() {}\n",
+      "masked": "const X: &str =                          ;\n#[expect(clippy::too_many_lines, reason=            )]\nfn good() {}\n",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::too_many_lines"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "nested-comment",
+      "source": "// #[allow(clippy::panic)]\n/* outer /* #[warn(clippy::panic)] */ end */\n#[expect(clippy::too_many_lines, reason=\"ok\")]\n",
+      "masked": "                          \n                                            \n#[expect(clippy::too_many_lines, reason=    )]\n",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::too_many_lines"
+          ],
+          "has_reason": true,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "id": "raw-unicode",
+      "source": "const A: &str = r####\"🦀 #[allow(clippy::panic)]\"####;\n#[cfg_attr(test, expect(clippy::too_many_lines, reason=\"yes\"))]\n",
+      "masked": "const A: &str =                                        ;\n#[cfg_attr(test, expect(clippy::too_many_lines, reason=     ))]\n",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::too_many_lines"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "lifetime",
+      "source": "fn f<'a>(x: &'a str) -> &'static str { 'outer: loop { break 'outer; } }\n",
+      "masked": "fn f<'a>(x: &'a str) -> &'static str { 'outer: loop { break 'outer; } }\n",
+      "attributes": []
+    },
+    {
+      "id": "char-literal",
+      "source": "const C: char = '🦀';\n#[expect(clippy::too_many_lines, reason=\"test\")]\n",
+      "masked": "const C: char =       ;\n#[expect(clippy::too_many_lines, reason=      )]\n",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::too_many_lines"
+          ],
+          "has_reason": true,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "deep-block",
+      "source": "/* /* /* #![warn(clippy::panic)] */ */ */\n#![allow(unused, dead_code)]\n",
+      "masked": "                                         \n#![allow(unused, dead_code)]\n",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused",
+            "dead_code"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "escaped-quote",
+      "source": "const A: &str = \"hello \\\\\"world\\\\\"\";\n#[warn(clippy::excessive_nesting)]\n",
+      "masked": "const A: &str =           world\\\\  ;\n#[warn(clippy::excessive_nesting)]\n",
+      "attributes": [
+        {
+          "kind": "warn",
+          "lints": [
+            "clippy::excessive_nesting"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "byte-raw",
+      "source": "let a = br###\"nested ## #[allow(clippy::x)]\"###;\n#[allow(unused)]\n",
+      "masked": "let a =                                        ;\n#[allow(unused)]\n",
+      "attributes": [
+        {
+          "kind": "allow",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "unterminated",
+      "source": "#[expect(clippy::too_many_lines, reason = \"unfinished\n",
+      "masked": "#[expect(clippy::too_many_lines, reason =            \n",
+      "attributes": []
+    },
+    {
+      "id": "nonbmp-comment",
+      "source": "// 🦀 🦀\n#[warn(unused)]",
+      "masked": "            \n#[warn(unused)]",
+      "attributes": [
+        {
+          "kind": "warn",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "nonbmp-string",
+      "source": "const A: &str = \"🦀 🦀\";\n#[warn(unused)]",
+      "masked": "const A: &str =            ;\n#[warn(unused)]",
+      "attributes": [
+        {
+          "kind": "warn",
+          "lints": [
+            "unused"
+          ],
+          "has_reason": false,
+          "line": 2
+        }
+      ]
+    },
+    {
+      "id": "attribute-reason-strings",
+      "source": "#[cfg_attr(test, expect(clippy::too_many_lines, reason = \"comma, as text\"))]\n",
+      "masked": "#[cfg_attr(test, expect(clippy::too_many_lines, reason =                 ))]\n",
+      "attributes": [
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::too_many_lines"
+          ],
+          "has_reason": true,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "many-attributes",
+      "source": "#[warn(clippy::pedantic)]\n#[expect(clippy::unwrap_used, reason=\"because\")]\n#![allow(unused,dead_code)]\n",
+      "masked": "#[warn(clippy::pedantic)]\n#[expect(clippy::unwrap_used, reason=         )]\n#![allow(unused,dead_code)]\n",
+      "attributes": [
+        {
+          "kind": "warn",
+          "lints": [
+            "clippy::pedantic"
+          ],
+          "has_reason": false,
+          "line": 1
+        },
+        {
+          "kind": "expect",
+          "lints": [
+            "clippy::unwrap_used"
+          ],
+          "has_reason": true,
+          "line": 2
+        },
+        {
+          "kind": "allow",
+          "lints": [
+            "unused",
+            "dead_code"
+          ],
+          "has_reason": false,
+          "line": 3
+        }
+      ]
+    }
+  ]
+}

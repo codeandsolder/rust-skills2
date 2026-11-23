@@ -279,3 +279,6 @@ fn example() {}"####;
         assert_eq!(attributes[2].lints, ["dead_code", "unused"]);
     }
 }
+
+#[cfg(test)]
+mod token_golden;

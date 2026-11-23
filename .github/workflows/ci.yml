@@ -59,10 +59,9 @@ jobs:
         shell: bash
         run: |
           node --test policy-wasm/gitlink.test.mjs
+          node --test policy-wasm/token-golden.test.mjs
           node checks/compare_workspace_policy.mjs "${{ steps.zipp.outputs.runner }}" "${{ steps.compiler.outputs.channel }}" "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm"
           node policy-wasm/package.mjs verify "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" "${{ steps.compiler.outputs.channel }}"
-          node checks/compare_source_tokens.mjs "${{ steps.zipp.outputs.runner }}" "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" .
-          node checks/compare_source_tokens.mjs "${{ steps.zipp.outputs.runner }}" policy-wasm/module.json .
           node checks/compare_workspace_policy.mjs "${{ steps.zipp.outputs.runner }}" "${{ steps.compiler.outputs.channel }}" policy-wasm/module.json
       - name: Strict lint portable policy
         shell: bash
@@ -117,10 +116,10 @@ jobs:
         run: |
           cargo test --locked --manifest-path policy-wasm/Cargo.toml --test source_policy_golden --target-dir "$RUNNER_TEMP/source-policy-golden"
           node --test policy-wasm/gitlink.test.mjs
+          node --test policy-wasm/token-golden.test.mjs
       - name: Validate the exact bundled artifact
         shell: bash
         run: |
-          node checks/compare_source_tokens.mjs "${{ steps.zipp.outputs.runner }}" policy-wasm/module.json .
           node checks/compare_workspace_policy.mjs "${{ steps.zipp.outputs.runner }}" "${{ steps.compiler.outputs.channel }}" policy-wasm/module.json
 
   strict-gate-self-test:
