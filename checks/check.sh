@@ -46,7 +46,10 @@ CI_TOOL="$TOOLS_TARGET/debug/rust-skills-ci"
 "$CI_TOOL" "$ROOT" index --check
 "$CI_TOOL" "$ROOT" pins
 
-echo "==> remaining compiler-evidence preparation in Zipp"
+echo "==> generate checked examples in native Rust"
+"$CI_TOOL" "$ROOT" generate
+
+echo "==> remaining compiler-evidence checks in Zipp"
 node "$ROOT/checks/run_zipp.mjs" "$ZIPP_RUNNER" pre
 "$CI_TOOL" "$ROOT" inventory
 

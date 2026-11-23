@@ -12,9 +12,7 @@ if (!runner || !['pre','analyze'].includes(stage) || process.argv.length !== 4) 
 }
 const {runTask} = await import(pathToFileURL(realpathSync(runner)).href);
 const tasks = stage === 'pre' ? [
-  ['metadata', []],
   ['evidence', []],
-  ['generate', []],
 ] : [
   ['analyze', ['checks/check.json', '--source-dir', realpathSync(path.join(checks, 'examples')),
     '--check-baseline', 'checks/baseline.txt', '--good-exceptions', 'checks/good-exceptions.txt']],

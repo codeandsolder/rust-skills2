@@ -10,10 +10,10 @@ fragment, compile-fail example, ignored snippet, or nightly-only example.
 bash checks/check.sh ../ci-workflows/zipp-python/run.mjs
 ```
 
-Rule and link validation, index regeneration and expectation-inventory checks
-are native Rust commands in checks/ci-tool, with regular cargo tests. Zipp
-currently executes the remaining Python example generator and compiler-evidence
-analysis in a confined filesystem; native Node orchestrates Cargo and fixtures.
+Rule validation, the index, example generation, and expectation metadata
+are native Rust commands in checks/ci-tool, with ordinary cargo tests. Zipp
+currently handles the remaining compiler-evidence classifier; native Node
+orchestrates Cargo and runtime fixtures.
 Independent reference-policy checks are being migrated to Rust acceptance tests.
 
 The command runs structural/link/index checks, regression-tests the expectation
@@ -113,7 +113,7 @@ fail CI. The goal is to keep this file empty.
 To inspect current state:
 
 ```bash
-node ../ci-workflows/zipp-python/run.mjs . checks/zipp-tasks.json generate
+cargo run --locked --manifest-path checks/ci-tool/Cargo.toml -- . generate
 (cd checks && cargo check --examples --target x86_64-unknown-linux-gnu --keep-going \
   --message-format=json > check.json 2> check.err || true)
 node ../ci-workflows/zipp-python/run.mjs . checks/zipp-tasks.json analyze \
@@ -138,9 +138,9 @@ stale legacy debt; the generated diff should be treated as code-review material.
 
 - The harness is pinned by `rust-toolchain.toml` to a dated nightly.
 - Generated `examples/`, `check.json`, `check.err`, and `manifest.json` are ignored.
-- Outside strict `Good`/`Bad` sections, `gen.py` keeps legacy examples as
+- Outside strict `Good`/`Bad` sections, the Rust generator keeps legacy examples as
   `auto`. Unstable feature examples require an explicit nightly contract.
   The ordinary and nightly runtime lanes are part of `check.sh` and
   run only explicitly marked examples. Special environments should use fixture contracts.
-- `check_gen_metadata.py` verifies native fence parsing in an isolated guest
+- `checks/ci-tool/src/generator.rs` contains ordinary Rust tests of native fence parsing, run/nightly metadata, generated source, and invalid contracts
   scratch directory, without modifying the real corpus.
