@@ -50,9 +50,6 @@ echo "==> remaining compiler-evidence preparation in Zipp"
 node "$ROOT/checks/run_zipp.mjs" "$ZIPP_RUNNER" pre
 "$CI_TOOL" "$ROOT" inventory
 
-echo "==> independent CPython source-policy oracle"
-uv run --no-project python -B "$ROOT/checks/test_source_lint_policy.py"
-
 echo "==> compile-checking ordinary examples (target: $TARGET)"
 cd "$ROOT/checks"
 cargo check --examples --target "$TARGET" --keep-going --message-format=json > check.json 2> check.err || true

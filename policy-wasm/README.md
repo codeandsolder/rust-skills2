@@ -44,12 +44,12 @@ modules must pass the same policy regressions.
 ```sh
 node policy-wasm/package.mjs verify /path/to/build/wasm32-wasip1/release/source-policy.wasm nightly-2026-11-19
 node checks/compare_source_tokens.mjs ../ci-workflows/zipp-python/run.mjs policy-wasm/module.json .
-uv run --no-project python -B checks/compare_source_fixtures.py policy-wasm/module.json nightly-2026-11-19
+cargo test --locked --manifest-path policy-wasm/Cargo.toml --test source_policy_golden
 ```
 
 The independent source-token scanner in checks/source_tokens.py runs in
 Zipp for token tests and corpus comparison. Workspace policy comparison also uses Zipp against actual Cargo metadata and
-unit-graph evidence. Native-host source policy fixture comparisons remain
-CPython until Zipp supports the required standard-library modules.
-The prior Python implementation is a test-only differential oracle in
-`checks/source_policy_oracle.py`, not an alternative consumer code path.
+unit-graph evidence. Native-source policy acceptance fixtures use ordinary Rust integration tests
+against the bundled policy-WASI artifact; all fixture statuses and diagnostics
+are explicit, reviewed expectations.
+The original independent Python oracle was retired after freezing its decisions across every source-policy fixture. `tests/golden/source-policy.json` contains reviewed expected exit statuses, counts and diagnostics. The Rust integration test calls the real bundled policy-WASI module and rejects missing/new fixture cases. It deliberately retains the extra forbidden `#[allow]` diagnostics the old oracle omitted for invalid generated boundaries.
