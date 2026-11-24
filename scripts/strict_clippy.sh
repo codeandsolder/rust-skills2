@@ -234,6 +234,8 @@ for arg in "${CARGO_ARGS[@]}"; do
 done
 run_clippy PRODUCTION_CARGO_ARGS LINT_ARGS
 
+# ShellCheck cannot see the local -n variable reference inside run_clippy.
+# shellcheck disable=SC2034
 EXAMPLE_CARGO_ARGS=("${PRODUCTION_CARGO_ARGS[@]}" --examples)
 run_clippy EXAMPLE_CARGO_ARGS LINT_ARGS
 
