@@ -89,7 +89,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, windows-2025]
+        # The WASI package is platform-independent; use the reliable macOS Intel
+        # runner pool for byte-for-byte portability validation.
+        os: [macos-15-intel, windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
