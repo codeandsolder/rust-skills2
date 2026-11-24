@@ -90,7 +90,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, windows-2025]
+        # GitHub standard macos-15 ARM64 runners have been cancelled before acquisition.
+        # Use the supported Intel macOS 15 pool for equivalent source-policy coverage.
+        os: [macos-15-intel, windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 12
     steps:
