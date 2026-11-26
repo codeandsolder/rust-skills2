@@ -207,6 +207,8 @@ Gather/scatter is useful for lookup tables and sparse layouts, but it can be inf
 
 ## Runtime Dispatch and Target Features on Stable Rust
 
+Fleet strict CI requires portable SIMD or ordinary Rust for operations with a portable implementation. The stable native-intrinsics example below is for external stable-only environments, not strict-CI projects. In fleet projects use the central exact-name exceptions only for genuinely hardware-specific operations (see policy-wasm/README.md).
+
 Portable SIMD source code and CPU feature detection solve **different problems**. An optimized kernel may require AVX2, NEON, or WebAssembly SIMD, while the public entry point must still work on the target's supported baseline.
 
 - Whole-program `-C target-cpu` / `-C target-feature` affect every compiled code path. Use these only when deployment targets satisfy the resulting instruction requirements.
