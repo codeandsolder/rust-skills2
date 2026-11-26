@@ -252,7 +252,7 @@ fn inspect_leaf(leaf: &Leaf<'_>, roots: &BTreeSet<&str>, findings: &mut Vec<(usi
 
 /// Find disallowed native paths in handwritten Rust, including inactive cfg
 /// branches and macro token trees. Broad imports must name their leaves.
-pub(crate) fn violations(source: &str) -> Vec<(usize, String)> {
+pub fn violations(source: &str) -> Vec<(usize, String)> {
     if !source.contains("arch") {
         return Vec::new();
     }
