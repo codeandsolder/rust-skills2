@@ -83,3 +83,18 @@ the appropriate target feature. See zlib-rs-fast commit
 vector implementations. Imports from external crates are not restricted,
 and the existing first-party inventory excludes Cargo registry/git
 dependencies, vendor directories and registered Git submodules.
+
+The additional exact-name exception table separates architecture-specific
+machine operations (CPU identification, counters, entropy, explicit
+cache/barrier and processor-state management, hardware transactions, memory
+tagging, privileged operations, and WebAssembly memory/wait operations)
+from specialized cryptography (SHA-512, SM3/SM4, RISC-V AES/SM4, Intel Key
+Locker) and stateful AMX tile operations. Use standard timing, RNG, atomics
+and spin hints for ordinary software requirements. Architecture-specific
+system intrinsics are appropriate only when their actual hardware semantics
+are required. There is no general escape for native arithmetic.
+
+GFNI, PEXT/PDEP, ordinary VNNI dot products, vector compress/expand and
+approximate reciprocal/rsqrt remain prohibited pending portable codegen
+evidence. PEXT/PDEP have nightly integer methods, even though equivalent
+instruction lowering for arbitrary masks is not yet verified.

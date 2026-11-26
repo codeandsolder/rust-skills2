@@ -1,5 +1,6 @@
 //! Require portable SIMD for operations that do not need a native instruction.
 use crate::mask_noncode;
+mod exceptions;
 use regex::Regex;
 use std::{collections::BTreeSet, sync::LazyLock};
 
@@ -43,7 +44,6 @@ fn allowed_arm(name: &str) -> bool {
             | "vsha1cq_u32"
             | "vsha1mq_u32"
             | "vsha1pq_u32"
-            | "vsha1h_u32"
             | "vsha1su0q_u32"
             | "vsha1su1q_u32"
             | "vsha256hq_u32"
@@ -76,19 +76,27 @@ fn allowed(path: &[&str]) -> bool {
             matches!(*name, "asm" | "global_asm" | "naked_asm")
                 || (name.starts_with("is_") && name.ends_with("_feature_detected"))
         }
-        ["arch", "x86" | "x86_64", name] => allowed_x86(name),
-        ["arch", "arm" | "aarch64", name] => allowed_arm(name),
-        ["arch", "loongarch64", name] => matches!(
-            *name,
-            "crc_w_b_w"
-                | "crc_w_h_w"
-                | "crc_w_w_w"
-                | "crc_w_d_w"
-                | "crcc_w_b_w"
-                | "crcc_w_h_w"
-                | "crcc_w_w_w"
-                | "crcc_w_d_w"
-        ),
+        ["arch", architecture @ ("x86" | "x86_64"), name] => {
+            allowed_x86(name) || exceptions::allowed(architecture, name)
+        }
+        ["arch", architecture @ ("arm" | "aarch64"), name] => {
+            allowed_arm(name) || exceptions::allowed(architecture, name)
+        }
+        ["arch", "loongarch64", name] => {
+            exceptions::allowed("loongarch64", name)
+                || matches!(
+                    *name,
+                    "crc_w_b_w"
+                        | "crc_w_h_w"
+                        | "crc_w_w_w"
+                        | "crc_w_d_w"
+                        | "crcc_w_b_w"
+                        | "crcc_w_h_w"
+                        | "crcc_w_w_w"
+                        | "crcc_w_d_w"
+                )
+        }
+        ["arch", architecture, name] => exceptions::allowed(architecture, name),
         _ => false,
     }
 }
@@ -204,6 +212,14 @@ mod tests {
             "core::arch::x86_64::_mm_clmulepi64_si128::<0>(a,b);",
             "use core::arch::x86_64::_mm256_clmulepi64_epi128;",
             "use core::arch::aarch64::vmull_p64;",
+            "use core::arch::aarch64::vsha1h_u32;",
+            "use core::arch::x86_64::_mm_gf2p8mul_epi8;",
+            "use core::arch::x86_64::_pext_u64;",
+            "use core::arch::x86_64::_mm256_dpbusd_epi32;",
+            "use core::arch::riscv64::sha256sig0;",
+            "use core::arch::wasm32::f32_sqrt;",
+            "use core::arch::x86_64::_mm_pause;",
+            "use core::arch::aarch64::__yield;",
         ] {
             assert!(!violations(source).is_empty(), "{source}");
         }
@@ -222,6 +238,13 @@ mod tests {
             "use core::arch::loongarch64::{crc_w_b_w, crc_w_d_w};",
             "use safe_arch::mul_i16_low_m128i;",
             "use aes::cipher::BlockEncrypt;",
+            "use core::arch::x86_64::{_mm256_sha512rnds2_epi64, _mm_sm3rnds2_epi32, _mm_sm4rnds4_epi32, _mm_loadiwkey};",
+            "use core::arch::x86_64::{_tile_loadconfig, _tile_dpbssd, _tile_release};",
+            "use core::arch::x86_64::{__cpuid, _rdtsc, _rdseed64_step, _mm_clflush, _xsave64, _xbegin};",
+            "use core::arch::aarch64::{vsm4eq_u32, __rndr, __arm_mte_set_tag, __dsb, ISH};",
+            "use core::arch::riscv64::{aes64es, sm4ed, fence_i, sfence_vma_all};",
+            "use core::arch::loongarch64::{rdtime_d, csrrd, ibar};",
+            "use core::arch::wasm32::{memory_grow, memory_atomic_wait32};",
             "let p = a.widening_carryless_mul(b); let q = a.carryless_mul(b);",
         ] {
             assert!(violations(source).is_empty(), "{source}");
