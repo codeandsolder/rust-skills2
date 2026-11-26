@@ -105,20 +105,28 @@ fn token<'a>(tokens: &[Token<'a>], at: usize) -> &'a str {
     tokens.get(at).map_or("", |item| item.text)
 }
 
-// Follow paths and grouped use trees. Once a non-arch branch is entered,
-// it cannot refer to the native std/core namespace, so there is no need to
-// descend into it except to advance past the import group.
+struct Leaf<'a> {
+    path: Vec<&'a str>,
+    alias: Option<&'a str>,
+    offset: usize,
+}
+
+// Follow grouped import trees from their actual root; a dependency may
+// legitimately expose a nested module called std, core or arch.
 fn walk<'a>(
     tokens: &[Token<'a>],
     at: &mut usize,
     path: &mut Vec<&'a str>,
-    findings: &mut Vec<(usize, String)>,
+    leaves: &mut Vec<Leaf<'a>>,
 ) {
+    if token(tokens, *at) == "::" {
+        *at += 1;
+    }
     if token(tokens, *at) == "{" {
         *at += 1;
         while *at < tokens.len() && token(tokens, *at) != "}" {
             let before = *at;
-            walk(tokens, at, path, findings);
+            walk(tokens, at, path, leaves);
             if token(tokens, *at) == "," {
                 *at += 1;
             }
@@ -134,23 +142,112 @@ fn walk<'a>(
     let Some(item) = tokens.get(*at) else {
         return;
     };
-    if item.text.is_empty() || matches!(item.text, "}" | "," | ";") {
+    if !is_segment(item.text) && item.text != "*" {
         return;
     }
     path.push(item.text);
     *at += 1;
     if token(tokens, *at) == "::" && token(tokens, *at + 1) != "<" {
         *at += 1;
-        walk(tokens, at, path, findings);
+        walk(tokens, at, path, leaves);
     } else {
-        if path.first() == Some(&"arch") && !allowed(path) {
-            findings.push((item.offset, path.join("::")));
-        }
-        if token(tokens, *at) == "as" {
+        let alias = if token(tokens, *at) == "as" {
+            let alias = token(tokens, *at + 1);
             *at = (*at + 2).min(tokens.len());
-        }
+            Some(alias)
+        } else {
+            None
+        };
+        leaves.push(Leaf {
+            path: path.clone(),
+            alias,
+            offset: item.offset,
+        });
     }
     path.pop();
+}
+
+fn is_segment(value: &str) -> bool {
+    value
+        .chars()
+        .next()
+        .is_some_and(|ch| ch == '_' || ch.is_alphabetic())
+}
+
+fn import_leaves<'a>(tokens: &[Token<'a>]) -> (Vec<Leaf<'a>>, Vec<bool>) {
+    let mut leaves = Vec::new();
+    let mut imported = vec![false; tokens.len()];
+    let mut at = 0;
+    while at < tokens.len() {
+        if token(tokens, at) != "use" {
+            at += 1;
+            continue;
+        }
+        let start = at + 1;
+        let mut end = start;
+        let mut candidates = Vec::new();
+        walk(tokens, &mut end, &mut Vec::new(), &mut candidates);
+        if token(tokens, end) == ";" && !candidates.is_empty() {
+            leaves.extend(candidates);
+            imported[at..=end].fill(true);
+            at = end + 1;
+        } else {
+            at = start;
+        }
+    }
+    (leaves, imported)
+}
+
+fn standard_roots<'a>(tokens: &[Token<'a>], leaves: &[Leaf<'a>]) -> BTreeSet<&'a str> {
+    let mut roots = BTreeSet::from(["core", "std"]);
+    for window in tokens.windows(5) {
+        if window[0].text == "extern"
+            && window[1].text == "crate"
+            && roots.contains(window[2].text)
+            && window[3].text == "as"
+        {
+            roots.insert(window[4].text);
+        }
+    }
+    // Aliases can be chained and declared in any order in a Rust module.
+    loop {
+        let before = roots.len();
+        for leaf in leaves {
+            if let (Some(alias), [root] | [root, "self"]) = (leaf.alias, leaf.path.as_slice())
+                && roots.contains(root)
+            {
+                roots.insert(alias);
+            }
+        }
+        if roots.len() == before {
+            return roots;
+        }
+    }
+}
+
+fn is_root_position(tokens: &[Token<'_>], at: usize) -> bool {
+    if at < 2 || token(tokens, at - 1) != "::" {
+        return true;
+    }
+    let previous = token(tokens, at - 2);
+    // Absolute paths may follow an expression/statement keyword. Other
+    // identifiers or a closed qualified path indicate a nested module.
+    !matches!(previous, ">" | ")" | "]")
+        && (!is_segment(previous)
+            || matches!(
+                previous,
+                "return" | "break" | "yield" | "if" | "else" | "match" | "in" | "as"
+            ))
+}
+
+fn inspect_leaf(leaf: &Leaf<'_>, roots: &BTreeSet<&str>, findings: &mut Vec<(usize, String)>) {
+    if let [root, path @ ..] = leaf.path.as_slice()
+        && roots.contains(root)
+        && path.first() == Some(&"arch")
+        && !allowed(path)
+    {
+        findings.push((leaf.offset, path.join("::")));
+    }
 }
 
 /// Find disallowed native paths in handwritten Rust, including inactive cfg
@@ -167,17 +264,24 @@ pub(crate) fn violations(source: &str) -> Vec<(usize, String)> {
             offset: item.start(),
         })
         .collect();
-    let mut roots = BTreeSet::from(["core", "std"]);
-    // Also recognize explicitly renamed core/std crates, including extern crate.
-    for window in tokens.windows(3) {
-        if matches!(window[0].text, "core" | "std") && window[1].text == "as" {
-            roots.insert(window[2].text);
-        }
-    }
+    let (leaves, imported) = import_leaves(&tokens);
+    let roots = standard_roots(&tokens, &leaves);
     let mut findings = Vec::new();
+    for leaf in &leaves {
+        inspect_leaf(leaf, &roots, &mut findings);
+    }
     for (index, item) in tokens.iter().enumerate() {
-        if roots.contains(item.text) && token(&tokens, index + 1) == "::" {
-            walk(&tokens, &mut (index + 2), &mut Vec::new(), &mut findings);
+        if !imported[index]
+            && roots.contains(item.text)
+            && token(&tokens, index + 1) == "::"
+            && is_root_position(&tokens, index)
+        {
+            let mut direct = Vec::new();
+            let mut at = index;
+            walk(&tokens, &mut at, &mut Vec::new(), &mut direct);
+            for leaf in &direct {
+                inspect_leaf(leaf, &roots, &mut findings);
+            }
         }
     }
     findings.sort_unstable();
@@ -220,6 +324,10 @@ mod tests {
             "use core::arch::wasm32::f32_sqrt;",
             "use core::arch::x86_64::_mm_pause;",
             "use core::arch::aarch64::__yield;",
+            "use {core as c, std as s}; c::arch::wasm32::i32x4_add(a,b);",
+            "use core::{self as c}; c::arch::x86_64::_mm_add_ps(a,b);",
+            "use core as c; use c as d; d::arch::x86_64::_mm_add_ps(a,b);",
+            "return ::std::arch::x86_64::_mm_add_ps(a,b);",
         ] {
             assert!(!violations(source).is_empty(), "{source}");
         }
@@ -238,6 +346,10 @@ mod tests {
             "use core::arch::loongarch64::{crc_w_b_w, crc_w_d_w};",
             "use safe_arch::mul_i16_low_m128i;",
             "use aes::cipher::BlockEncrypt;",
+            "use external::std::arch::x86_64::_mm_add_ps;",
+            "use external::{core::arch::wasm32::i32x4_add};",
+            "external::core::arch::x86_64::_mm_add_ps(a,b);",
+            "use external::core as c; c::arch::x86_64::_mm_add_ps(a,b);",
             "use core::arch::x86_64::{_mm256_sha512rnds2_epi64, _mm_sm3rnds2_epi32, _mm_sm4rnds4_epi32, _mm_loadiwkey};",
             "use core::arch::x86_64::{_tile_loadconfig, _tile_dpbssd, _tile_release};",
             "use core::arch::x86_64::{__cpuid, _rdtsc, _rdseed64_step, _mm_clflush, _xsave64, _xbegin};",
