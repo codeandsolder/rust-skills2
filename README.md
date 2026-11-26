@@ -41,6 +41,16 @@ customization points.
 
 The reusable gate also publishes a **non-blocking RustSec, unused-dependency and consolidation report** using the shared `cargo-deny`, `cargo-machete` and checksum-pinned prebuilt `cargo-anoint` scanners, without a second compilation pass. Set `dependency-quality: false` on redundant target-matrix legs to avoid duplicate scanning.
 
+The blocking release-license check is separate from that informational report. It
+rejects unavoidable GPL or AGPL licenses in the normal Cargo dependency graph
+for the selected workspace packages, features, and target. Build, development
+and proc-macro edges are excluded; SPDX alternatives such as `MIT OR GPL-2.0-only`
+are evaluated as alternatives, not substring matches. LGPL and undeclared
+licenses are reported for review; GPL exceptions are not implicitly approved.
+This is a Rust dependency check, not a native binary, vendored-source, or
+non-Rust license certification. It does not police the root project's own license.
+
+
 Migrating a codebase? Start with [Rust 1.99 → 1.100](./docs/migration-rust-1.99-to-1.100.md) for the current stable upgrade, or the historical [Rust 1.88 → 1.99 guide](./docs/migration-rust-1.88-to-1.99.md).
 
 For nightly development, see the [nightly feature guide](./rules/proj-nightly-features.md) and [current lint review](./docs/nightly-lint-review.md).
