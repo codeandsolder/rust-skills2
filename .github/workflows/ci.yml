@@ -35,7 +35,7 @@ jobs:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
       - name: Verify informational dependency scan wiring
-        run: node --test checks/dependency-quality-workflow.test.mjs
+        run: node --test checks/dependency-quality-workflow.test.mjs checks/release-licenses.test.mjs
       # The exact same command contributors run locally.
       - name: Run checks
         env:
