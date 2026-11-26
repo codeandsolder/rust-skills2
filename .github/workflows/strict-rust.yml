@@ -126,8 +126,9 @@ jobs:
           rust-toolchain: ${{ inputs.rust-toolchain }}
 
       - name: Install selected nightly Rust tools
-        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        uses: codeandsolder/ci-workflows/.github/actions/install-rust-toolchain@d1891d74fe986e8bcdd9a99781538a0b82484848 # job-local compiler selection
         with:
+          select: "true"
           toolchain: ${{ steps.compiler.outputs.channel }}
           components: clippy,rustfmt
           targets: ${{ inputs.rust-targets }}

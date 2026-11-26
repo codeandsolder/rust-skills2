@@ -38,8 +38,9 @@ jobs:
       - name: Resolve one quarantined compiler
         id: compiler
         uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@25d6a3701f7da8aaaf21821db2c49ead32fbdcf2 # main
-      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+      - uses: codeandsolder/ci-workflows/.github/actions/install-rust-toolchain@d1891d74fe986e8bcdd9a99781538a0b82484848 # job-local compiler selection
         with:
+          select: "true"
           toolchain: ${{ steps.compiler.outputs.channel }}
           targets: wasm32-wasip1
           components: clippy,rustfmt
