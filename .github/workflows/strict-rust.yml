@@ -146,14 +146,6 @@ jobs:
           mkdir -p "$target_dir"
           echo "CARGO_TARGET_DIR=$target_dir" >> "$GITHUB_ENV"
 
-      - name: Reject GPL or AGPL release dependencies
-        shell: bash
-        env:
-          STRICT_TOOLCHAIN: ${{ steps.compiler.outputs.channel }}
-          WORKSPACE_DIR: ${{ inputs.working-directory }}
-          CARGO_SELECTORS: ${{ inputs.cargo-args }}
-        run: node .rust-skills2-gate/scripts/release-licenses.mjs "$STRICT_TOOLCHAIN" "$WORKSPACE_DIR" "$CARGO_SELECTORS"
-
       - name: rust-skills2 strict gate
         uses: ./.rust-skills2-gate/.github/actions/rust-strict
         with:

@@ -86,6 +86,16 @@ for ((i = 0; i < ${#CARGO_ARGS[@]}; i++)); do
     esac
 done
 
+# Mandatory release-license policy belongs to the strict implementation,
+# not any particular workflow wrapper. Each feature/target selection must
+# validate its own normal dependency graph before compilation.
+LICENSE_POLICY="$ACTION_DIR/../../../scripts/release-licenses.mjs"
+if [[ ! -f "$LICENSE_POLICY" ]]; then
+    echo "rust-skills2: release-license policy checker missing at $LICENSE_POLICY" >&2
+    exit 2
+fi
+node "$LICENSE_POLICY" "$TOOLCHAIN" "$PWD" "${CARGO_ARGS[*]}"
+
 echo "rust-skills2: cargo +$TOOLCHAIN fmt --all --check"
 cargo "+$TOOLCHAIN" fmt --all --check
 

@@ -38,11 +38,15 @@ test('Cargo selectors keep feature and target selection, not test modes', () => 
     assert.throws(() => treeSelectors('--features --locked'));
 });
 
-test('shared strict workflow invokes license gate independently of advisory report', () => {
+test('canonical strict entrypoint invokes blocking license policy exactly once per selection', () => {
     const workflow = readFileSync('.github/workflows/strict-rust.yml', 'utf8');
-    const start = workflow.indexOf('      - name: Reject GPL or AGPL release dependencies');
-    const report = workflow.indexOf('      - name: Report dependency advisories');
-    assert(start > 0 && report > start);
-    assert.match(workflow.slice(start, report), /release-licenses\.mjs/);
-    assert.doesNotMatch(workflow.slice(start, report), /if: inputs\.dependency-quality/);
+    const action = readFileSync('.github/actions/rust-strict/action.yml', 'utf8');
+    const script = readFileSync('scripts/strict_clippy.sh', 'utf8');
+    assert.match(workflow, /uses: \.\/\.rust-skills2-gate\/\.github\/actions\/rust-strict/);
+    assert.match(action, /scripts\/strict_clippy\.sh/);
+    const invocation = 'node "$LICENSE_POLICY" "$TOOLCHAIN" "$PWD" "${CARGO_ARGS[*]}"';
+    assert.equal(script.split(invocation).length, 2);
+    assert(script.indexOf(invocation) < script.indexOf('cargo "+$TOOLCHAIN" fmt'));
+    assert.match(script, /set -euo pipefail/);
+    assert.doesNotMatch(workflow, /release-licenses\.mjs/);
 });
