@@ -154,10 +154,14 @@ the pinned shared [dependency-quality action](https://github.com/codeandsolder/c
 The scan runs on the **same runner** without compiling the package again:
 `cargo-deny` audits RustSec advisories (including relevant unsound,
 unmaintained and yanked dependency records), while `cargo-machete` flags
-possibly unused direct dependencies using Cargo metadata. Neither report
-adds a mandatory pass threshold, and tool failures are marked *unavailable*
-rather than presented as clean scans. Summaries are written to GitHub Actions;
-JSON diagnostics are uploaded as short-lived artifacts.
+possibly unused direct dependencies using Cargo metadata. The checksum-pinned
+prebuilt `cargo-anoint` scanner reports overlapping providers, duplicate versions,
+obsolete dependencies and preferred organization forks across the all-feature,
+all-role platform union. Check feature and target exclusivity before acting.
+These reports add no mandatory pass threshold; tool failures are marked
+*unavailable* rather than presented as clean scans. Summaries are written to
+GitHub Actions; JSON diagnostics are uploaded as short-lived public artifacts
+or logged in private jobs.
 
 To avoid duplicate scanning when a caller has several jobs for the same
 Cargo workspace (for example, a native build and two cross-target compile
