@@ -25,7 +25,7 @@ test('registered Git submodules cannot contribute first-party lint source', t =>
   mkdirSync(path.join(root,'src'));
   writeFileSync(path.join(root,'src','lib.rs'), 'pub fn valid() {}\n');
   mkdirSync(path.join(root,'dependency'));
-  writeFileSync(path.join(root,'dependency','foreign.rs'), '#[allow(dead_code)]\npub fn foreign() {}\n');
+  writeFileSync(path.join(root,'dependency','foreign.rs'), '#[allow(dead_code)]\nuse core::arch::x86_64::_mm_add_ps;\npub fn foreign() {}\n');
   const link=command('git',['update-index','--add','--cacheinfo',
     '160000,1111111111111111111111111111111111111111,dependency'],root);
   assert.equal(link.status,0,link.stderr);

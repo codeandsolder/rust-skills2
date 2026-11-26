@@ -351,6 +351,12 @@ pub fn check(input: Input) -> Result<Report, Box<dyn std::error::Error>> {
             }
             Err(error) => return Err(format!("{}: {error}", path.display()).into()),
         };
+        for (line, native) in crate::native_intrinsics::violations(&source) {
+            report.violations.push(format!(
+                "{}:{line}: native intrinsic or broad native import {native} is forbidden; use core::simd/std::simd or portable Rust",
+                path.display()
+            ));
+        }
         for attribute in lint_attributes(&source) {
             if attribute.kind != "warn" {
                 report.suppression_attributes += 1;

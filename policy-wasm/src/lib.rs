@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::sync::LazyLock;
 
 pub mod check;
+mod native_intrinsics;
 pub mod policy;
 mod workspace;
 

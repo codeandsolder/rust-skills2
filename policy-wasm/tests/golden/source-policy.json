@@ -150,6 +150,24 @@
       ],
       "violations": []
     },
+    "strict-ci-native-intrinsics-fail": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-native-intrinsics-fail/src/lib.rs:3: native intrinsic or broad native import arch::x86_64::_mm_add_epi32 is forbidden; use core::simd/std::simd or portable Rust",
+        "<repo>/checks/fixtures/strict-ci-native-intrinsics-fail/src/lib.rs:3: native intrinsic or broad native import arch::x86_64::* is forbidden; use core::simd/std::simd or portable Rust",
+        "<repo>/checks/fixtures/strict-ci-native-intrinsics-fail/src/lib.rs:5: native intrinsic or broad native import arch::aarch64::vaddq_u32 is forbidden; use core::simd/std::simd or portable Rust"
+      ]
+    },
+    "strict-ci-native-intrinsics-pass": {
+      "status": 0,
+      "counts": [
+        1,
+        0,
+        0
+      ],
+      "violations": []
+    },
     "strict-ci-pass": {
       "status": 0,
       "counts": [
