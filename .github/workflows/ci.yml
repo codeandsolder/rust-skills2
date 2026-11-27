@@ -272,6 +272,35 @@ jobs:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
 
+      - name: Split strict phases preserve the real gate and reject mismatched plans
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-pass
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          STRICT_TOOLCHAIN: ${{ steps.compiler.outputs.channel }}
+        run: |
+          set -euo pipefail
+          plan_dir="$(mktemp -d "$RUNNER_TEMP/strict-phases.XXXXXX")"
+          trap 'rm -rf -- "$plan_dir"' EXIT
+          rustup component add --toolchain "$STRICT_TOOLCHAIN" rustfmt
+          strict=(bash scripts/strict_clippy.sh --toolchain "$STRICT_TOOLCHAIN")
+          "${strict[@]}" --phase format
+          "${strict[@]}" --phase preflight --plan "$plan_dir/pass"
+          if RUST_SKILLS2_CARGO_ARGS="--locked --lib" "${strict[@]}" --phase compile --plan "$plan_dir/pass"; then
+            echo "Compilation accepted a plan from another selector" >&2
+            exit 1
+          fi
+          if "${strict[@]}" --phase compile --plan "$plan_dir/absent"; then
+            echo "Compilation accepted an absent plan" >&2
+            exit 1
+          fi
+          "${strict[@]}" --phase compile --plan "$plan_dir/pass"
+          if RUST_SKILLS2_WORKING_DIRECTORY=checks/fixtures/strict-ci-blocked-allow "${strict[@]}" --phase preflight --plan "$plan_dir/blocked"; then
+            echo "Preflight accepted a forbidden source suppression" >&2
+            exit 1
+          fi
+          test ! -e "$plan_dir/blocked"
+
       - name: Attribute notes and reasons pass
         uses: ./.github/actions/rust-strict
         with:
