@@ -46,7 +46,8 @@ test('canonical strict entrypoint invokes blocking license policy exactly once p
     assert.match(action, /scripts\/strict_clippy\.sh/);
     const invocation = 'node "$LICENSE_POLICY" "$TOOLCHAIN" "$PWD" "${CARGO_ARGS[*]}"';
     assert.equal(script.split(invocation).length, 2);
-    assert(script.indexOf(invocation) < script.indexOf('cargo "+$TOOLCHAIN" fmt'));
+    assert(script.indexOf(invocation) < script.indexOf('run_clippy()'));
+    assert.match(script, /if \[\[ "\$PHASE" != compile \]\]; then/);
     assert.match(script, /set -euo pipefail/);
     assert.doesNotMatch(workflow, /release-licenses\.mjs/);
 });

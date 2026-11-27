@@ -125,6 +125,10 @@ if [[ "$PHASE" == all || "$PHASE" == format ]]; then
 fi
 
 if [[ "$PHASE" != compile ]]; then
+    if [[ "$PHASE" == preflight && -e "$PLAN" ]]; then
+        echo "rust-skills2: strict preflight requires a fresh plan path" >&2
+        exit 2
+    fi
     # Mandatory release-license policy belongs to the strict implementation,
     # not any particular workflow wrapper. Each feature/target selection must
     # validate its own normal dependency graph before compilation.

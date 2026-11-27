@@ -282,6 +282,7 @@ jobs:
           set -euo pipefail
           plan_dir="$(mktemp -d "$RUNNER_TEMP/strict-phases.XXXXXX")"
           trap 'rm -rf -- "$plan_dir"' EXIT
+          rustup component add --toolchain "$STRICT_TOOLCHAIN" rustfmt
           strict=(bash scripts/strict_clippy.sh --toolchain "$STRICT_TOOLCHAIN")
           "${strict[@]}" --phase format
           "${strict[@]}" --phase preflight --plan "$plan_dir/pass"
