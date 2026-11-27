@@ -94,16 +94,16 @@ jobs:
           python-ci-paths: ${{ inputs.python-ci-paths }}
 
       - name: Enforce PR workflow supersession across all caller workflows
-        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@2bf1fa8216c6b09836ea837d663ca616d0ec6427 # main
+        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@4c7fc62a9f9ec37aaa7c155d263cd5025e446a53 # main
 
       - name: Enforce canonical Rust CI caching
-        uses: codeandsolder/ci-workflows/.github/actions/rust-ci-sccache-policy@2bf1fa8216c6b09836ea837d663ca616d0ec6427 # main
+        uses: codeandsolder/ci-workflows/.github/actions/rust-ci-sccache-policy@4c7fc62a9f9ec37aaa7c155d263cd5025e446a53 # main
         with:
           strict-ref: ${{ job.workflow_sha }}
 
       - name: Quarantine newly introduced crates.io versions across all workspaces
         if: github.event_name == 'pull_request'
-        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@2bf1fa8216c6b09836ea837d663ca616d0ec6427 # main
+        uses: codeandsolder/ci-workflows/.github/actions/cargo-release-quarantine@4c7fc62a9f9ec37aaa7c155d263cd5025e446a53 # main
         with:
           base-ref: ${{ github.event.pull_request.base.sha }}
           lockfile: auto
@@ -121,7 +121,7 @@ jobs:
 
       - name: Resolve one quarantined compiler
         id: compiler
-        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@2bf1fa8216c6b09836ea837d663ca616d0ec6427 # main
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@4c7fc62a9f9ec37aaa7c155d263cd5025e446a53 # main
         with:
           rust-toolchain: ${{ inputs.rust-toolchain }}
 
@@ -133,7 +133,7 @@ jobs:
           targets: ${{ inputs.rust-targets }}
 
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@2bf1fa8216c6b09836ea837d663ca616d0ec6427 # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@4c7fc62a9f9ec37aaa7c155d263cd5025e446a53 # main
         with:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
@@ -157,7 +157,7 @@ jobs:
 
       - name: Report dependency advisories, unused dependencies and consolidation
         if: inputs.dependency-quality
-        uses: codeandsolder/ci-workflows/.github/actions/rust-dependency-quality@2bf1fa8216c6b09836ea837d663ca616d0ec6427 # main
+        uses: codeandsolder/ci-workflows/.github/actions/rust-dependency-quality@4c7fc62a9f9ec37aaa7c155d263cd5025e446a53 # main
         with:
           working-directories: ${{ format('[{0}]', toJSON(inputs.working-directory)) }}
 
@@ -173,4 +173,4 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@2bf1fa8216c6b09836ea837d663ca616d0ec6427 # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@4c7fc62a9f9ec37aaa7c155d263cd5025e446a53 # main
