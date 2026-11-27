@@ -2,12 +2,33 @@
 set -euo pipefail
 
 TOOLCHAIN=$(bash "$(dirname "${BASH_SOURCE[0]}")/toolchain-pin.sh")
-if [[ ${1:-} == --toolchain && $# == 2 ]]; then
-    TOOLCHAIN=$2
-elif (( $# != 0 )); then
-    echo "usage: strict_clippy.sh [--toolchain nightly-YYYY-MM-DD]" >&2
-    exit 2
-fi
+PHASE=all
+PLAN=
+while (( $# )); do
+    case "$1" in
+        --toolchain|--phase|--plan)
+            if (( $# < 2 )); then
+                echo "rust-skills2: missing value for $1" >&2
+                exit 2
+            fi
+            case "$1" in
+                --toolchain) TOOLCHAIN=$2 ;;
+                --phase) PHASE=$2 ;;
+                --plan) PLAN=$2 ;;
+            esac
+            shift 2 ;;
+        *)
+            echo "usage: strict_clippy.sh [--toolchain nightly-YYYY-MM-DD] [--phase all|format|preflight|compile] [--plan absolute-path]" >&2
+            exit 2 ;;
+    esac
+done
+case "$PHASE" in
+    all|format)
+        [[ -z "$PLAN" ]] || { echo "unexpected plan for $PHASE" >&2; exit 2; } ;;
+    preflight|compile)
+        [[ "$PLAN" == /* ]] || { echo "split strict phases require an absolute plan path" >&2; exit 2; } ;;
+    *) echo "unknown strict phase: $PHASE" >&2; exit 2 ;;
+esac
 [[ "$TOOLCHAIN" =~ ^nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || {
     echo "rust-skills2: expected a nightly toolchain" >&2
     exit 2
@@ -86,26 +107,6 @@ for ((i = 0; i < ${#CARGO_ARGS[@]}; i++)); do
     esac
 done
 
-# Mandatory release-license policy belongs to the strict implementation,
-# not any particular workflow wrapper. Each feature/target selection must
-# validate its own normal dependency graph before compilation.
-LICENSE_POLICY="$ACTION_DIR/../../../scripts/release-licenses.mjs"
-if [[ ! -f "$LICENSE_POLICY" ]]; then
-    echo "rust-skills2: release-license policy checker missing at $LICENSE_POLICY" >&2
-    exit 2
-fi
-node "$LICENSE_POLICY" "$TOOLCHAIN" "$PWD" "${CARGO_ARGS[*]}"
-
-echo "rust-skills2: cargo +$TOOLCHAIN fmt --all --check"
-cargo "+$TOOLCHAIN" fmt --all --check
-
-SOURCE_POLICY_SCRIPT="$ACTION_DIR/../../../policy-wasm/check.mjs"
-SOURCE_POLICY_MODULE="$ACTION_DIR/../../../policy-wasm/module.json"
-if [[ ! -f "$SOURCE_POLICY_SCRIPT" || ! -f "$SOURCE_POLICY_MODULE" ]]; then
-    echo "rust-skills2: source policy checker missing at $SOURCE_POLICY_SCRIPT" >&2
-    exit 2
-fi
-
 has_cargo_arg() {
     local needle=$1
     local arg
@@ -117,10 +118,58 @@ has_cargo_arg() {
     return 1
 }
 
-if has_cargo_arg --all-targets; then
-    POLICY_OUTPUT="$(node "$SOURCE_POLICY_SCRIPT" "$SOURCE_POLICY_MODULE" "$TOOLCHAIN" "$ALLOW_TEST_PANICS" "${CARGO_ARGS[@]}")"
+if [[ "$PHASE" == all || "$PHASE" == format ]]; then
+    echo "rust-skills2: cargo +$TOOLCHAIN fmt --all --check"
+    cargo "+$TOOLCHAIN" fmt --all --check
+    [[ "$PHASE" != format ]] || exit 0
+fi
+
+if [[ "$PHASE" != compile ]]; then
+    # Mandatory release-license policy belongs to the strict implementation,
+    # not any particular workflow wrapper. Each feature/target selection must
+    # validate its own normal dependency graph before compilation.
+    LICENSE_POLICY="$ACTION_DIR/../../../scripts/release-licenses.mjs"
+    if [[ ! -f "$LICENSE_POLICY" ]]; then
+        echo "rust-skills2: release-license policy checker missing at $LICENSE_POLICY" >&2
+        exit 2
+    fi
+    node "$LICENSE_POLICY" "$TOOLCHAIN" "$PWD" "${CARGO_ARGS[*]}"
+
+    SOURCE_POLICY_SCRIPT="$ACTION_DIR/../../../policy-wasm/check.mjs"
+    SOURCE_POLICY_MODULE="$ACTION_DIR/../../../policy-wasm/module.json"
+    if [[ ! -f "$SOURCE_POLICY_SCRIPT" || ! -f "$SOURCE_POLICY_MODULE" ]]; then
+        echo "rust-skills2: source policy checker missing at $SOURCE_POLICY_SCRIPT" >&2
+        exit 2
+    fi
+
+    if has_cargo_arg --all-targets; then
+        POLICY_OUTPUT="$(node "$SOURCE_POLICY_SCRIPT" "$SOURCE_POLICY_MODULE" "$TOOLCHAIN" "$ALLOW_TEST_PANICS" "${CARGO_ARGS[@]}")"
+    else
+        node "$SOURCE_POLICY_SCRIPT" "$SOURCE_POLICY_MODULE" "$TOOLCHAIN"
+    fi
+
+    if [[ "$PHASE" == preflight ]]; then
+        # The provider allocates one private runner-local plan per exact scope.
+        # Publish only after every mandatory source/license check has succeeded.
+        (
+            umask 077
+            printf '%s\n' "$TOOLCHAIN" "$PWD" "$ALLOW_TEST_PANICS" "${CARGO_ARGS[*]}" "${POLICY_OUTPUT:-}" > "$PLAN"
+        )
+        exit 0
+    fi
 else
-    node "$SOURCE_POLICY_SCRIPT" "$SOURCE_POLICY_MODULE" "$TOOLCHAIN"
+    {
+        IFS= read -r plan_toolchain
+        IFS= read -r plan_directory
+        IFS= read -r plan_panics
+        IFS= read -r plan_selectors
+        if [[ "$plan_toolchain" != "$TOOLCHAIN" || "$plan_directory" != "$PWD" ||
+            "$plan_panics" != "$ALLOW_TEST_PANICS" || "$plan_selectors" != "${CARGO_ARGS[*]}" ]]; then
+            echo "rust-skills2: strict plan does not match the compilation scope" >&2
+            exit 2
+        fi
+        POLICY_OUTPUT=$(cat)
+    } < "$PLAN"
 fi
 
 # The reusable gate intentionally owns Clippy configuration. A project-local
