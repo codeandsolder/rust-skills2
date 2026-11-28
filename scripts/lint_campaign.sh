@@ -532,6 +532,9 @@ case "$action" in
         ;;
     serve|drain)
         [[ $# -eq 0 ]] || die "unexpected validator arguments"
+        # Do not keep the caller's possibly disposable worker worktree as
+        # the validator's process directory after its submission is removed.
+        cd "$repo"
         check_tools
         say "validator Cargo compilation jobs: $CARGO_BUILD_JOBS (minimum 16)"
         while [[ -f "$registry" && ! -e "$state/migrating" ]]; do

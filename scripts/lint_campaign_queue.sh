@@ -215,7 +215,14 @@ drain_queue() {
             queue_update "$record" pending "recovered interrupted submission"
         done < <(queue_records | jq -r '.[]|select(.status=="staging")|.job')
         # A crashed running job is retried, checking ancestry before rebuilding.
-        job=$(next_validation_job)
+        if ! job=$(next_validation_job); then
+            unlock_claims
+            say "cannot schedule validation; inspect the issue manifest and durable queue in $state"
+            # A serving validator must recover after the manifest is repaired.
+            # A one-shot drain, however, must not claim successful completion.
+            [[ "$action" == serve ]] && return 0
+            return 1
+        fi
         if [[ -z "$job" ]]; then
             unlock_claims
             tip=$(git_repo rev-parse "refs/remotes/origin/$target")
