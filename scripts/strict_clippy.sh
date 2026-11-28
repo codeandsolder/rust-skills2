@@ -3,9 +3,13 @@ set -euo pipefail
 
 TOOLCHAIN=$(bash "$(dirname "${BASH_SOURCE[0]}")/toolchain-pin.sh")
 PHASE=all
+INVENTORY=false
 PLAN=
 while (( $# )); do
     case "$1" in
+        --inventory)
+            INVENTORY=true
+            shift ;;
         --toolchain|--phase|--plan)
             if (( $# < 2 )); then
                 echo "rust-skills2: missing value for $1" >&2
@@ -22,6 +26,10 @@ while (( $# )); do
             exit 2 ;;
     esac
 done
+if [[ "$INVENTORY" == true ]]; then
+    [[ "$PHASE" == all && -z "$PLAN" ]] || { echo "inventory is a diagnostic-only full scan" >&2; exit 2; }
+    exec 3>&1 1>&2
+fi
 case "$PHASE" in
     all|format)
         [[ -z "$PLAN" ]] || { echo "unexpected plan for $PHASE" >&2; exit 2; } ;;
@@ -180,7 +188,11 @@ fi
 # clippy.toml may contain useful developer preferences, but it must not be able
 # to weaken the central CI policy (for example by allowing unwrap in consts).
 export CLIPPY_CONF_DIR="$ACTION_DIR"
-export CARGO_BUILD_WARNINGS=deny
+if [[ "$INVENTORY" == true ]]; then
+    unset CARGO_BUILD_WARNINGS
+else
+    export CARGO_BUILD_WARNINGS=deny
+fi
 
 # CI compilation is required to run through the centrally configured sccache.
 # The private strict-CI backend is intentionally local-only so clippy-driver can
@@ -257,7 +269,21 @@ run_clippy() {
     printf ' --'
     printf ' %q' "${lint_args_ref[@]}"
     printf '\n'
-    cargo "+$TOOLCHAIN" clippy "${cargo_args_ref[@]}" -- "${lint_args_ref[@]}"
+    if [[ "$INVENTORY" == true ]]; then
+        local -a diagnostics=() selectors=("${cargo_args_ref[@]}")
+        local arg
+        for arg in "${lint_args_ref[@]}"; do
+            case "$arg" in
+                -Dclippy::correctness|-Dclippy::suspicious|-Dclippy::perf|-Dunsafe_op_in_unsafe_fn) diagnostics+=("$arg") ;;
+                -D*) diagnostics+=("-W${arg#-D}") ;;
+                *) diagnostics+=("$arg") ;;
+            esac
+        done
+        if ! has_cargo_arg --keep-going; then selectors+=(--keep-going); fi
+        cargo "+$TOOLCHAIN" clippy "${selectors[@]}" --message-format=json -- "${diagnostics[@]}" -Dclippy::suspicious_operation_groupings >&3
+    else
+        cargo "+$TOOLCHAIN" clippy "${cargo_args_ref[@]}" -- "${lint_args_ref[@]}"
+    fi
 }
 
 if ! has_cargo_arg --all-targets; then

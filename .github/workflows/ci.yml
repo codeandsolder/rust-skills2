@@ -711,6 +711,9 @@ jobs:
           cargo-args: "--locked --package strict-ci-pass --all-targets"
 
 
+      - name: Temporary lint campaign concurrency and gate self-test
+        run: bash checks/test_lint_campaign.sh "${{ steps.compiler.outputs.channel }}"
+
       - name: Finalize mandatory sccache
         if: always()
         uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@5991b873ab28ec8fae36c2c8ef944a3f67f5f9b3 # main
