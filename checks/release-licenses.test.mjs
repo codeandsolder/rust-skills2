@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { classifyLicense, inspectTree, treeSelectors } from '../scripts/release-licenses.mjs';
+import { classifyLicense, inspectTree, treeSelectors, workspacePackages } from '../scripts/release-licenses.mjs';
 
 test('SPDX alternatives and obligations are evaluated rather than substring matched', () => {
     for (const [expression, result] of [
@@ -22,12 +22,27 @@ test('SPDX alternatives and obligations are evaluated rather than substring matc
     ]) assert.equal(classifyLicense(expression), result, expression);
 });
 
-test('tree parsing skips roots but includes workspace packages when linked', () => {
-    const graph = '0root v1.0.0\tGPL-2.0-only\n1helper v1.0.0\tMIT\n2linked v1.0.0\tGPL-3.0-only\n1helper v1.0.0\tMIT (*)\n0linked v1.0.0\tGPL-3.0-only\n1unknown v1.0.0\t (*)\n';
-    assert.deepEqual(inspectTree(graph).map(({packageName, classification}) => [packageName, classification]), [
-        ['helper v1.0.0', 'other'], ['linked v1.0.0', 'strong'], ['unknown v1.0.0', 'unknown'],
+test('tree parsing excludes only exact local workspace members and roots', () => {
+    const own = workspacePackages({
+        workspace_members: ['path+file:///repo/linked#1.0.0'],
+        packages: [{id:'path+file:///repo/linked#1.0.0',name:'linked',version:'1.0.0',source:null,manifest_path:'/repo/linked/Cargo.toml'}],
+    });
+    const graph = [
+        '0root v1.0.0 (/repo)\tGPL-2.0-only',
+        '1linked v1.0.0 (/repo/linked)\tGPL-2.0-only',
+        '2linked v1.0.0\tGPL-3.0-only',
+        '2linked v1.0.0 (/external/linked)\tGPL-3.0-only',
+        '1helper v1.0.0\tMIT',
+        '1helper v1.0.0\tMIT (*)',
+        '1unknown v1.0.0\t (*)',
+    ].join('\n');
+    const findings = inspectTree(graph, own);
+    assert.deepEqual(findings.map(({packageName, classification}) => [packageName, classification]), [
+        ['helper v1.0.0', 'other'], ['linked v1.0.0', 'strong'],
+        ['linked v1.0.0 (/external/linked)', 'strong'], ['unknown v1.0.0', 'unknown'],
     ]);
-    assert.throws(() => inspectTree('unrecognized'));
+    assert.throws(() => inspectTree('unrecognized', own));
+    assert.throws(() => workspacePackages({workspace_members:['missing'], packages:[]}));
 });
 
 test('Cargo selectors keep feature and target selection, not test modes', () => {
