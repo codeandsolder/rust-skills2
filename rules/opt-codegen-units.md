@@ -1,146 +1,43 @@
 # opt-codegen-units
 
-> Set `codegen-units = 1` for maximum optimization in release builds
+> Choose release codegen-unit count by measuring runtime, binary size, compilation cost and memory together
 
 ## Why It Matters
 
-By default, Cargo splits code into multiple codegen units for parallel compilation. This speeds up builds but prevents some cross-unit optimizations. Setting `codegen-units = 1` allows LLVM to optimize across the entire crate, potentially improving runtime performance by 5-20% at the cost of slower builds.
+Cargo divides crate code generation into units to permit parallel LLVM work and incremental reuse. Fewer units can expose more optimization opportunities inside a unit but also reduce parallelism. Local ThinLTO can optimize across units; cross-crate LTO changes the tradeoff further. Neither a single unit nor the default count is guaranteed to produce the fastest or smallest executable.
 
-## Bad
-
-```toml
-# Cargo.toml - default settings
-[profile.release]
-# codegen-units defaults to 16
-# Fast to compile, but misses optimization opportunities
-```
-
-## Good
+## Compare Real Profiles
 
 ```toml
-# Cargo.toml - optimized for runtime performance
-[profile.release]
-codegen-units = 1  # Single unit = better optimization
-lto = true         # Link-time optimization
-opt-level = 3      # Maximum optimization
-```
-
-## What codegen-units Affects
-
-| Codegen Units | Compile Time | Runtime Performance | Memory Use | Note |
-|---------------|--------------|---------------------|------------|------|
-| 16 (default)  | Faster       | Baseline            | Lower      | `lto = false` still enables thin-local LTO when opt > 0 |
-| 4-8           | Moderate     | Slightly better     | Moderate   | |
-| 1             | Slower       | Best                | Higher     | Combine with `lto = "thin"` or `"fat"` |
-
-## How It Works
-
-```rust
-// With codegen-units = 16:
-// - Crate split into 16 independent compilation units
-// - Compiled in parallel
-// - Limited visibility between units for optimization
-
-// With codegen-units = 1:
-// - Entire crate in single unit
-// - LLVM sees all code at once
-// - Can inline across module boundaries
-// - Better dead code elimination
-// - Better constant propagation
-```
-
-> **Note**: Since Rust 1.90, `rust-lld` is the default linker on `x86_64-unknown-linux-gnu`, improving LTO and codegen performance out of the box. Other Linux targets (`aarch64-unknown-linux-gnu`, `i686-unknown-linux-gnu`, musl targets) still default to BFD. Opt out with `RUSTFLAGS="-Clinker-features=-lld"` if needed.
-
-## Full Release Profile
-
-```toml
-[profile.release]
-# Maximum runtime performance
-opt-level = 3
-lto = "fat"            # Use "thin" when combining with target-cpu=x86-64-v3
-codegen-units = 1
-panic = "abort"      # Smaller binary, slight perf gain
-strip = true         # Smaller binary
-
-[profile.release-with-debug]
-# Performance with debugging ability
-inherits = "release"
-debug = true         # Keep debug symbols
-strip = false
-
-[profile.bench]
-# For benchmarking
-inherits = "release"
-```
-
-## Build Time Trade-offs
-
-```bash
-# Default release build (fast compile)
-cargo build --release
-# Time: ~30s
-
-# Optimized release build (slow compile, fast runtime)
-# With codegen-units = 1, lto = "fat"
-cargo build --release
-# Time: ~2-5min, but potentially 10-20% faster binary
-```
-
-> **Tip**: Use [`cargo-wizard`](https://crates.io/crates/cargo-wizard) to quickly configure optimal profile settings for your project.
-
-## Per-Profile Configuration
-
-```toml
-# Fast debug builds
-[profile.dev]
-codegen-units = 256  # Maximum parallelism
-
-# Fast CI builds
-[profile.ci]
-inherits = "release"
-codegen-units = 16   # Balance compile time vs runtime
-lto = "thin"         # Faster than "fat"
-
-# Production release
-[profile.production]
+[profile.release-single]
 inherits = "release"
 codegen-units = 1
-lto = "fat"
+
+[profile.release-thin]
+inherits = "release"
+lto = "thin"
 ```
 
-## When to Use What
-
-```rust
-// codegen-units = 16 (default)
-// - Development builds
-// - CI where compile time matters
-// - When runtime performance isn't critical
-
-// codegen-units = 1
-// - Production deployments
-// - Performance-critical applications
-// - Final releases
-// - Benchmarking
-```
-
-## Measuring Impact
+Use the same workload and correctness criteria for each profile. A custom profile inherits the release settings chosen by that project, so hold the other settings constant when isolating one variable.
 
 ```bash
-# Build with different settings
-cargo build --release
-
-# Benchmark
-cargo bench
-
-# Compare binary sizes
-ls -lh target/release/my_binary
-
-# Profile runtime
-perf stat ./target/release/my_binary
+cargo build --locked --profile release-single
+cargo build --locked --profile release-thin
 ```
+
+Identify the actual executables using Cargo JSON artifact messages rather than guessing their paths. Record build wall time, cache behavior, peak memory, runtime, and code size. Use release-equivalent benchmark profiles when running benchmarks, and do not compare an instrumented build against an uninstrumented baseline as though only the unit count changed.
+
+## Guidance
+
+- Cargo normally defaults to 16 units for non-incremental compilation and 256 for incremental compilation. Explicit profile settings can override this.
+- A few expensive crates can dominate build memory; measure targeted package settings before changing the entire workspace.
+- LTO, incremental compilation and sccache are separate mechanisms. Preserve the configured compilation cache when comparing settings and distinguish warm from cold runs.
+- Do not prescribe a percentage speedup, a universal compilation time, or mandatory single-unit release builds.
+- A slow compiler/version/target combination is a reason to measure and investigate that combination, not to turn the workaround into a permanent rule.
 
 ## See Also
 
-- [opt-lto-release](./opt-lto-release.md) - Link-time optimization
-- [opt-pgo-profile](./opt-pgo-profile.md) - Profile-guided optimization
-- [opt-target-cpu](./opt-target-cpu.md) - CPU-specific optimization
+- [opt-lto-release](./opt-lto-release.md)
+- [perf-release-profile](./perf-release-profile.md)
+- [perf-benchmark-regression](./perf-benchmark-regression.md)
+- [Cargo profiles](https://doc.rust-lang.org/cargo/reference/profiles.html)

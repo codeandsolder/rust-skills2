@@ -99,8 +99,14 @@ cargo llvm-cov --package my-crate
 cargo llvm-cov --report --lcov --output-path lcov.info
 ```
 
+## Coverage Is Not Test Effectiveness
+
+A covered line need not have its behavior checked. Treat coverage as a guide to missing exercises, then verify the expected behavior independently and consider focused mutation testing for meaningful assertions.
+
 ## See Also
 
+- [test-independent-oracle](./test-independent-oracle.md)
+- [test-mutation-testing](./test-mutation-testing.md)
 - [test-criterion-bench](./test-criterion-bench.md) — Benchmarking with criterion
 - [test-nextest-workflow](./test-nextest-workflow.md) — Running tests with nextest
 - [test-mockall-mocking](./test-mockall-mocking.md) — Trait mocking with mockall

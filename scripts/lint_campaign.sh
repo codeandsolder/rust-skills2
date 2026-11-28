@@ -109,8 +109,8 @@ clean_at() {
 clean_policy() {
     local status
     status=$(git -C "$SKILLS" status --porcelain --untracked-files=all -- \
-        scripts/lint_campaign.sh scripts/lint_campaign_queue.sh scripts/lint_campaign_issues.sh scripts/lint_campaign_leases.sh scripts/lint_campaign_lifecycle.sh scripts/lint_campaign_gc.sh scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
-        scripts/workspace_test_policy.py .github/actions/rust-strict) || die "cannot inspect policy checkout"
+        scripts/lint_campaign.sh scripts/lint_campaign_queue.sh scripts/lint_campaign_issues.sh scripts/lint_campaign_leases.sh scripts/lint_campaign_lifecycle.sh scripts/lint_campaign_gc.sh scripts/strict_clippy.sh scripts/toolchain-pin.sh scripts/release-licenses.mjs \
+        policy-wasm .github/actions/rust-strict) || die "cannot inspect policy checkout"
     [[ -z "$status" ]] || die "campaign tool or policy files have uncommitted edits"
 }
 use_campaign_rustup() {
@@ -179,7 +179,7 @@ inventory() {
             export RUST_SKILLS2_ACTION_DIR="$SKILLS/.github/actions/rust-strict"
             export RUST_SKILLS2_CARGO_ARGS="--locked --workspace --all-targets"
             export RUST_SKILLS2_ALLOW_TEST_PANICS="$allow_test_panics"
-            bash "$SKILLS/scripts/strict_clippy.sh" --inventory
+            bash "$SKILLS/scripts/strict_clippy.sh" --toolchain "$nightly" --inventory
         ) >"$state/logs/$revision.clippy.jsonl" 2>"$state/logs/$revision.clippy.stderr" ||
             die "inventory failed; see $state/logs/$revision.clippy.stderr and .jsonl"
         clean_at "$checkout"
@@ -452,10 +452,11 @@ case "$action" in
         use_campaign_rustup
         if [[ -n "$rustup_home" ]]; then check_compilers; fi
         clean_policy
-        git -C "$SKILLS" diff --quiet "$skills_revision" HEAD -- \
-            scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
-            scripts/workspace_test_policy.py .github/actions/rust-strict ||
-            die "lint policy changed; cannot reuse existing inventories"
+        if [[ "$direct_default" != true || ! -f "$state/issues.json" ]]; then
+            git -C "$SKILLS" diff --quiet "$skills_revision" HEAD -- \
+                scripts/strict_clippy.sh scripts/toolchain-pin.sh scripts/release-licenses.mjs policy-wasm .github/actions/rust-strict ||
+                die "lint policy changed; cannot reuse existing inventories"
+        fi
         lock_claims
         mkdir -p "$state/queue"
         if jq -e 'has("stable")' "$config" >/dev/null; then
@@ -752,7 +753,11 @@ case "$action" in
             export RUST_SKILLS2_ACTION_DIR="$SKILLS/.github/actions/rust-strict"
             export RUST_SKILLS2_CARGO_ARGS="--locked --workspace --all-targets"
             export RUST_SKILLS2_ALLOW_TEST_PANICS="$allow_test_panics"
-            bash "$SKILLS/scripts/strict_clippy.sh" || exit
+            # For final qualification, use the actual pinned repository
+            # compiler, not a moving nightly selection.
+            final_channel=$(sed -nE 's/^channel[[:space:]]*=[[:space:]]*"(nightly-[0-9]{4}-[0-9]{2}-[0-9]{2})"[[:space:]]*$/\1/p' rust-toolchain.toml 2>/dev/null || true)
+            final_channel=${final_channel:-$(bash "$SKILLS/scripts/toolchain-pin.sh")}
+            bash "$SKILLS/scripts/strict_clippy.sh" --toolchain "$final_channel" || exit
             bash -euo pipefail -c "${1:-cargo +nightly test --workspace --locked}"
         ) >"$state/logs/$tip.final.log" 2>&1 || die "final strict gate failed: $state/logs/$tip.final.log"
         [[ "$(remote_tip)" == "$tip" ]] || die "target advanced during final verification"

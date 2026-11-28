@@ -107,7 +107,6 @@ dbg_macro = "deny"
 undocumented_unsafe_blocks = "deny"
 missing_safety_doc = "deny"
 await_holding_lock = "deny"
-allow_attributes = "deny"
 allow_attributes_without_reason = "deny"
 
 [workspace.lints.rustdoc]
@@ -115,6 +114,22 @@ broken_intra_doc_links = "deny"
 private_intra_doc_links = "warn"
 missing_crate_level_docs = "warn"
 ```
+
+On the shared nightly Clippy gate, these restrictions also apply to every
+target, and handwritten suppressions are prohibited:
+
+```toml
+# Add to [workspace.lints.clippy] only on a compiler that provides the lints.
+[workspace.lints.clippy]
+deprecated_attributes_without_note = "deny"
+must_use_without_reason = "deny"
+```
+
+They are not available on Clippy 1.100.0. The central gate already supplies
+them as command-line denies; downstream callers do not need a duplicate
+manifest stanza. The gate rejects handwritten allow attributes via its
+source-policy checker rather than denying Clippy's `allow_attributes`
+in generated expansions.
 
 ## Cargo 1.100: Workspace-Level Manifest Lints
 
@@ -147,14 +162,14 @@ currently report unused `dev-dependencies`. See
 workspace = true
 ```
 
-### Does NOT Work (❌) — Override ignored or error
+### Does NOT Work — Cargo rejects the manifest
 
 ```toml
 # crate-b/Cargo.toml
 [lints]
 workspace = true
 
-# This is IGNORED when workspace = true is set (Cargo issue #13157)
+# Cargo rejects combining inherited lints with explicit member lints
 [lints.clippy]
 unwrap_used = "allow"
 ```
@@ -190,7 +205,7 @@ jobs:
 ```
 
 Keep project-specific lanes beside it. For example, a library workspace can add
-a rustdoc job with `RUSTDOCFLAGS="-D warnings"`, while embedded/wasm projects
+a rustdoc job with [manifest rustdoc lints](./lint-lints-table.md), while embedded/wasm projects
 can add their target matrices without weakening the shared lint policy.
 
 ## Lint Categories

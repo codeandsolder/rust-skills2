@@ -166,8 +166,9 @@ unsafe_code = "forbid"
 missing_docs = "warn"
 
 [workspace.lints.clippy]
-all = "warn"
-pedantic = { level = "warn", priority = -1 }
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 
 [workspace.lints.rustdoc]
@@ -246,7 +247,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 unsafe_code = "forbid"
 
 [workspace.lints.clippy]
-all = "warn"
+all = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 
 # crates/core/Cargo.toml
@@ -272,7 +273,7 @@ workspace = true
 
 ### Feature Unification (RFC 3692)
 
-Workspace members share a single dependency graph. If `crate-a` enables `tokio/full` and `crate-b` enables `tokio/process`, all members see the union of features:
+Under the default selected-package feature-unification policy, selected workspace members can share dependency features. When both members are selected, if `crate-a` enables `tokio/full` and `crate-b` enables `tokio/process`, all members see the union of features:
 
 ```toml
 # crate-a enables "full"
@@ -280,13 +281,15 @@ Workspace members share a single dependency graph. If `crate-a` enables `tokio/f
 # → All members compile with "full + process"
 ```
 
-This can cause unexpected compile times or enable unwanted functionality. To opt out per-package (unstable):
+Features are unified for selected packages, subject to resolver rules for target, build and dev dependencies; not all members in every invocation. For per-package unification (unstable, potentially duplicating dependency builds), configure Cargo rather than the workspace manifest:
 
 ```toml
-# Requires cargo nightly
-[workspace]
-members = ["crates/*"]
-resolver.feature-unification = "package"
+# .cargo/config.toml (requires nightly Cargo and the unstable flag)
+[resolver]
+feature-unification = "package"
+
+[unstable]
+feature-unification = true
 ```
 
 ### Rust 1.99+: Member `default-features` Overrides Are Effective on Edition 2024

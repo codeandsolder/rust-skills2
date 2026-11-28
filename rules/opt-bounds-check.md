@@ -184,8 +184,14 @@ Do not remove a necessary validation merely to eliminate a branch; that changes 
 - Treat exact bounds-check counts and SIMD as properties of optimized output, not syntax.
 - Reach for unchecked access only after measurement and with a local, documented proof.
 
+## Investigate the Entire Kernel
+
+A bounds check may not be the dominant overhead. Data layout, extra loads/stores, register pressure, failure propagation and inlining can matter more. Hoist validation where it preserves semantics, retain the validated data, and measure realistic release builds including correct handling of invalid input. Do not discard safety or failure channels to match a benchmark.
+
 ## See Also
 
+- [unsafe-untrusted-safe-code](./unsafe-untrusted-safe-code.md)
+- [perf-benchmark-regression](./perf-benchmark-regression.md)
 - [opt-simd-portable](./opt-simd-portable.md) - Portable SIMD and target features
 - [opt-cache-friendly](./opt-cache-friendly.md) - Cache-efficient data layout
 - [perf-profile-first](./perf-profile-first.md) - Identify actual hot paths

@@ -83,11 +83,16 @@ Edition 2024 requires `extern` blocks to be `unsafe extern` blocks, making the r
 
 ```rust
 unsafe extern "C" {
-    safe fn abs(input: i32) -> i32;
+    // Hypothetical ABI-defined query with no caller obligations.
+    safe fn protocol_version() -> u32;
+
+    // C abs does not define abs(c_int::MIN).
+    unsafe fn abs(input: std::ffi::c_int) -> std::ffi::c_int;
 }
 
 fn main() {
-    assert_eq!(abs(-4), 4);
+    // SAFETY: -4 is not the minimum representable C int.
+    assert_eq!(unsafe { abs(-4) }, 4);
 }
 ```
 

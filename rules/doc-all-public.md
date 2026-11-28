@@ -174,8 +174,13 @@ A hidden public shim can be appropriate for generated/compatibility machinery, b
 cargo doc --document-private-items
 ```
 
+## Current Contract, Not a Change Log
+
+Explain observable current behavior and non-obvious prerequisites or invariants. Keep investigation history in dated records; update authoritative examples and related docs alongside changes.
+
 ## See Also
 
+- [doc-current-contract](./doc-current-contract.md)
 - [doc-module-inner](./doc-module-inner.md) - Crate and module documentation
 - [doc-examples-section](./doc-examples-section.md) - Useful runnable examples
 - [lint-missing-docs](./lint-missing-docs.md) - Lint policy

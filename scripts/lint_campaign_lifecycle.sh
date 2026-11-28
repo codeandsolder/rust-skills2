@@ -10,7 +10,7 @@ retarget_campaign() {
     lock_claims
     check_compilers
     clean_policy
-    git -C "$SKILLS" diff --quiet "$skills_revision" HEAD -- scripts/strict_clippy.sh scripts/check_source_lint_policy.py scripts/workspace_test_policy.py .github/actions/rust-strict || die "lint policy changed; cannot reuse existing inventories"
+    git -C "$SKILLS" diff --quiet "$skills_revision" HEAD -- scripts/strict_clippy.sh scripts/toolchain-pin.sh scripts/release-licenses.mjs policy-wasm .github/actions/rust-strict || die "lint policy changed; cannot reuse existing inventories"
     old_tip=$(remote_tip)
     git_repo fetch --quiet --no-tags --no-write-fetch-head origin "refs/heads/$destination:refs/remotes/origin/$destination"
     new_tip=$(git_repo rev-parse "refs/remotes/origin/$destination")

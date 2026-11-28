@@ -6,7 +6,7 @@
 
 SIMD can speed up independent data-parallel work, but wrong overflow, tails, mask evaluation, memory alignment, or CPU dispatch can silently corrupt data or fail only on older machines. Review semantics and target portability before optimizing.
 
-## Scope and Status (Rust 1.100, November 2026)
+## Scope and Status (Rust 1.100 stable; 1.102.0-nightly, November 2026)
 
 There are **three distinct meanings** of SIMD portability:
 
@@ -14,7 +14,7 @@ There are **three distinct meanings** of SIMD portability:
 2. **Semantic portability:** lane operations have consistent documented results (subject to explicitly documented floating-point exceptions).
 3. **Performance portability:** the same algorithm is fast on each target. **No portable SIMD API guarantees this.** A wide type may be split, scalarized, or lowered to several instructions; a narrow type may underutilize the hardware.
 
-As of Rust **1.100**, `core::simd` and `std::simd` are **unstable**, requiring nightly `#![feature(portable_simd)]` ([tracking issue #86656](https://github.com/rust-lang/rust/issues/86656)). Do not imply that `std::simd` is stabilized merely because rustdoc displays it on the stable documentation website. `std::simd` adds `StdFloat` support for some math functions; `core::simd` can be used in `no_std` projects on nightly.
+As of Rust **1.100 stable and 1.102.0-nightly** (2026-11-21 compiler commit), `core::simd` and `std::simd` are **unstable**, requiring nightly `#![feature(portable_simd)]` ([tracking issue #86656](https://github.com/rust-lang/rust/issues/86656)). Do not imply that `std::simd` is stabilized merely because rustdoc displays it on the stable documentation website. `std::simd` adds `StdFloat` support for some math functions; `core::simd` can be used in `no_std` projects on nightly.
 
 On stable Rust, choose among auto-vectorization, target-specific `core::arch`/`std::arch` intrinsics, and maintained crates such as `wide`, `pulp`, or `safe_arch`. Match the crate's **actual version, CPU requirements, and architecture support**; these crates do not all provide the same form of portability.
 
@@ -206,6 +206,8 @@ Gather/scatter is useful for lookup tables and sparse layouts, but it can be inf
 - Track output overlap and aliasing when using raw pointers. A source/destination overlap harmless to a sequential scalar algorithm can require staging or explicit ordering when vectorized.
 
 ## Runtime Dispatch and Target Features on Stable Rust
+
+Fleet strict CI requires portable SIMD or ordinary Rust for operations with a portable implementation. The stable native-intrinsics example below is for external stable-only environments, not strict-CI projects. In fleet projects use the central exact-name exceptions only for genuinely hardware-specific operations (see policy-wasm/README.md).
 
 Portable SIMD source code and CPU feature detection solve **different problems**. An optimized kernel may require AVX2, NEON, or WebAssembly SIMD, while the public entry point must still work on the target's supported baseline.
 

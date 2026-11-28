@@ -6,7 +6,20 @@ semantic versioning for the rule set.
 
 ## [Unreleased]
 
+### Added
+- Strict nightly Clippy denies `deprecated_attributes_without_note` and
+  `must_use_without_reason` in all targets, including relaxed tests. Both
+  are non-suppressible in handwritten source; regression fixtures verify
+  each specific diagnostic and suppression rejection.
+- Added actionable deprecation guidance and an independent CI package that
+  compiles and executes nightly examples instead of excluding them from validation.
+- Added a packaged, compiler-versioned nightly feature guide and a comparison of
+  Rust/Clippy 1.100.0 versus 1.102.0-nightly, including new restriction-lint
+  candidates and recorded upcoming stabilizations.
+
 ### Changed
+- Corrected stale stability claims about free iterator chaining, const generic
+  defaults, and the never type; refreshed try-block, SIMD, and branch-hint guidance.
 - Expanded `opt-simd-portable` into a comprehensive SIMD implementation and
   review guide: nightly portable SIMD APIs, integer/floating-point semantics,
   mask and memory safety, lane tails, gather/scatter, runtime CPU dispatch,

@@ -70,7 +70,7 @@ anyhow = "1.0"
 unsafe_code = "forbid"
 
 [workspace.lints.clippy]
-all = "warn"
+all = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 ```
 

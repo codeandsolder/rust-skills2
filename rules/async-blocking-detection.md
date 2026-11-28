@@ -132,8 +132,14 @@ Look for:
 
 Then validate suspected paths with traces/profiles rather than inferring causality from one metric.
 
+## Await Is Not a Guaranteed Yield
+
+An immediately ready future may permit continued work in the same poll. Tokio cooperative budgeting covers participating operations, not every future or synchronous helper; consider explicit bounded chunks, and use dedicated CPU execution for sustained computation.
+
 ## See Also
 
+- [async-cooperative-budget](./async-cooperative-budget.md)
+- [async-future-layout](./async-future-layout.md)
 - [async-spawn-blocking](./async-spawn-blocking.md) — moving blocking work off workers
 - [async-tokio-runtime](./async-tokio-runtime.md) — runtime configuration
 - [async-runtime-metrics](./async-runtime-metrics.md) — runtime metrics

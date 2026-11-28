@@ -1,22 +1,46 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Explicit diagnostic-only entry point. Ordinary CI callers pass no arguments
-# and retain the exact deny-level gate. Inventory stdout contains Cargo JSON.
+TOOLCHAIN=$(bash "$(dirname "${BASH_SOURCE[0]}")/toolchain-pin.sh")
+PHASE=all
 INVENTORY=false
-case $# in
-    0) ;;
-    1)
-        if [[ "$1" != --inventory ]]; then
-            echo "rust-skills2: unknown argument: $1" >&2
-            exit 2
-        fi
-        INVENTORY=true
-        exec 3>&1
-        exec 1>&2
-        ;;
-    *) echo "rust-skills2: unexpected arguments" >&2; exit 2 ;;
+PLAN=
+while (( $# )); do
+    case "$1" in
+        --inventory)
+            INVENTORY=true
+            shift ;;
+        --toolchain|--phase|--plan)
+            if (( $# < 2 )); then
+                echo "rust-skills2: missing value for $1" >&2
+                exit 2
+            fi
+            case "$1" in
+                --toolchain) TOOLCHAIN=$2 ;;
+                --phase) PHASE=$2 ;;
+                --plan) PLAN=$2 ;;
+            esac
+            shift 2 ;;
+        *)
+            echo "usage: strict_clippy.sh [--toolchain nightly-YYYY-MM-DD] [--phase all|format|preflight|compile] [--plan absolute-path]" >&2
+            exit 2 ;;
+    esac
+done
+if [[ "$INVENTORY" == true ]]; then
+    [[ "$PHASE" == all && -z "$PLAN" ]] || { echo "inventory is a diagnostic-only full scan" >&2; exit 2; }
+    exec 3>&1 1>&2
+fi
+case "$PHASE" in
+    all|format)
+        [[ -z "$PLAN" ]] || { echo "unexpected plan for $PHASE" >&2; exit 2; } ;;
+    preflight|compile)
+        [[ "$PLAN" == /* ]] || { echo "split strict phases require an absolute plan path" >&2; exit 2; } ;;
+    *) echo "unknown strict phase: $PHASE" >&2; exit 2 ;;
 esac
+[[ "$TOOLCHAIN" =~ ^nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}$ || ( "$INVENTORY" == true && "$TOOLCHAIN" == nightly ) ]] || {
+    echo "rust-skills2: expected a nightly toolchain" >&2
+    exit 2
+}
 
 ROOT="${GITHUB_WORKSPACE:-$(pwd)}"
 WORKDIR="${RUST_SKILLS2_WORKING_DIRECTORY:-.}"
@@ -91,30 +115,80 @@ for ((i = 0; i < ${#CARGO_ARGS[@]}; i++)); do
     esac
 done
 
-echo "rust-skills2: cargo +nightly fmt --all --check"
-cargo +nightly fmt --all --check
+has_cargo_arg() {
+    local needle=$1
+    local arg
+    for arg in "${CARGO_ARGS[@]}"; do
+        if [[ "$arg" == "$needle" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
 
-SOURCE_POLICY_SCRIPT="$ACTION_DIR/../../../scripts/check_source_lint_policy.py"
-if [[ ! -f "$SOURCE_POLICY_SCRIPT" ]]; then
-    echo "rust-skills2: source policy checker missing at $SOURCE_POLICY_SCRIPT" >&2
-    exit 2
+if [[ "$PHASE" == all || "$PHASE" == format ]]; then
+    echo "rust-skills2: cargo +$TOOLCHAIN fmt --all --check"
+    cargo "+$TOOLCHAIN" fmt --all --check
+    [[ "$PHASE" != format ]] || exit 0
 fi
 
-WORKSPACE_POLICY_SCRIPT="$ACTION_DIR/../../../scripts/workspace_test_policy.py"
-if [[ ! -f "$WORKSPACE_POLICY_SCRIPT" ]]; then
-    echo "rust-skills2: workspace policy resolver missing at $WORKSPACE_POLICY_SCRIPT" >&2
-    exit 2
-fi
+if [[ "$PHASE" != compile ]]; then
+    if [[ "$PHASE" == preflight && -e "$PLAN" ]]; then
+        echo "rust-skills2: strict preflight requires a fresh plan path" >&2
+        exit 2
+    fi
+    # Mandatory release-license policy belongs to the strict implementation,
+    # not any particular workflow wrapper. Each feature/target selection must
+    # validate its own normal dependency graph before compilation.
+    LICENSE_POLICY="$ACTION_DIR/../../../scripts/release-licenses.mjs"
+    if [[ ! -f "$LICENSE_POLICY" ]]; then
+        echo "rust-skills2: release-license policy checker missing at $LICENSE_POLICY" >&2
+        exit 2
+    fi
+    node "$LICENSE_POLICY" "$TOOLCHAIN" "$PWD" "${CARGO_ARGS[*]}"
 
-uv run --no-project python "$SOURCE_POLICY_SCRIPT"
+    SOURCE_POLICY_SCRIPT="$ACTION_DIR/../../../policy-wasm/check.mjs"
+    SOURCE_POLICY_MODULE="$ACTION_DIR/../../../policy-wasm/module.json"
+    if [[ ! -f "$SOURCE_POLICY_SCRIPT" || ! -f "$SOURCE_POLICY_MODULE" ]]; then
+        echo "rust-skills2: source policy checker missing at $SOURCE_POLICY_SCRIPT" >&2
+        exit 2
+    fi
+
+    if has_cargo_arg --all-targets; then
+        POLICY_OUTPUT="$(node "$SOURCE_POLICY_SCRIPT" "$SOURCE_POLICY_MODULE" "$TOOLCHAIN" "$ALLOW_TEST_PANICS" "${CARGO_ARGS[@]}")"
+    else
+        node "$SOURCE_POLICY_SCRIPT" "$SOURCE_POLICY_MODULE" "$TOOLCHAIN"
+    fi
+
+    if [[ "$PHASE" == preflight ]]; then
+        # The provider allocates one private runner-local plan per exact scope.
+        # Publish only after every mandatory source/license check has succeeded.
+        (
+            umask 077
+            printf '%s\n' "$TOOLCHAIN" "$PWD" "$ALLOW_TEST_PANICS" "${CARGO_ARGS[*]}" "${POLICY_OUTPUT:-}" > "$PLAN"
+        )
+        exit 0
+    fi
+else
+    {
+        IFS= read -r plan_toolchain
+        IFS= read -r plan_directory
+        IFS= read -r plan_panics
+        IFS= read -r plan_selectors
+        if [[ "$plan_toolchain" != "$TOOLCHAIN" || "$plan_directory" != "$PWD" ||
+            "$plan_panics" != "$ALLOW_TEST_PANICS" || "$plan_selectors" != "${CARGO_ARGS[*]}" ]]; then
+            echo "rust-skills2: strict plan does not match the compilation scope" >&2
+            exit 2
+        fi
+        POLICY_OUTPUT=$(cat)
+    } < "$PLAN"
+fi
 
 # The reusable gate intentionally owns Clippy configuration. A project-local
 # clippy.toml may contain useful developer preferences, but it must not be able
 # to weaken the central CI policy (for example by allowing unwrap in consts).
 export CLIPPY_CONF_DIR="$ACTION_DIR"
 if [[ "$INVENTORY" == true ]]; then
-    # Do not stop Cargo at inherited style debt; real compiler and safety
-    # failures are still fatal. This is NOT the CI acceptance gate.
     unset CARGO_BUILD_WARNINGS
 else
     export CARGO_BUILD_WARNINGS=deny
@@ -183,58 +257,39 @@ LINT_ARGS=(
     # handwritten suppression form for policy-suppressible lints. Keep
     # unreasoned allow attributes fatal in generated/macro-expanded code too.
     -Dclippy::allow_attributes_without_reason
+    -Dclippy::deprecated_attributes_without_note
+    -Dclippy::must_use_without_reason
 )
 
 run_clippy() {
     local -n cargo_args_ref=$1
     local -n lint_args_ref=$2
-    printf 'rust-skills2: cargo +nightly clippy'
+    printf 'rust-skills2: cargo +%s clippy' "$TOOLCHAIN"
     printf ' %q' "${cargo_args_ref[@]}"
     printf ' --'
     printf ' %q' "${lint_args_ref[@]}"
     printf '\n'
     if [[ "$INVENTORY" == true ]]; then
-        local -a inventory_args=()
+        local -a diagnostics=() selectors=("${cargo_args_ref[@]}")
         local arg
         for arg in "${lint_args_ref[@]}"; do
             case "$arg" in
-                -Dclippy::correctness|-Dclippy::suspicious|-Dclippy::perf|-Dunsafe_op_in_unsafe_fn)
-                    inventory_args+=("$arg")
-                    ;;
-                -D*) inventory_args+=("-W${arg#-D}") ;;
-                *) inventory_args+=("$arg") ;;
+                -Dclippy::correctness|-Dclippy::suspicious|-Dclippy::perf|-Dunsafe_op_in_unsafe_fn) diagnostics+=("$arg") ;;
+                -D*) diagnostics+=("-W${arg#-D}") ;;
+                *) diagnostics+=("$arg") ;;
             esac
         done
-        local -a inventory_cargo_args=("${cargo_args_ref[@]}")
-        if ! has_cargo_arg --keep-going; then inventory_cargo_args+=(--keep-going); fi
-        cargo +nightly clippy "${inventory_cargo_args[@]}" --message-format=json -- \
-            "${inventory_args[@]}" -Dclippy::suspicious_operation_groupings >&3
+        if ! has_cargo_arg --keep-going; then selectors+=(--keep-going); fi
+        cargo "+$TOOLCHAIN" clippy "${selectors[@]}" --message-format=json -- "${diagnostics[@]}" -Dclippy::suspicious_operation_groupings >&3
     else
-        cargo +nightly clippy "${cargo_args_ref[@]}" -- "${lint_args_ref[@]}"
+        cargo "+$TOOLCHAIN" clippy "${cargo_args_ref[@]}" -- "${lint_args_ref[@]}"
     fi
-}
-
-has_cargo_arg() {
-    local needle=$1
-    local arg
-    for arg in "${CARGO_ARGS[@]}"; do
-        if [[ "$arg" == "$needle" ]]; then
-            return 0
-        fi
-    done
-    return 1
 }
 
 if ! has_cargo_arg --all-targets; then
     run_clippy CARGO_ARGS LINT_ARGS
     exit 0
 fi
-
-POLICY_ARGS=(--default-allow-test-panics "$ALLOW_TEST_PANICS")
-for arg in "${CARGO_ARGS[@]}"; do
-    POLICY_ARGS+=("--cargo-arg=$arg")
-done
-POLICY_OUTPUT="$(uv run --no-project python "$WORKSPACE_POLICY_SCRIPT" "${POLICY_ARGS[@]}")"
 
 STRICT_PACKAGES=()
 RELAXED_PACKAGES=()
@@ -268,6 +323,8 @@ for arg in "${CARGO_ARGS[@]}"; do
 done
 run_clippy PRODUCTION_CARGO_ARGS LINT_ARGS
 
+# ShellCheck cannot see the local -n variable reference inside run_clippy.
+# shellcheck disable=SC2034
 EXAMPLE_CARGO_ARGS=("${PRODUCTION_CARGO_ARGS[@]}" --examples)
 run_clippy EXAMPLE_CARGO_ARGS LINT_ARGS
 

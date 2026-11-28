@@ -1,35 +1,26 @@
 # lint-clippy-nursery-selected
 
-> Enable `clippy::nursery` lints selectively and re-check group membership when the toolchain changes
+> Keep all nursery lints enabled in shared strict CI; review genuine heuristic exceptions individually and re-check group membership when the toolchain changes
 
 ## Why It Matters
 
 Clippy's `nursery` group is explicitly opt-in: these lints are useful but may still have known limitations or evolving diagnostics. Enabling the whole group can create churn as lints change, graduate to another group, or reveal edge cases in a new toolchain.
 
-Select individual lints whose trade-offs fit the codebase and pin/review them with the project's Rust toolchain.
+The shared strict gate deliberately denies the entire group. Correct real issues; use a narrow reasoned expectation for a genuinely suppressible false positive. Review changes when updating the selected nightly.
 
-## Bad: Enable the Whole Nursery Group Without Review
-
-```toml
-[lints.clippy]
-nursery = "warn"
-```
-
-This makes every current and future nursery lint part of the project's warning policy.
-
-## Good: Select Current Nursery Lints Deliberately
-
-For Rust/Clippy 1.98, examples of nursery lints include:
+## Shared Policy
 
 ```toml
 [lints.clippy]
-significant_drop_tightening = "warn"
-redundant_clone = "warn"
-use_self = "warn"
-or_fun_call = "warn"
+nursery = { level = "deny", priority = -1 }
 ```
 
-`redundant_else` is **not** in the nursery group on this toolchain; it is a `pedantic` lint. If you want it, enable it deliberately as a pedantic lint rather than documenting it as nursery.
+The reusable strict workflow already sets this level; do not duplicate or
+weaken it in a repository's manifest. An independent project outside the
+shared policy can select individual lints after review.
+
+On the reviewed 1.102 nightly, the following membership is confirmed
+from the compiler inventory.
 
 ## What These Lints Target
 
@@ -55,14 +46,14 @@ struct State {
     values: Vec<u32>,
 }
 
-fn length_then_work(state: &Mutex<State>) -> usize {
+fn length_then_work(state: &Mutex<State>) -> Option<usize> {
     let len = {
-        let guard = state.lock().unwrap();
+        let guard = state.lock().ok()?;
         guard.values.len()
     };
 
     expensive_work();
-    len
+    Some(len)
 }
 
 fn expensive_work() {}
@@ -83,7 +74,7 @@ impl Widget {
 
 fn main() {
     let state = Mutex::new(State { values: vec![1, 2, 3] });
-    assert_eq!(length_then_work(&state), 3);
+    assert_eq!(length_then_work(&state), Some(3));
     assert_eq!(Widget::new(7).value(), 7);
 }
 ```
@@ -121,7 +112,7 @@ fn main() {
 ## Policy Guidance
 
 - Prefer `[lints.clippy]` in `Cargo.toml` when the lint policy should apply crate-wide.
-- Review a lint's current documentation before adding it to `deny`; nursery lints may document known problems.
+- Review a lint's actual diagnostics; nursery lints may document known problems. An expectation must name one specific suppressible lint and include a reason.
 - When upgrading Rust, run Clippy and review changed group membership or diagnostics instead of assuming the old policy description is still exact.
 - Do not label a lint “nursery” merely because it once lived there.
 

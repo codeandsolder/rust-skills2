@@ -1,10 +1,10 @@
 # Temporary parallel lint campaigns
 
-Use this when a repository has existing strict lint debt and several agents
-can work concurrently. Do not weaken its pull request gates or dedicate an
-agent to merging everyone's branches. Use one temporary staging/topic branch
-and a shared local checkout, preferably with a draft PR into the default
-branch. The default branch is never a campaign target.
+Use this to coordinate parallel lint-debt or issue-driven implementation work.
+Lint-debt campaigns use a temporary topic branch and a shared local checkout.
+Issue-driven campaigns can target the default branch directly: the serial
+validator merges focused, tested changes; hosted CI is the only global policy
+gate. This permits independent work to proceed while main has unrelated debt.
 
 ## Start once
 
@@ -260,11 +260,25 @@ published receipt means the declared work passed the gates, not that the
 tool independently judged the entire issue's design complete. Do not close
 a GitHub issue merely because a partial implementation passed.
 
-Every accepted issue revision must keep the strict inventory empty; the
-shared and focused gates still run on the merged candidate. Finish refuses
+On a topic branch, accepted issue revisions must keep the strict inventory
+empty and run shared and focused gates. On main, the validator runs the
+focused gate on the exact merged candidate and publishes without repeating a
+whole-workspace lint or smoke run. The actual hosted CI workflow owns the
+current strict policy and full regression suite; repair failures on main.
+Finish refuses
 while any task remains unpublished. Use `amend-issues STATE MANIFEST` to add tasks or revise unstarted tasks.
 All existing IDs and started task definitions are retained, the DAG is validated,
 and manifest snapshots are preserved. Merge conflicts are recorded with their
 paths and target revision. `recover` merges the latest target into the recovered
 worker checkout, leaving conflicts for the worker to resolve and commit.
 Publication still checks the exact merged candidate. Lint mode remains file-exclusive.
+
+## Direct-main lifecycle
+
+Use `retarget STATE main` after pausing and integrating all previous target
+history; this preserves claims, queue jobs and identity. `reconcile STATE`
+closes published issues whose accepted revisions are reachable from main and
+collects obsolete refs. `gc STATE` preserves divergent checkpoints in one
+archive ref before removing stale branches. Neither archive nor previous topic
+branches are integration targets. Keep non-force pushes and branch-deletion
+protections where the GitHub plan permits them.

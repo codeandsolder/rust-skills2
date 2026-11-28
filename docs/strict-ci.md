@@ -32,8 +32,8 @@ Pin the reusable workflow to an immutable full commit SHA and keep the tracked b
 The default gate runs:
 
 ```text
-cargo +nightly fmt --all --check
-cargo +nightly clippy --locked --workspace --all-targets -- <strict policy>
+cargo fmt --all --check
+cargo clippy --locked --workspace --all-targets -- <strict policy>
 ```
 
 Projects that deliberately use panic-style test assertions can opt in to a
@@ -94,7 +94,8 @@ When a selected workspace mixes strict and relaxed members, the gate runs one
 fully strict production pass and a strict examples pass for the selected set,
 then groups test/bench Clippy runs by effective policy. The relaxed group allows
 only the existing test ergonomics set; `correctness`, `suspicious`, `perf`,
-`todo`, `unimplemented`, `dbg_macro`, and `await_holding_lock` remain fatal.
+`todo`, `unimplemented`, `dbg_macro`, and `await_holding_lock` remain fatal. The two attribute-documentation
+restriction lints also remain fatal in relaxed tests and benchmarks.
 
 For a Rust workspace below the repository root:
 
@@ -122,6 +123,20 @@ jobs:
       cargo-args: "--locked --workspace --all-targets --all-features"
 ```
 
+Cross-target jobs can install the required nightly standard libraries using
+the `rust-targets` input (comma-separated target triples), then select the
+same target with `cargo-args`. This keeps target-specific code under exactly
+the same strict policy and mandatory compiler cache:
+
+```yaml
+jobs:
+  strict-uefi:
+    uses: codeandsolder/rust-skills2/.github/workflows/strict-rust.yml@<full-commit-sha> # main
+    with:
+      rust-targets: x86_64-unknown-uefi
+      cargo-args: "--locked -p firmware-probe --target x86_64-unknown-uefi"
+```
+
 Repositories that compile examples or tests from files stored in Git submodules can opt the caller checkout into submodule initialization. `checkout-submodules` is passed directly to the caller-repository `actions/checkout` step and accepts checkout's `false`, `true`, or `recursive` modes; it defaults to `false`. The separately pinned rust-skills2 implementation checkout remains isolated.
 
 ```yaml
@@ -131,6 +146,36 @@ jobs:
     with:
       checkout-submodules: "true"
 ```
+
+## Informational dependency checks
+
+After a successful strict Rust lint/build pass, the reusable workflow calls
+the pinned shared [dependency-quality action](https://github.com/codeandsolder/ci-workflows/blob/main/.github/actions/rust-dependency-quality/action.yml).
+The scan runs on the **same runner** without compiling the package again:
+`cargo-deny` audits RustSec advisories (including relevant unsound,
+unmaintained and yanked dependency records), while `cargo-machete` flags
+possibly unused direct dependencies using Cargo metadata. The checksum-pinned
+prebuilt `cargo-anoint` scanner reports overlapping providers, duplicate versions,
+obsolete dependencies and preferred organization forks across the all-feature,
+all-role platform union. Check feature and target exclusivity before acting.
+These reports add no mandatory pass threshold; tool failures are marked
+*unavailable* rather than presented as clean scans. Summaries are written to
+GitHub Actions; JSON diagnostics are uploaded as short-lived public artifacts
+or logged in private jobs.
+
+To avoid duplicate scanning when a caller has several jobs for the same
+Cargo workspace (for example, a native build and two cross-target compile
+checks), keep `dependency-quality` enabled on one job and set
+`dependency-quality: false` on redundant legs. It defaults to `true`.
+The external registry 72-hour quarantine stays a separate mandatory check.
+
+`cargo-machete` only reads source and metadata, so an apparent unused
+dependency could be referenced by build-generated code, FFI, special target
+configurations, or features. Inspect candidates before removing them.
+Individual false positives can be documented via
+`[package.metadata.cargo-machete]` or
+`[workspace.metadata.cargo-machete]` with
+`ignored = ["dependency_name"]`. Such ignores do not affect the RustSec scan.
 
 ## Policy
 
@@ -172,6 +217,10 @@ policy checker rejects `#[allow]` entirely and rejects `#[expect]` for:
   and `dbg_macro`;
 - undocumented unsafe blocks and missing unsafe API documentation;
 - blocking lock guards held across await;
+- the attribute-documentation lints `must_use_without_reason` and
+  `deprecated_attributes_without_note` (Clippy checks its supported attribute
+  forms; meaningful messages and type/trait must-use reasons are also review
+  requirements, not universally compiler-checked);
 - rustc `unexpected_cfgs`, `unsafe_op_in_unsafe_fn`, and stale lint
   expectations;
 - every lint that the current nightly places in Clippy's `correctness`,
@@ -203,7 +252,7 @@ Handwritten source and compiler configuration are checked before Clippy runs:
   `--force-warn`, both of which can turn a command-line deny into a
   non-failing warning.
 
-The checker obtains group membership from `clippy-driver +nightly -W help` at
+The checker obtains group membership from `clippy-driver -W help` at
 runtime instead of maintaining a stale copied list. This closes the suppression
 gap left by keeping whole groups at `deny` for proc-macro compatibility.
 

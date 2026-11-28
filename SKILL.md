@@ -1,7 +1,7 @@
 ---
 name: rust-skills
 description: >
-  Comprehensive Rust coding guidelines with 337 rules across 26 categories.
+  Comprehensive Rust coding guidelines with 353 rules across 26 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
   error handling, async patterns, concurrency, unsafe code, API design, memory
   optimization, performance, numeric safety, conversions, serde, pattern
@@ -23,7 +23,7 @@ metadata:
 
 # Rust Best Practices
 
-Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 337 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.100 (2024 edition).
+Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 353 rules across 26 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.100 (2024 edition).
 
 ## When to Apply
 
@@ -44,9 +44,9 @@ Reference these guidelines when:
 | 1 | Ownership & Borrowing | CRITICAL | `own-` | 16 |
 | 2 | Error Handling | CRITICAL | `err-` | 17 |
 | 3 | Memory Optimization | CRITICAL | `mem-` | 25 |
-| 4 | Unsafe Code | CRITICAL | `unsafe-` | 10 |
-| 5 | API Design | HIGH | `api-` | 20 |
-| 6 | Async/Await | HIGH | `async-` | 21 |
+| 4 | Unsafe Code | CRITICAL | `unsafe-` | 13 |
+| 5 | API Design | HIGH | `api-` | 21 |
+| 6 | Async/Await | HIGH | `async-` | 23 |
 | 7 | Concurrency | HIGH | `conc-` | 4 |
 | 8 | Compiler Optimization | HIGH | `opt-` | 15 |
 | 9 | Numeric & Arithmetic Safety | HIGH | `num-` | 5 |
@@ -60,11 +60,11 @@ Reference these guidelines when:
 | 17 | Closures | MEDIUM | `closure-` | 6 |
 | 18 | Collections | MEDIUM | `coll-` | 6 |
 | 19 | Naming Conventions | MEDIUM | `name-` | 18 |
-| 20 | Testing | MEDIUM | `test-` | 21 |
-| 21 | Documentation | MEDIUM | `doc-` | 16 |
-| 22 | Observability | MEDIUM | `obs-` | 7 |
-| 23 | Performance Patterns | MEDIUM | `perf-` | 18 |
-| 24 | Project Structure | LOW | `proj-` | 19 |
+| 20 | Testing | MEDIUM | `test-` | 23 |
+| 21 | Documentation | MEDIUM | `doc-` | 17 |
+| 22 | Observability | MEDIUM | `obs-` | 8 |
+| 23 | Performance Patterns | MEDIUM | `perf-` | 19 |
+| 24 | Project Structure | LOW | `proj-` | 24 |
 | 25 | Clippy & Linting | LOW | `lint-` | 20 |
 | 26 | Anti-patterns | REFERENCE | `anti-` | 21 |
 
@@ -80,7 +80,7 @@ Reference these guidelines when:
 - [`own-arc-shared`](rules/own-arc-shared.md) - Use `Arc<T>` when multiple owners may cross thread boundaries; add synchronization only for mutation that actually requires it
 - [`own-rc-single-thread`](rules/own-rc-single-thread.md) - Use `Rc<T>` for shared ownership that is confined to one thread
 - [`own-refcell-interior`](rules/own-refcell-interior.md) - Use `RefCell<T>` when thread-local shared access genuinely needs runtime-checked interior mutability
-- [`own-mutex-interior`](rules/own-mutex-interior.md) - Use the right `Mutex<T>` for the execution model: `std`/`parking_lot` for synchronous code, `tokio::sync::Mutex` for async code
+- [`own-mutex-interior`](rules/own-mutex-interior.md) - Choose locking from critical-section semantics and contention; handle poisoning explicitly and keep synchronous locks out of suspension points
 - [`own-rwlock-readers`](rules/own-rwlock-readers.md) - Choose `RwLock<T>` when concurrent readers materially help the measured workload, not from a fixed read/write ratio
 - [`own-copy-small`](rules/own-copy-small.md) - Implement `Copy` for small, simple types
 - [`own-clone-explicit`](rules/own-clone-explicit.md) - Use `Clone` to make non-`Copy` duplication explicit, but do not infer a universal allocation or cost model from `.clone()`
@@ -142,15 +142,18 @@ Reference these guidelines when:
 ### 4. Unsafe Code (CRITICAL)
 
 - [`unsafe-safety-comment`](rules/unsafe-safety-comment.md) - Write a `// SAFETY:` comment above every `unsafe` block and a `# Safety` section in every `unsafe fn`.
-- [`unsafe-minimize-scope`](rules/unsafe-minimize-scope.md) - Keep `unsafe` blocks as small as possible — mark only the operation that requires unsafety, not the surrounding safe code.
-- [`unsafe-miri-ci`](rules/unsafe-miri-ci.md) - Run `cargo miri test` in CI for every crate that contains `unsafe` code.
+- [`unsafe-minimize-scope`](rules/unsafe-minimize-scope.md) - Keep unsafe operations local, but make the safe boundary enforce every precondition; small unsafe blocks alone do not establish soundness
+- [`unsafe-miri-ci`](rules/unsafe-miri-ci.md) - Exercise unsafe abstractions and their safe callers with Miri; combine dynamic checks with invariant review and native integration tests
 - [`unsafe-maybeuninit`](rules/unsafe-maybeuninit.md) - Use `MaybeUninit<T>` for uninitialized memory; never use `mem::uninitialized()` or `mem::zeroed()` for types with validity invariants.
 - [`unsafe-extern-block`](rules/unsafe-extern-block.md) - In Rust 2024, use `unsafe extern { }` blocks and mark an item `safe` only when every safe Rust caller can satisfy its contract.
 - [`unsafe-send-sync-manual`](rules/unsafe-send-sync-manual.md) - Justify manual `Send`/`Sync` from invariants enforced by the type and its dependencies, not from hoped-for caller behavior
-- [`unsafe-no-mangle-unsafe`](rules/unsafe-no-mangle-unsafe.md) - In Rust 2024, write `#[unsafe(no_mangle)]`, `#[unsafe(export_name = "...")]`, and `#[unsafe(link_section = "...")]` — not the bare attribute forms.
+- [`unsafe-no-mangle-unsafe`](rules/unsafe-no-mangle-unsafe.md) - Make symbol identity, ABI and linker-section preconditions explicit when using unsafe attributes; use Edition 2024 attribute syntax
 - [`unsafe-strict-provenance`](rules/unsafe-strict-provenance.md) - Prefer strict provenance APIs (`ptr.addr()`, `ptr.map_addr()`, `ptr.with_addr()`) over integer-pointer round-tripping (`as usize` / `as *const T`); prefer raw borrow syntax (`&raw const x` / `&raw mut x`) over `addr_of!` / `addr_of_mut!`.
 - [`unsafe-cell-access`](rules/unsafe-cell-access.md) - Treat Rust 1.100 `UnsafeCell` accessors as explicit aliasing contracts, not as permission to manufacture simultaneous references
 - [`unsafe-conjure-zst`](rules/unsafe-conjure-zst.md) - Use Rust 1.100 `mem::conjure_zst` only when constructing an inhabited zero-sized value is proven sound
+- [`unsafe-ffi-boundary`](rules/unsafe-ffi-boundary.md) - Keep foreign ABI conversion and ownership contracts at a narrow adapter boundary; expose normal Rust domain types behind it
+- [`unsafe-untrusted-safe-code`](rules/unsafe-untrusted-safe-code.md) - Never make memory safety depend on the correctness of a safe trait implementation, callback, or other caller-controlled safe behavior
+- [`unsafe-unwind-safety`](rules/unsafe-unwind-safety.md) - Preserve memory safety and ownership invariants at every unwind, early return, cancellation and safe-leak boundary
 
 ### 5. API Design (HIGH)
 
@@ -174,6 +177,7 @@ Reference these guidelines when:
 - [`api-bon-builder`](rules/api-bon-builder.md) - Use `bon` when typestate builders for structs or functions improve the API; account for proc-macro and typestate compile cost
 - [`api-do-not-recommend`](rules/api-do-not-recommend.md) - Use `#[diagnostic::do_not_recommend]` on legal trait impls whose appearance in diagnostics would usually mislead callers
 - [`api-nutype-validated`](rules/api-nutype-validated.md) - Use `nutype` when generated sanitization, validation, and invariant-preserving trait impls materially simplify a public newtype API
+- [`api-deprecation-note`](rules/api-deprecation-note.md) - When deliberately retaining a deprecated API, document its version and actionable migration in the attribute; do not retain obsolete APIs without an actual compatibility requirement
 
 ### 6. Async/Await (HIGH)
 
@@ -198,6 +202,8 @@ Reference these guidelines when:
 - [`async-blocking-detection`](rules/async-blocking-detection.md) - Detect async worker stalls with latency/console instrumentation; treat blocking-pool metrics as pool pressure, not proof that async workers are blocked
 - [`async-runtime-metrics`](rules/async-runtime-metrics.md) - Use Tokio runtime metrics as scheduler telemetry, and distinguish stable metrics from `tokio_unstable` instrumentation
 - [`async-structured-concurrency`](rules/async-structured-concurrency.md) - Combine `JoinSet` + `CancellationToken` + `select!` for structured async task management
+- [`async-cooperative-budget`](rules/async-cooperative-budget.md) - Bound work per async scheduling turn and batch ready operations when it improves throughput without violating latency or cancellation requirements
+- [`async-future-layout`](rules/async-future-layout.md) - Measure hot future state size and retain only the data needed across suspension points; preserve laziness, lifetime, and cancellation semantics
 
 ### 7. Concurrency (HIGH)
 
@@ -212,16 +218,16 @@ Reference these guidelines when:
 - [`opt-inline-always-rare`](rules/opt-inline-always-rare.md) - Treat `#[inline(always)]` as a strong optimization hint, not a command; use it only when measurement justifies it.
 - [`opt-inline-never-cold`](rules/opt-inline-never-cold.md) - Use cold-path and inlining annotations as measured optimization hints, not source-level guarantees
 - [`opt-cold-unlikely`](rules/opt-cold-unlikely.md) - Use `#[cold]` or `core::hint::cold_path()` only when an unlikely path is known or measured to matter.
-- [`opt-likely-hint`](rules/opt-likely-hint.md) - Use `cold_path()` and `select_unpredictable` for branch hints on stable Rust
-- [`opt-lto-release`](rules/opt-lto-release.md) - Enable LTO in release builds
-- [`opt-codegen-units`](rules/opt-codegen-units.md) - Set `codegen-units = 1` for maximum optimization in release builds
-- [`opt-pgo-profile`](rules/opt-pgo-profile.md) - Use Profile-Guided Optimization (PGO) for maximum performance
+- [`opt-likely-hint`](rules/opt-likely-hint.md) - Use measured branch-probability hints when ordinary code and profiles do not already convey the useful information
+- [`opt-lto-release`](rules/opt-lto-release.md) - Evaluate ThinLTO and fat LTO for the actual release artifact; choose based on measured optimization benefit and build cost
+- [`opt-codegen-units`](rules/opt-codegen-units.md) - Choose release codegen-unit count by measuring runtime, binary size, compilation cost and memory together
+- [`opt-pgo-profile`](rules/opt-pgo-profile.md) - Use representative profile-guided optimization when measured end-to-end gains justify its training and build costs
 - [`opt-target-cpu`](rules/opt-target-cpu.md) - Tune `target-cpu` only for deployment CPUs you actually control, and use explicit runtime dispatch for portable binaries
 - [`opt-bounds-check`](rules/opt-bounds-check.md) - Structure hot loops so bounds are easy to prove; verify optimized code before using unchecked indexing
 - [`opt-simd-portable`](rules/opt-simd-portable.md) - Treat portable SIMD as a semantic abstraction, not a speed guarantee: preserve scalar behavior, use safe vector memory operations, dispatch CPU-specific kernels correctly, and verify code generation and measured performance.
 - [`opt-cache-friendly`](rules/opt-cache-friendly.md) - Shape data around measured access patterns and working sets; do not assume one layout is universally cache-friendly
-- [`opt-cold-path`](rules/opt-cold-path.md) - Use `core::hint::cold_path()` to mark unlikely inline paths (Rust 1.95+)
-- [`opt-select-unpredictable`](rules/opt-select-unpredictable.md) - Use `core::hint::select_unpredictable()` for branchless conditional moves (Rust 1.88+)
+- [`opt-cold-path`](rules/opt-cold-path.md) - Use `core::hint::cold_path()` to describe a measured unlikely path without extracting a function just to attach an attribute (Rust 1.95+)
+- [`opt-select-unpredictable`](rules/opt-select-unpredictable.md) - Consider `core::hint::select_unpredictable` for measured, hard-to-predict value selections; neither branchless lowering nor constant-time execution is guaranteed (Rust 1.88+)
 - [`opt-sample-profile`](rules/opt-sample-profile.md) - Use stable Rust 1.100 `-Cprofile-sample-use` for measured sample-based PGO when the profiler and target match the build
 
 ### 9. Numeric & Arithmetic Safety (HIGH)
@@ -239,7 +245,7 @@ Reference these guidelines when:
 - [`type-enum-states`](rules/type-enum-states.md) - Use enums when a value is in exactly one of several mutually exclusive states
 - [`type-option-nullable`](rules/type-option-nullable.md) - Use `Option<T>` when absence is an ordinary state; use `Result<T, E>` when callers need failure information
 - [`type-result-fallible`](rules/type-result-fallible.md) - Use `Result<T, E>` when an operation can fail with useful error information
-- [`type-phantom-marker`](rules/type-phantom-marker.md) - Use `PhantomData` for zero-cost type markers
+- [`type-phantom-marker`](rules/type-phantom-marker.md) - Use PhantomData to express actual ownership, borrowing, variance and auto-trait relationships without storing a value; use PhantomPinned for deliberate pinning invariants
 - [`type-never-diverge`](rules/type-never-diverge.md) - Use `!` as the return type of functions that never return normally
 - [`type-generic-bounds`](rules/type-generic-bounds.md) - Put each trait bound on the API surface that actually requires it
 - [`type-no-stringly`](rules/type-no-stringly.md) - Replace durable stringly-typed states and identifiers with enums or domain types, while keeping text parsing at system boundaries
@@ -248,9 +254,9 @@ Reference these guidelines when:
 - [`type-display-vs-debug`](rules/type-display-vs-debug.md) - Use `Display` for user-facing output and `Debug` for diagnostics; never swap them
 - [`type-numeric-fmt`](rules/type-numeric-fmt.md) - Implement `LowerHex`, `UpperHex`, `Octal`, and `Binary` for numeric newtypes
 - [`type-derive-more-boilerplate`](rules/type-derive-more-boilerplate.md) - Use `derive_more` to remove mechanical trait boilerplate when the generated trait semantics are actually part of your API
-- [`type-newtype-repr-transparent`](rules/type-newtype-repr-transparent.md) - Use `#[repr(transparent)]` only when a newtype intentionally promises the wrapped field's layout or ABI
 - [`type-nonzero-intrinsics`](rules/type-nonzero-intrinsics.md) - Use `NonZero<T>` when zero is invalid, and use only operations whose result semantics preserve that invariant
 - [`type-nutype-validated`](rules/type-nutype-validated.md) - Use validated newtypes to make invalid states unrepresentable; `nutype` is useful when generated constructors and invariant-preserving trait impls justify a proc macro
+- [`type-named-fields`](rules/type-named-fields.md) - Name domain-record fields and distinct semantic values; use tuples for small local structural groupings or genuine newtypes
 
 ### 11. Trait & Generics Design (MEDIUM)
 
@@ -367,6 +373,8 @@ Reference these guidelines when:
 - [`test-insta-snapshot`](rules/test-insta-snapshot.md) - Use `insta` for snapshot/approval testing
 - [`test-nextest-workflow`](rules/test-nextest-workflow.md) - Use `cargo-nextest` for faster execution and CI partitioning
 - [`test-rstest-fixtures`](rules/test-rstest-fixtures.md) - Use `rstest` for parameterized tests, fixtures, and async test setup
+- [`test-independent-oracle`](rules/test-independent-oracle.md) - Derive expected behavior from an independent specification, reference implementation, known result, or meaningful property rather than duplicating the implementation under test
+- [`test-mutation-testing`](rules/test-mutation-testing.md) - Use focused mutation testing to discover semantic test gaps; investigate surviving meaningful mutants instead of maximizing a score
 
 ### 21. Documentation (MEDIUM)
 
@@ -386,6 +394,7 @@ Reference these guidelines when:
 - [`doc-hidden-public`](rules/doc-hidden-public.md) - Use `#[doc(hidden)]` only when a public item must remain callable but should be omitted from normal generated documentation
 - [`doc-include-str`](rules/doc-include-str.md) - Use `#[doc = include_str!("...")]` when an external text file is intentionally part of an item's generated documentation
 - [`doc-test-edition-2024`](rules/doc-test-edition-2024.md) - Account for Edition 2024 rustdoc doctest merging, `standalone_crate`, and source-relative nested includes
+- [`doc-current-contract`](rules/doc-current-contract.md) - Document current observable behavior, prerequisites, invariants, and non-obvious reasons; keep obsolete implementation history out of authoritative guidance
 
 ### 22. Observability (MEDIUM)
 
@@ -396,6 +405,7 @@ Reference these guidelines when:
 - [`obs-levels-filter`](rules/obs-levels-filter.md) - Use log levels meaningfully and filter with `EnvFilter` / `RUST_LOG`
 - [`obs-error-chain`](rules/obs-error-chain.md) - Log errors with their full source chain, and log each error exactly once
 - [`obs-no-sensitive-data`](rules/obs-no-sensitive-data.md) - Never log secrets or PII; redact or skip them
+- [`obs-hotpath-overhead`](rules/obs-hotpath-overhead.md) - Measure both enabled and disabled telemetry costs; aggregate bounded, high-rate observations without hiding necessary diagnostic or audit information
 
 ### 23. Performance Patterns (MEDIUM)
 
@@ -408,7 +418,7 @@ Reference these guidelines when:
 - [`perf-chain-avoid`](rules/perf-chain-avoid.md) - Use `Iterator::chain` when it expresses the traversal clearly; split or materialize only when measurement shows the chained iterator is a bottleneck
 - [`perf-collect-into`](rules/perf-collect-into.md) - Reuse an existing destination with `clear()` + `extend()` on stable Rust; nightly `Iterator::collect_into` appends like `Extend::extend` and does not clear for you
 - [`perf-black-box-bench`](rules/perf-black-box-bench.md) - Use `std::hint::black_box` in benchmarks when compile-time knowledge could make the measured work unrealistically disappear or specialize.
-- [`perf-release-profile`](rules/perf-release-profile.md) - Optimize release profile settings
+- [`perf-release-profile`](rules/perf-release-profile.md) - Tune release profiles against real deployment goals; keep semantic settings explicit and preserve the diagnostic information needed by the project
 - [`perf-profile-first`](rules/perf-profile-first.md) - Measure representative workloads before choosing an optimization, then measure again after the change.
 - [`perf-ahash`](rules/perf-ahash.md) - Use a faster hasher (`ahash` / `FxHashMap`) when DoS resistance is not needed
 - [`perf-io-buffering`](rules/perf-io-buffering.md) - Wrap `Read`/`Write` in `BufReader`/`BufWriter` for many small operations
@@ -417,6 +427,7 @@ Reference these guidelines when:
 - [`perf-copy-range`](rules/perf-copy-range.md) - Treat `Copy` ranges as an ownership and ergonomics choice, not an automatic performance optimization
 - [`perf-extract-if`](rules/perf-extract-if.md) - Use `extract_if` when matching elements should be removed while their ownership is yielded to the caller.
 - [`perf-hint-apis`](rules/perf-hint-apis.md) - Use compiler hint APIs only when their semantics match a measured hot path; they are advisory optimizations, not code-generation guarantees
+- [`perf-benchmark-regression`](rules/perf-benchmark-regression.md) - Define representative performance contracts and detect regressions using reproducible, complementary measurements rather than a single timing or arbitrary threshold
 
 ### 24. Project Structure (LOW)
 
@@ -439,6 +450,11 @@ Reference these guidelines when:
 - [`proj-workspace-publish`](rules/proj-workspace-publish.md) - Use `cargo publish --workspace` for native workspace publishing (Rust 1.90+)
 - [`proj-cargo-artifact-layout`](rules/proj-cargo-artifact-layout.md) - Consume Cargo's supported artifact discovery interfaces instead of depending on intermediate build paths, especially with shared caches and worktrees
 - [`proj-cargo-publish-age`](rules/proj-cargo-publish-age.md) - Use Cargo 1.100's native dependency cooldown when new releases need time for review, while keeping lockfile changes intentional
+- [`proj-explicit-configuration`](rules/proj-explicit-configuration.md) - Parse configuration at application boundaries and pass typed values explicitly; never use the process environment as a hidden library or algorithm parameter.
+- [`proj-native-build-orchestration`](rules/proj-native-build-orchestration.md) - Prefer native Cargo build, test and artifact-discovery interfaces; express nontrivial orchestration as typed programs instead of Makefile or shell-based application logic.
+- [`proj-nightly-features`](rules/proj-nightly-features.md) - Use the fleet-approved dated nightly for maintained projects; track feature gates and remove them when the required API stabilizes
+- [`proj-explicit-startup`](rules/proj-explicit-startup.md) - Initialize application state and register services explicitly at the owning application boundary, not as hidden pre-main or library side effects
+- [`proj-rust-native-porting`](rules/proj-rust-native-porting.md) - Preserve the source program's intended algorithmic and domain contracts while redesigning ownership, failure channels, and architecture for Rust
 
 ### 25. Clippy & Linting (LOW)
 
@@ -454,9 +470,9 @@ Reference these guidelines when:
 - [`lint-rustfmt-check`](rules/lint-rustfmt-check.md) - Run cargo fmt --check in CI
 - [`lint-workspace-lints`](rules/lint-workspace-lints.md) - Configure lints at workspace level for consistent enforcement
 - [`lint-cfg-check`](rules/lint-cfg-check.md) - Enable `unexpected_cfgs` and declare known cfgs to catch feature-gate typos
-- [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Enable `clippy::nursery` lints selectively and re-check group membership when the toolchain changes
-- [`lint-cargo-unused-features`](rules/lint-cargo-unused-features.md) - Audit unused Cargo feature flags; distinguish Cargo 1.100’s stable lint infrastructure from the still-experimental feature lint
-- [`lint-dylint-custom`](rules/lint-dylint-custom.md) - Use Dylint for project-specific custom lints without forking clippy
+- [`lint-clippy-nursery-selected`](rules/lint-clippy-nursery-selected.md) - Keep all nursery lints enabled in shared strict CI; review genuine heuristic exceptions individually and re-check group membership when the toolchain changes
+- [`lint-cargo-unused-features`](rules/lint-cargo-unused-features.md) - Audit unused Cargo feature flags using their actual activation graph; Cargo 1.100 and the reviewed 1.102 nightly do not recognize an `unused_features` lint
+- [`lint-dylint-custom`](rules/lint-dylint-custom.md) - Use Dylint for compiler-resolved project-specific lints when existing Clippy and simpler static checks cannot express the contract
 - [`lint-edition-2024`](rules/lint-edition-2024.md) - Use the `rust_2024_compatibility` lint group and `cargo fix --edition` to audit edition-sensitive code before switching to Rust 2024
 - [`lint-lints-table`](rules/lint-lints-table.md) - Use the `[lints]` table in `Cargo.toml` for canonical lint configuration (Rust 1.74+)
 - [`lint-uplifted`](rules/lint-uplifted.md) - Track Clippy lints uplifted into rustc and adjacent compiler lint changes (Rust 1.86-1.100)

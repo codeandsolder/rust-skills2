@@ -117,7 +117,7 @@ If only a prefix is initialized, keep the remainder as `MaybeUninit<T>` or use a
 For nontrivial fallible construction, either:
 
 - initialize a complete `T` using ordinary safe code and then move/write it into the box;
-- track initialization state and explicitly drop already-initialized fields on error; or
+- track initialization state in an owning guard that drops already-initialized fields on error and unwind; or
 - use a higher-level abstraction whose API tracks initialized elements.
 
 The field-by-field technique is easiest to justify for plain data or APIs with an all-or-nothing initialization contract.
@@ -141,6 +141,8 @@ Use `new_uninit` because the initialization contract calls for it or because mea
 Creating references to an uninitialized `T` in order to initialize it is also invalid. Keep access through `MaybeUninit<T>` and raw pointers until the value is valid.
 
 ## See Also
+
+- [unsafe-unwind-safety](./unsafe-unwind-safety.md)
 
 - [unsafe-maybeuninit](unsafe-maybeuninit.md) — initialization and validity rules
 - [mem-box-large-variant](mem-box-large-variant.md) — boxing large enum variants

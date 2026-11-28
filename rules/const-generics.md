@@ -82,7 +82,7 @@ let result = xor_block([0u8; BLOCK], [0xFF; BLOCK]);
 
 ## Notes
 
-Const generics currently support integer, bool, and char types; floating-point and custom types are not yet stable. Default values for const generic parameters (`struct Buf<const N: usize = 64>`) remain unstable — callers must always supply the value explicitly. Where N can be inferred from a function argument, you rarely need to write it explicitly.
+Const generics currently support integer, bool, and char types; floating-point and custom types are not yet stable. Const parameter defaults on types (for example, `struct Buf<const N: usize = 64>`) are stable. Arbitrary expressions involving generic const parameters and custom const parameter types remain experimental; see [proj-nightly-features](proj-nightly-features.md). Where N can be inferred from a function argument, you rarely need to write it explicitly.
 
 ## See Also
 

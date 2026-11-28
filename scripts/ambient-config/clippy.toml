@@ -1,0 +1,9 @@
+# Advisory inventory: inspect the resolved operation at its owning boundary.
+disallowed-methods = [
+    { path = "std::env::var", reason = "review ambient configuration ownership" },
+    { path = "std::env::var_os", reason = "review ambient configuration ownership" },
+    { path = "std::env::vars", reason = "review ambient configuration ownership" },
+    { path = "std::env::vars_os", reason = "review ambient configuration ownership" },
+    { path = "std::env::set_var", reason = "review process-global mutation and safety" },
+    { path = "std::env::remove_var", reason = "review process-global mutation and safety" },
+]

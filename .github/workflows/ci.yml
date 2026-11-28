@@ -18,22 +18,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version: latest-known
-          enable-cache: false
       - name: Enforce PR workflow supersession across all caller workflows
-        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@9c14ef2d72423958c56944febc620ec50f01d65a # main
 
-      # Toolchain/target are pinned by checks/rust-toolchain.toml (Rust 1.100.0).
-      - uses: dtolnay/rust-toolchain@1.100.0
+      - name: Resolve one quarantined compiler
+        id: compiler
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@9c14ef2d72423958c56944febc620ec50f01d65a # main
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
-          targets: x86_64-unknown-linux-gnu
+          toolchain: ${{ steps.compiler.outputs.channel }}
+          targets: x86_64-unknown-linux-gnu,wasm32-wasip1
+          components: clippy,rustfmt
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@9c14ef2d72423958c56944febc620ec50f01d65a # main
         with:
-          rust-toolchain: "1.100.0"
+          rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
+      - name: Verify informational dependency scan wiring
+        run: node --test checks/dependency-quality-workflow.test.mjs checks/release-licenses.test.mjs
       # The exact same command contributors run locally.
       - name: Run checks
         env:
@@ -41,12 +43,90 @@ jobs:
           # normalize this before it changes cwd or dispatches fixture builds.
           CARGO_TARGET_DIR: checks/target
         run: bash checks/check.sh
-      - name: Validate packed skill
-        run: uv run --no-project python scripts/package_skill.py
+      - name: Build portable source policy
+        shell: bash
+        run: |
+          cargo test --locked --manifest-path policy-wasm/Cargo.toml --lib --bins --target-dir "$RUNNER_TEMP/source-policy"
+          cargo build --locked --release --target wasm32-wasip1 --manifest-path policy-wasm/Cargo.toml --target-dir "$RUNNER_TEMP/source-policy"
+      - name: Upload portable policy for cross-platform validation
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: source-policy-wasm
+          path: ${{ runner.temp }}/source-policy/wasm32-wasip1/release/source-policy.wasm
+          if-no-files-found: error
+      - name: Validate rebuilt and bundled policy
+        shell: bash
+        run: |
+          cargo test --locked --manifest-path policy-wasm/Cargo.toml --test source_policy_golden --target-dir "$RUNNER_TEMP/source-policy"
+          node --test policy-wasm/gitlink.test.mjs
+          node --test policy-wasm/token-golden.test.mjs
+          node checks/compare_workspace_policy.mjs "${{ steps.compiler.outputs.channel }}" "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm"
+          node policy-wasm/package.mjs verify "$RUNNER_TEMP/source-policy/wasm32-wasip1/release/source-policy.wasm" "${{ steps.compiler.outputs.channel }}"
+          node checks/compare_workspace_policy.mjs "${{ steps.compiler.outputs.channel }}" policy-wasm/module.json
+      - name: Strict lint portable policy
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: policy-wasm
+          CARGO_TARGET_DIR: ${{ runner.temp }}/source-policy
+        run: |
+          bash scripts/strict_clippy.sh --toolchain "${{ steps.compiler.outputs.channel }}"
+
+      - name: Strict lint native Rust CI tooling
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/ci-tool
+          CARGO_TARGET_DIR: ${{ runner.temp }}/ci-tool
+        run: bash scripts/strict_clippy.sh --toolchain "${{ steps.compiler.outputs.channel }}"
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@9c14ef2d72423958c56944febc620ec50f01d65a # main
+
+  cargo-release-age:
+    if: github.event_name == 'pull_request'
+    uses: codeandsolder/ci-workflows/.github/workflows/cargo-release-quarantine.yml@9c14ef2d72423958c56944febc620ec50f01d65a # main
+
+  portable-source-policy:
+    name: Portable source policy (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Resolve one quarantined compiler
+        id: compiler
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@9c14ef2d72423958c56944febc620ec50f01d65a # main
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: ${{ steps.compiler.outputs.channel }}
+          components: clippy
+      - name: Setup mandatory sccache
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@9c14ef2d72423958c56944febc620ec50f01d65a # main
+        with:
+          rust-toolchain: ${{ steps.compiler.outputs.channel }}
+          rustflags: ""
+      - name: Native Rust rules and compiler evidence regression tests
+        shell: bash
+        run: cargo test --locked --manifest-path checks/ci-tool/Cargo.toml --target-dir "$RUNNER_TEMP/ci-tool"
+      - name: Validate frozen Rust policy acceptance fixtures and Gitlink isolation
+        shell: bash
+        run: |
+          cargo test --locked --manifest-path policy-wasm/Cargo.toml --test source_policy_golden --target-dir "$RUNNER_TEMP/source-policy-golden"
+          node --test policy-wasm/gitlink.test.mjs
+          node --test policy-wasm/token-golden.test.mjs
+      - name: Validate the exact bundled artifact
+        shell: bash
+        run: |
+          node checks/compare_workspace_policy.mjs "${{ steps.compiler.outputs.channel }}" policy-wasm/module.json
+
+      - name: Finalize mandatory sccache
+        if: always()
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@9c14ef2d72423958c56944febc620ec50f01d65a # main
 
   strict-gate-self-test:
     name: Strict reusable gate self-test
@@ -57,17 +137,63 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Resolve one quarantined compiler
+        id: compiler
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@9c14ef2d72423958c56944febc620ec50f01d65a # main
+
       - name: Source-only lint policy action accepts generated-boundary fixture
         uses: ./.github/actions/source-lint-policy
         with:
           working-directory: checks/fixtures/strict-ci-generated-boundary
 
+      - name: Exercise the actual sparse provider checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          gate="$RUNNER_TEMP/sparse-rust-skills2-gate"
+          git clone --shared --no-checkout "$GITHUB_WORKSPACE" "$gate"
+          awk '$0 == "          sparse-checkout: |" { reading=1; next } reading && /^            / { sub(/^            /, ""); print; next } reading { exit }' .github/workflows/strict-rust.yml |
+            git -C "$gate" sparse-checkout set --no-cone --stdin
+          git -C "$gate" checkout --detach "$(git rev-parse HEAD)"
+          test -f "$gate/scripts/strict_clippy.sh"
+          test ! -e "$gate/scripts/workspace_test_policy.py"
+          test -f "$gate/.github/actions/rust-strict/clippy.toml"
+          test ! -e "$gate/policy-wasm/src"
+          cd checks/fixtures/strict-ci-generated-boundary
+          node "$gate/policy-wasm/check.mjs" "$gate/policy-wasm/module.json" "${{ steps.compiler.outputs.channel }}" false --all-targets
+
+      - name: Python gate skips setup for a Rust-only checkout
+        id: no-python
+        uses: ./.github/actions/python-strict
+        env:
+          RUST_SKILLS2_REPOSITORY_ROOT: ${{ github.workspace }}/checks/fixtures/strict-ci-pass
+
+      - name: Reject a broken Git inventory instead of skipping the gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          broken="$(mktemp -d "$RUNNER_TEMP/python-index.XXXXXX")"
+          trap 'rm -rf -- "$broken"' EXIT
+          git init -q "$broken"
+          printf invalid > "$broken/.git/index"
+          if RUST_SKILLS2_REPOSITORY_ROOT="$broken" bash scripts/strict_python.sh --probe; then
+            echo "Python gate accepted a broken Git index" >&2
+            exit 1
+          fi
+
       - name: Python action accepts strict CI-only Python
+        id: python-present
         uses: ./.github/actions/python-strict
         env:
           RUST_SKILLS2_REPOSITORY_ROOT: ${{ github.workspace }}/checks/fixtures/strict-python-pass
         with:
           ban-python-outside-ci: "true"
+
+      - name: Assert both Python inventory outcomes
+        shell: bash
+        run: |
+          test "${{ steps.no-python.outputs.has-python }}" = false
+          test "${{ steps.python-present.outputs.has-python }}" = true
 
       - name: Python gate resolves locked project dependencies without polluting the checkout
         shell: bash
@@ -141,10 +267,81 @@ jobs:
           echo "Python gate correctly rejected a ty violation"
 
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@9c14ef2d72423958c56944febc620ec50f01d65a # main
         with:
-          rust-toolchain: nightly
+          rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
+
+      - name: Split strict phases preserve the real gate and reject mismatched plans
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-pass
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          STRICT_TOOLCHAIN: ${{ steps.compiler.outputs.channel }}
+        run: |
+          set -euo pipefail
+          plan_dir="$(mktemp -d "$RUNNER_TEMP/strict-phases.XXXXXX")"
+          trap 'rm -rf -- "$plan_dir"' EXIT
+          rustup component add --toolchain "$STRICT_TOOLCHAIN" rustfmt
+          strict=(bash scripts/strict_clippy.sh --toolchain "$STRICT_TOOLCHAIN")
+          "${strict[@]}" --phase format
+          "${strict[@]}" --phase preflight --plan "$plan_dir/pass"
+          if RUST_SKILLS2_CARGO_ARGS="--locked --lib" "${strict[@]}" --phase compile --plan "$plan_dir/pass"; then
+            echo "Compilation accepted a plan from another selector" >&2
+            exit 1
+          fi
+          if "${strict[@]}" --phase compile --plan "$plan_dir/absent"; then
+            echo "Compilation accepted an absent plan" >&2
+            exit 1
+          fi
+          "${strict[@]}" --phase compile --plan "$plan_dir/pass"
+          if RUST_SKILLS2_WORKING_DIRECTORY=checks/fixtures/strict-ci-blocked-allow "${strict[@]}" --phase preflight --plan "$plan_dir/blocked"; then
+            echo "Preflight accepted a forbidden source suppression" >&2
+            exit 1
+          fi
+          test ! -e "$plan_dir/blocked"
+
+      - name: Attribute notes and reasons pass
+        uses: ./.github/actions/rust-strict
+        with:
+          working-directory: checks/fixtures/strict-ci-attribute-reasons
+          cargo-args: "--locked --lib"
+
+      - name: Attribute reasons remain mandatory in strict and relaxed tests
+        shell: bash
+        env:
+          CARGO_TERM_COLOR: never
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-attribute-reasons
+          RUST_SKILLS2_CARGO_ARGS: "--locked --all-targets"
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          for relaxation in false true; do
+            if output=$(RUST_SKILLS2_ALLOW_TEST_PANICS="$relaxation" bash scripts/strict_clippy.sh 2>&1); then
+              echo "attribute documentation unexpectedly passed (relaxed=$relaxation)" >&2
+              exit 1
+            fi
+            printf '%s\n' "$output"
+            [[ "$output" == *'error: `deprecated` attribute without note'* ]]
+            [[ "$output" == *'error: `#[must_use]` attribute without a reason'* ]]
+            [[ "$output" == *'requested on the command line with `-D clippy::deprecated-attributes-without-note`'* ]]
+            [[ "$output" == *'requested on the command line with `-D clippy::must-use-without-reason`'* ]]
+          done
+
+      - name: Both attribute reason expectations are rejected
+        shell: bash
+        env:
+          RUST_SKILLS2_WORKING_DIRECTORY: checks/fixtures/strict-ci-blocked-attribute-expect
+          RUST_SKILLS2_ACTION_DIR: ${{ github.workspace }}/.github/actions/rust-strict
+        run: |
+          set -euo pipefail
+          if output=$(bash scripts/strict_clippy.sh 2>&1); then
+            echo "attribute documentation suppression unexpectedly passed" >&2
+            exit 1
+          fi
+          printf '%s\n' "$output"
+          [[ "$output" == *'suppressing clippy::deprecated_attributes_without_note would weaken suppression policy'* ]]
+          [[ "$output" == *'suppressing clippy::must_use_without_reason would weaken suppression policy'* ]]
 
       - name: Passing fixture
         uses: ./.github/actions/rust-strict
@@ -519,5 +716,5 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@034d5d9ead046ab8841a02f9a56d239e0482e59f # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@9c14ef2d72423958c56944febc620ec50f01d65a # main
 

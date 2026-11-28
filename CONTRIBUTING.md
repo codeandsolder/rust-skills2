@@ -11,7 +11,7 @@ adding a rule, improving an existing one, or fixing an example.
    `async-`, `conc-`, `opt-`, `num-`, `type-`, `trait-`, `conv-`, `const-`,
    `serde-`, `pat-`, `macro-`, `closure-`, `coll-`, `name-`, `test-`, `doc-`,
    `obs-`, `perf-`, `proj-`, `lint-`, `anti-`). To propose a brand-new category,
-   add it to `CATEGORIES` in `checks/gen_index.py`.
+   add it to `CATEGORIES` in `checks/ci-tool/src/lib.rs`.
 
 2. **Follow the format** of existing rules exactly:
 
@@ -54,7 +54,7 @@ adding a rule, improving an existing one, or fixing an example.
    never hand-edit the generated table or Quick Reference:
 
    ```bash
-   uv run --no-project python checks/gen_index.py
+   cargo run --locked --manifest-path checks/ci-tool/Cargo.toml -- . index
    ```
 
 5. **Add a `CHANGELOG.md` entry** under the next version.
@@ -62,6 +62,7 @@ adding a rule, improving an existing one, or fixing an example.
 ## Before opening a PR
 
 Run the same checks CI runs:
+Use a sibling checkout of the pinned `codeandsolder/ci-workflows` provider.
 
 ```bash
 bash checks/check.sh

@@ -37,7 +37,7 @@ impl RequestBuilder {
         Self { path: path.into() }
     }
 
-    #[must_use]
+    #[must_use = "the updated builder replaces the consumed builder"]
     fn with_prefix(mut self, prefix: &str) -> Self {
         self.path = format!("{prefix}{}", self.path);
         self
@@ -76,7 +76,7 @@ fn main() {
 }
 ```
 
-Ignoring `parse_port("443")` already warns because `Result` is must-use. Likewise, iterator adapters inherit the iterator type's must-use behavior.
+Ignoring `parse_port("443")` already warns because `Result` is must-use. Likewise, must-use iterator return types warn when discarded; do not assume every custom type implementing `Iterator` automatically inherits an attribute.
 
 ## When the Return Value Is Optional Information
 
@@ -99,7 +99,7 @@ Whether that return value deserves `#[must_use]` is an API-design decision, not 
 
 The language has a narrow exception for must-use container types that cannot represent the must-handle branch. `Result<(), E>` does not trigger `unused_must_use` when `E` is uninhabited; likewise for `ControlFlow<B, ()>` when `B` is uninhabited.
 
-Use a stable uninhabited type in examples. `core::convert::Infallible` works on stable Rust; using `!` as a generic type argument is still not the right stable example.
+Both `core::convert::Infallible` and `!` are available on the Rust 1.100 baseline; `Infallible` is an alias for `!` on that baseline.
 
 ```rust
 #![deny(unused_must_use)]
@@ -138,7 +138,7 @@ fn main() {
 }
 ```
 
-Prefer a message that tells the caller why discarding the value is suspicious. Repeating “must use this value” adds little beyond the lint itself.
+The strict nightly gate denies `clippy::must_use_without_reason`. On the reviewed Clippy 1.102 nightly, it diagnoses bare function attributes but does not diagnose the bare struct and trait attributes tested; it does not judge the explanatory quality of the string. For handwritten APIs, supply a meaningful message on type, trait and function attributes regardless of whether the compiler diagnoses the omission. Explain why discarding the value is suspicious. Repeating “must use this value” adds little beyond the lint itself.
 
 ## Lint Policy
 
@@ -154,10 +154,11 @@ fn main() {
 
 An explicit `let _ = ...` communicates that discarding was intentional. Reserve stronger local handling (`?`, `match`, logging, propagation) for cases where the value actually matters.
 
-Clippy's `must_use_candidate`, `return_self_not_must_use`, and `double_must_use` can help review API consistency, but enabling them is a project choice rather than a universal requirement.
+The shared gate already enables `must_use_candidate`, `return_self_not_must_use`, and `double_must_use` through its lint groups. A genuine false positive may use a narrow explanation where that lint is suppressible. Do not add meaningless attributes just to silence a candidate diagnostic.
 
 ## See Also
 
+- [api-deprecation-note](./api-deprecation-note.md) — actionable deprecation notes
 - [api-builder-must-use](./api-builder-must-use.md) — builder-specific guidance
 - [err-result-over-panic](./err-result-over-panic.md) — handling recoverable errors
 - [lint-deny-correctness](./lint-deny-correctness.md) — lint policy

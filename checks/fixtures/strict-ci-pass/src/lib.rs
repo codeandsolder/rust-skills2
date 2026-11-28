@@ -22,7 +22,7 @@ pub const fn allowed_pedantic_expectation(value: u8) -> u8 {
 }
 
 /// Adds two small integers.
-#[must_use]
+#[must_use = "the computed sum is the result"]
 pub const fn add(left: u8, right: u8) -> u8 {
     left.saturating_add(right)
 }

@@ -142,7 +142,7 @@ Use a dependency such as `bon` when its generated API matches your needs; do not
 
 ## `#[must_use]`
 
-Marking the builder type `#[must_use]` is useful when silently dropping a configured builder is probably a mistake. Method-level `#[must_use]` can also help with APIs whose setters consume and return `Self`, but do not add attributes mechanically where they create noise without catching realistic mistakes.
+Marking the builder type `#[must_use = "builders do nothing unless you call build()"]` is useful when silently dropping a configured builder is probably a mistake. Method-level `#[must_use]` can also help with APIs whose setters consume and return `Self`, but do not add attributes mechanically where they create noise without catching realistic mistakes.
 
 ## When a Builder Is Overkill
 

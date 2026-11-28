@@ -75,8 +75,13 @@ Avoid magic defaults such as "start at 64". Tune only when metrics and workload 
 - Started blocking tasks are not cancellable merely by aborting the async handle.
 - Measure latency and throughput rather than using universal duration thresholds.
 
+## Small Work and Budgeting
+
+For small bounded work units in an async loop, cooperative budget checks can prevent repeatedly-ready operations from monopolizing a worker. A budget is not a time limit or a preemption mechanism. Do not use it to justify long synchronous work in an async poll.
+
 ## See Also
 
+- [async-cooperative-budget](./async-cooperative-budget.md)
 - [async-tokio-fs](async-tokio-fs.md) — async filesystem APIs
 - [async-no-lock-await](async-no-lock-await.md) — blocking versus async synchronization
 - [`tokio::task::spawn_blocking`](https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html)

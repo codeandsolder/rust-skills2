@@ -204,8 +204,13 @@ mod tests {
 }
 ```
 
+## Assert the Contract
+
+Clear structure does not establish an independent expected result. Derive expected behavior from the specification, independently computed reference or known input/output vector. Test failures, boundaries and observable effects; avoid reimplementing the function inside the assertion.
+
 ## See Also
 
+- [test-independent-oracle](./test-independent-oracle.md)
 - [test-descriptive-names](./test-descriptive-names.md) - Test naming
 - [test-fixture-raii](./test-fixture-raii.md) - Test setup/teardown
 - [test-rstest-fixtures](./test-rstest-fixtures.md) - rstest fixtures and parameterized tests

@@ -237,8 +237,13 @@ A bounded queue makes overload visible by applying backpressure. An unbounded qu
 - Use `reserve()` when capacity should be secured before expensive message creation.
 - Reach for `PollSender` only when integrating with `Sink`/poll-based APIs.
 
+## Batch Ready Messages
+
+When processing many small messages, consider a bounded `recv_many` call with reusable storage and a positive limit. It appends to the supplied vector and reports zero after closure and drainage. Define ownership after receiving a batch; cancellation of the receive itself differs from cancellation during subsequent processing. Measure throughput and tail latency before choosing the limit.
+
 ## See Also
 
+- [async-cooperative-budget](./async-cooperative-budget.md)
 - [async-bounded-channel](./async-bounded-channel.md) — Backpressure and queue capacity
 - [async-oneshot-response](./async-oneshot-response.md) — Request/response channels
 - [async-broadcast-pubsub](./async-broadcast-pubsub.md) — Multiple receivers

@@ -80,8 +80,8 @@ Create `rustfmt.toml` for custom settings:
 edition = "2024"
 max_width = 100
 use_small_heuristics = "Max"
-imports_granularity = "Module"    # Stable since rustfmt 1.72
-# group_imports = "StdExternalCrate"  # Unstable; requires nightly + unstable_features
+imports_granularity = "Module"    # Works on stable rustfmt 1.11 (Rust 1.100)
+group_imports = "StdExternalCrate"  # Works on stable rustfmt 1.11
 reorder_imports = true
 ```
 
@@ -149,25 +149,24 @@ const MATRIX: [[i32; 4]; 4] = [
 ];
 ```
 
-## Nightly Features
+## Toolchain-Specific Options
 
-Some options still require nightly:
+The following options were exercised on **stable rustfmt 1.11.0** bundled
+with Rust 1.100.0. Import grouping and granularity (including `Crate` and
+`Item`) no longer require nightly on this baseline; comment wrapping is also
+available.
 
 ```toml
-# rustfmt.toml (nightly only)
-unstable_features = true
-imports_granularity = "Crate"  # "Module" is stable, "Crate" is nightly
-group_imports = "StdExternalCrate"  # Unstable; requires nightly + unstable_features
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
 wrap_comments = true
-format_code_in_doc_comments = true
 ```
 
-```bash
-# Use nightly rustfmt
-cargo +nightly fmt
-```
-
-> Note: `imports_granularity = "Module"` has been stable since rustfmt 1.72 (bundled with Rust 1.72+). Only `"Crate"` and `"Item"` levels require nightly. `group_imports` (any value other than the default `"Preserve"`) is also unstable and requires nightly + `unstable_features = true`.
+Do not infer that every rustfmt option works on an older stable toolchain or
+that every future formatter option is stable. Check the actual formatter's
+version and test options on representative input. Use `cargo +nightly fmt`
+when the project requires nightly syntax or formatting options, and pin a
+date when reproducible output is required.
 
 ## IDE Integration
 

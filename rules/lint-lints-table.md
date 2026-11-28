@@ -59,13 +59,13 @@ This lint checks manifest dependencies after relevant package targets have been
 built and does **not** currently report unused dev dependencies. For inherited
 policy, use `[workspace.lints.cargo]` in the workspace root and opt in via
 `[lints] workspace = true` on each member. Do not conflate this stable lint
-with Cargo's experimental `unused_features` lint.
+with the unrecognized `unused_features` lint name.
 
 See [lint-cargo-unused-dependencies](./lint-cargo-unused-dependencies.md).
 
 ## Priority System
 
-Since Rust 1.74, lint levels support a `priority` field. Lower values win when multiple configs apply the same lint. Use `priority = -1` for category-level configs so individual lint overrides (which default to `priority = 0`) take precedence:
+Since Rust 1.74, lint levels support a `priority` field. Higher values win when multiple configs apply the same lint. Use `priority = -1` for category-level configs so individual lint overrides (which default to `priority = 0`) take precedence:
 
 ```toml
 [lints.clippy]

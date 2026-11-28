@@ -168,10 +168,12 @@ validate_job() {
         fi
         revision=$(git_work rev-parse HEAD)
         scope_diff "$tip" "$revision"
-        inventory "$work" "$revision" "$state/build/validator"
-        if [[ "$direct_default" == true && -f "$state/issues.json" ]]; then
-            [[ "$(jq length "$state/inventory/$revision.json")" == 0 ]] || die "candidate has strict diagnostics"
-        else
+        # Direct-main issue campaigns have one whole-workspace policy gate:
+        # the repository's actual hosted CI. Do not apply a second, pinned
+        # historical Clippy inventory or require unrelated main debt to vanish
+        # before focused implementation work can be published.
+        if [[ "$direct_default" != true || ! -f "$state/issues.json" ]]; then
+            inventory "$work" "$revision" "$state/build/validator"
             compare_inventory "$tip" "$revision"
         fi
         git_work diff --no-color -U0 "$tip" "$revision" >"$state/logs/$revision.patch"

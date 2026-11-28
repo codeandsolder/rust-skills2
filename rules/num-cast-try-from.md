@@ -4,7 +4,7 @@
 
 ## Why It Matters
 
-The `as` cast silently truncates or wraps on narrowing (`300u32 as u8 == 44`) and produces surprising results on float-to-integer conversion (values outside range saturate to the type's min/max since Rust 1.45, but `NaN` becomes `0`). These behaviors are easy to miss during code review and impossible to catch at runtime without tests. `From`/`Into` are lossless by design and will not compile for lossy conversions; `TryFrom`/`TryInto` return `Result` and make the fallibility explicit.
+Integer `as` casts intentionally truncate or reinterpret bits on narrowing (`300u32 as u8 == 44`) and produces surprising results on float-to-integer conversion (values outside range saturate to the type's min/max since Rust 1.45, but `NaN` becomes `0`). These behaviors are easy to miss. For primitive integer conversions, use the standard lossless `From` implementations where available and range-checked `TryFrom` otherwise. User-defined trait implementations are semantic contracts, not compiler proofs of losslessness.
 
 ## Bad
 
@@ -24,6 +24,7 @@ fn widen(x: u8) -> u32 {
 
 ## Good
 
+<!-- rust-check: run -->
 ```rust
 use std::convert::TryFrom;
 
@@ -39,50 +40,43 @@ fn narrow(x: u32) -> Result<u8, <u8 as TryFrom<u32>>::Error> {
     // or: x.try_into()
 }
 
-// float → integer: validate the range manually before casting
+// Float -> index: truncate nonnegative values, then check the integer bound.
 fn float_to_index(f: f64, len: usize) -> Option<usize> {
-    if f.is_nan() || f < 0.0 || f >= len as f64 {
+    // The exclusive integer range endpoint is 2^usize::BITS, exactly
+    // representable as f64 on supported Rust pointer widths.
+    let upper = (usize::MAX as f64) + 1.0;
+    if !f.is_finite() || f < 0.0 || f >= upper {
         return None;
     }
-    Some(f as usize)  // `as` is acceptable here: range is verified above
+    let index = f as usize;
+    (index < len).then_some(index)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::convert::TryFrom;
-
-    #[test]
-    fn widen_is_lossless() {
-        assert_eq!(widen(255), 255u32);
-    }
-
-    #[test]
-    fn narrow_errors_on_overflow() {
-        assert!(narrow(300).is_err());
-        assert_eq!(narrow(200), Ok(200u8));
-    }
-
-    #[test]
-    fn float_to_index_rejects_nan_and_negative() {
-        assert_eq!(float_to_index(f64::NAN, 10), None);
-        assert_eq!(float_to_index(-1.0, 10), None);
-        assert_eq!(float_to_index(3.9, 10), Some(3));
-    }
-
-    #[test]
-    fn as_cast_truncation_footgun() {
-        // demonstrating why `as` is dangerous for narrowing:
-        let x: u32 = 300;
-        assert_eq!(x as u8, 44);  // 300 % 256 == 44 — silently wrong
-    }
+fn main() {
+    assert_eq!(widen(255), 255);
+    assert!(narrow(300).is_err());
+    assert_eq!(narrow(200), Ok(200));
+    assert_eq!(float_to_index(f64::NAN, 10), None);
+    assert_eq!(float_to_index(f64::INFINITY, 10), None);
+    assert_eq!(float_to_index(f64::NEG_INFINITY, 10), None);
+    assert_eq!(float_to_index(-0.5, 10), None);
+    assert_eq!(float_to_index(-0.0, 10), Some(0));
+    assert_eq!(float_to_index(3.9, 10), Some(3));
+    assert_eq!(float_to_index(10.0, 10), None);
+    assert_eq!(float_to_index(0.0, 0), None);
+    assert_eq!(float_to_index(usize::MAX as f64 + 1.0, usize::MAX), None);
+    #[cfg(target_pointer_width = "64")]
+    assert_eq!(float_to_index(9_007_199_254_740_992.0, 9_007_199_254_740_993),
+        Some(9_007_199_254_740_992));
 }
 ```
 
+On 64-bit targets, comparing a float to `len as f64` is insufficient: large lengths can round before comparison. Check the conversion range first, then compare in integer space. If fractional input is invalid rather than intentionally truncated, reject it explicitly.
+
 ## Key Points
 
-- `From<A> for B` compiles only when the conversion is always lossless. Attempting `u8::from(300u32)` is a compile error.
-- `TryFrom` returns `Result<T, TryFromIntError>` from the standard library — no external crates needed.
+- The standard library does not implement `From<u32> for u8`; custom `From` implementations must honor their documented infallible conversion semantics.
+- Standard fallible integer conversions use `TryFromIntError`; other conversions have their own associated error type.
 - Reserve `as` for:
   - Pointer casts (e.g., `*const u8 as *mut u8`) that are intentional.
   - Float-to-integer when you have verified the range and documented the intent.

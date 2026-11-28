@@ -50,4 +50,15 @@ manifest=$(git -C "$repo" show "$archive:checkpoints.tsv")
 [[ $'\n'"$manifest"$'\n' == *$'\t'"$arch"$'\n'* ]]
 run gc
 [[ $(git -C "$repo" rev-parse origin/archive/campaign-checkpoints) == "$archive" ]]
+# A direct-main issue can be published with focused evidence even if the
+# project has no Rust workspace at all; the canonical hosted gate owns global
+# policy. A failed focused command must still retain the submission.
+run publish active false
+run drain
+[[ $(jq -er .status "$state/queue/000000001.json") == failed ]]
+run recover 000000001 active
+run publish active 'test -f README.md'
+run drain
+[[ $(jq -er .status "$state/queue/000000002.json") == published ]]
+[[ $(git -C "$repo" show origin/main:README.md) == $'initial\nworker change' ]]
 printf 'Direct-main campaign lifecycle passed\n'

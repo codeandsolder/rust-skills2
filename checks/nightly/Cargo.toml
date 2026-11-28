@@ -1,0 +1,11 @@
+[package]
+name = "rust-skills-nightly-contracts"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[features]
+cuda = []
+
+[lints.rust]
+stable_features = "deny"

@@ -12,16 +12,62 @@ Rust 1.98 adds a second, separate semantic choice: `f32`/`f64` algebraic arithme
 
 ## Approximate Numerical Equality
 
+<!-- rust-check: run -->
 ```rust
 fn approx_eq(a: f64, b: f64, abs_tol: f64, rel_tol: f64) -> bool {
+    if !abs_tol.is_finite() || !rel_tol.is_finite()
+        || abs_tol < 0.0 || rel_tol < 0.0
+    {
+        return false;
+    }
+    if a == b {
+        return true; // equal signed zeros and equal infinities
+    }
+    if !a.is_finite() || !b.is_finite() {
+        return false;
+    }
+
     let diff = (a - b).abs();
-    diff <= abs_tol || diff <= rel_tol * a.abs().max(b.abs())
+    if diff <= abs_tol {
+        return true;
+    }
+    let scale = a.abs().max(b.abs());
+    // At least one operand is nonzero (equal zeros returned above).
+    // Divide by scale instead of multiplying it by rel_tol, which
+    // could overflow. If subtraction overflowed, normalize first.
+    let relative_error = if diff.is_finite() {
+        diff / scale
+    } else {
+        (a / scale - b / scale).abs()
+    };
+    relative_error <= rel_tol
 }
 
-assert!(approx_eq(0.1 + 0.2, 0.3, 1e-15, 1e-12));
+fn main() {
+    assert!(approx_eq(0.1 + 0.2, 0.3, 1e-15, 1e-12));
+    assert!(approx_eq(-0.0, 0.0, 0.0, 0.0));
+    assert!(approx_eq(f64::INFINITY, f64::INFINITY, 0.0, 0.0));
+    assert!(!approx_eq(f64::INFINITY, 1.0, 0.0, 1.0));
+    assert!(!approx_eq(f64::INFINITY, f64::NEG_INFINITY, 0.0, 1.0));
+    assert!(!approx_eq(f64::NAN, f64::NAN, 1.0, 1.0));
+    assert!(!approx_eq(f64::MAX, -f64::MAX, 0.0, 1.5));
+    assert!(approx_eq(f64::MAX, -f64::MAX, 0.0, 2.0));
+    assert!(!approx_eq(f64::MAX, 0.0, 0.0, 0.5));
+    let tiny = f64::from_bits(1);
+    assert!(!approx_eq(tiny, 0.0, 0.0, 0.5));
+    assert!(approx_eq(tiny, 0.0, tiny, 0.0));
+    assert!(!approx_eq(1.0, 1.0, -1.0, 0.0));
+    assert!(!approx_eq(1.0, 1.0, 0.0, f64::NAN));
+    assert!(!approx_eq(1.0, 1.0, f64::INFINITY, 0.0));
+}
 ```
 
-Choose tolerances from the problem domain; a single hard-coded epsilon is not universally meaningful.
+This example uses symmetric maximum-magnitude relative error, finite nonnegative
+tolerances, and exact same-sign infinity equality; NaNs never compare equal.
+Pick those policies deliberately, or reject invalid tolerances through a
+fallible constructor. The normalized arithmetic still rounds, so do not infer
+an exact real-number predicate at a one-ULP boundary. Choose tolerances from
+the problem domain; a single hard-coded epsilon is not universally meaningful.
 
 ## Exact Equality Can Be Intentional
 
@@ -51,7 +97,7 @@ fn sort_values(values: &mut [f64]) {
 
 ## Rust 1.98+: Algebraic Arithmetic Is an Explicit Optimization Contract
 
-Ordinary operators preserve Rust's normal floating-point evaluation semantics. Rust 1.98's `algebraic_add`, `algebraic_sub`, `algebraic_mul`, `algebraic_div`, and `algebraic_rem` instead tell the optimizer it may use algebraic identities that are not generally valid for finite-precision floating point.
+Ordinary operators preserve Rust's normal floating-point evaluation semantics, subject to the language's documented allowances (for example NaN bit patterns). Rust 1.98's `algebraic_add`, `algebraic_sub`, `algebraic_mul`, `algebraic_div`, and `algebraic_rem` instead tell the optimizer it may use algebraic identities that are not generally valid for finite-precision floating point.
 
 For example:
 
@@ -65,7 +111,7 @@ fn sum4(a: f64, b: f64, c: f64, d: f64) -> f64 {
 
 The compiler may reassociate such a chain rather than preserving the parsed left-to-right grouping. This can enable parallel evaluation or loop vectorization. The exact optimization set is deliberately unspecified and may change between compiler versions or targets.
 
-Use algebraic operations only when all of the following are true:
+Use algebraic operations only when their relaxed semantics are acceptable and measurement justifies them:
 
 - profiling shows floating-point arithmetic is a meaningful hot path;
 - the numerical error budget tolerates reassociation or similar transformations;

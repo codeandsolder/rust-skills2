@@ -1,0 +1,233 @@
+{
+  "schema": 1,
+  "toolchain": "nightly-2026-11-19",
+  "cases": {
+    "strict-ci-attribute-reasons": {
+      "status": 0,
+      "counts": [
+        2,
+        0,
+        0
+      ],
+      "violations": []
+    },
+    "strict-ci-bin-test-panics": {
+      "status": 0,
+      "counts": [
+        1,
+        0,
+        0
+      ],
+      "violations": []
+    },
+    "strict-ci-blocked-allow": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-blocked-allow/src/lib.rs:3: #[allow(...)] is forbidden in handwritten source; use #[expect(lint, reason = \"...\")] or cfg_attr(..., expect(...)) for configuration-scoped exceptions"
+      ]
+    },
+    "strict-ci-blocked-attribute-expect": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-blocked-attribute-expect/src/lib.rs:3: suppressing clippy::deprecated_attributes_without_note would weaken suppression policy",
+        "<repo>/checks/fixtures/strict-ci-blocked-attribute-expect/src/lib.rs:12: suppressing clippy::must_use_without_reason would weaken suppression policy"
+      ]
+    },
+    "strict-ci-blocked-cap-lints": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "Cargo config build.rustflags contains a lint-level override (--cap-lints/--force-warn)"
+      ]
+    },
+    "strict-ci-blocked-cargo-allow": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-blocked-cargo-allow/Cargo.toml: [lints.clippy] too_many_lines = allow is forbidden; keep the lint enabled and use a narrow reasoned #[expect(...)] at the source site"
+      ]
+    },
+    "strict-ci-blocked-expect": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-blocked-expect/src/lib.rs:4: suppressing clippy::unwrap_used would weaken suppression policy"
+      ]
+    },
+    "strict-ci-blocked-generated-boundary": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-blocked-generated-boundary/Cargo.toml: generated lint boundary escapes package root: ../strict-ci-blocked-expect/src/lib.rs"
+      ]
+    },
+    "strict-ci-blocked-generated-marker": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-blocked-generated-marker/Cargo.toml: generated lint boundary must either identify generated provenance near the top or be a pure include! wrapper around marked generated Rust: src/generated.rs",
+        "<repo>/checks/fixtures/strict-ci-blocked-generated-marker/src/generated.rs:1: #[allow(...)] is forbidden in handwritten source; use #[expect(lint, reason = \"...\")] or cfg_attr(..., expect(...)) for configuration-scoped exceptions"
+      ]
+    },
+    "strict-ci-blocked-generated-root": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-blocked-generated-root/Cargo.toml: generated lint boundary may not be a Cargo target entrypoint: src/lib.rs",
+        "<repo>/checks/fixtures/strict-ci-blocked-generated-root/src/lib.rs:2: #[allow(...)] is forbidden in handwritten source; use #[expect(lint, reason = \"...\")] or cfg_attr(..., expect(...)) for configuration-scoped exceptions"
+      ]
+    },
+    "strict-ci-blocked-group-expect": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-blocked-group-expect/src/lib.rs:4: clippy::eq_op belongs to clippy::correctness on this nightly; correctness/suspicious/perf suppressions are forbidden"
+      ]
+    },
+    "strict-ci-blocked-multi-expect": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-blocked-multi-expect/src/lib.rs:4: #[expect] must name exactly one lint; found 2"
+      ]
+    },
+    "strict-ci-blocked-result-expect": {
+      "status": 0,
+      "counts": [
+        1,
+        0,
+        0
+      ],
+      "violations": []
+    },
+    "strict-ci-blocked-rustflags-allow": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "Cargo config build.rustflags contains a forbidden -A/--allow lint override; use a narrow reasoned #[expect(...)] in handwritten source instead"
+      ]
+    },
+    "strict-ci-blocked-unreasoned-expect": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-blocked-unreasoned-expect/src/lib.rs:4: #[expect] must include reason = \"...\""
+      ]
+    },
+    "strict-ci-blocked-warn": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-blocked-warn/src/lib.rs:4: #[warn(...)] is forbidden in handwritten source; it can lower the strict command-line lint level without suppressing a finding"
+      ]
+    },
+    "strict-ci-generated-boundary": {
+      "status": 0,
+      "counts": [
+        2,
+        1,
+        0
+      ],
+      "violations": []
+    },
+    "strict-ci-generated-wrapper": {
+      "status": 0,
+      "counts": [
+        3,
+        1,
+        0
+      ],
+      "violations": []
+    },
+    "strict-ci-large-enum-expect": {
+      "status": 0,
+      "counts": [
+        1,
+        0,
+        1
+      ],
+      "violations": []
+    },
+    "strict-ci-native-intrinsics-fail": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-native-intrinsics-fail/src/lib.rs:3: native intrinsic or broad native import arch::x86_64::_mm_add_epi32 is forbidden; use core::simd/std::simd or portable Rust",
+        "<repo>/checks/fixtures/strict-ci-native-intrinsics-fail/src/lib.rs:3: native intrinsic or broad native import arch::x86_64::* is forbidden; use core::simd/std::simd or portable Rust",
+        "<repo>/checks/fixtures/strict-ci-native-intrinsics-fail/src/lib.rs:5: native intrinsic or broad native import arch::aarch64::vaddq_u32 is forbidden; use core::simd/std::simd or portable Rust"
+      ]
+    },
+    "strict-ci-native-intrinsics-pass": {
+      "status": 0,
+      "counts": [
+        1,
+        0,
+        0
+      ],
+      "violations": []
+    },
+    "strict-ci-pass": {
+      "status": 0,
+      "counts": [
+        1,
+        0,
+        1
+      ],
+      "violations": []
+    },
+    "strict-ci-reasoned-allow": {
+      "status": 1,
+      "counts": null,
+      "violations": [
+        "<repo>/checks/fixtures/strict-ci-reasoned-allow/src/lib.rs:3: #[allow(...)] is forbidden in handwritten source; use #[expect(lint, reason = \"...\")] or cfg_attr(..., expect(...)) for configuration-scoped exceptions"
+      ]
+    },
+    "strict-ci-test-correctness-blocked": {
+      "status": 0,
+      "counts": [
+        2,
+        0,
+        0
+      ],
+      "violations": []
+    },
+    "strict-ci-test-panics": {
+      "status": 0,
+      "counts": [
+        1,
+        0,
+        0
+      ],
+      "violations": []
+    },
+    "strict-ci-workspace-default-panics": {
+      "status": 0,
+      "counts": [
+        2,
+        0,
+        0
+      ],
+      "violations": []
+    },
+    "strict-ci-workspace-overrides": {
+      "status": 0,
+      "counts": [
+        2,
+        0,
+        0
+      ],
+      "violations": []
+    },
+    "strict-ci-workspace-overrides-blocked": {
+      "status": 0,
+      "counts": [
+        2,
+        0,
+        0
+      ],
+      "violations": []
+    }
+  }
+}

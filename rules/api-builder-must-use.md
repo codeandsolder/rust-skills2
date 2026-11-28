@@ -58,13 +58,13 @@ impl RequestBuilder {
         }
     }
 
-    #[must_use = "use the returned builder"]
+    #[must_use = "the returned builder owns the updated timeout"]
     fn timeout(mut self, duration: Duration) -> Self {
         self.timeout = Some(duration);
         self
     }
 
-    #[must_use = "use the returned builder"]
+    #[must_use = "the returned builder owns the added header"]
     fn header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.headers.push((key.into(), value.into()));
         self
@@ -93,14 +93,14 @@ Putting `#[must_use]` on the builder type gives broad protection for unused buil
 ## Reassignment Is Also Valid
 
 ```rust
-#[must_use]
+#[must_use = "the builder must be configured and consumed to use its settings"]
 #[derive(Default)]
 struct Builder {
     retries: usize,
 }
 
 impl Builder {
-    #[must_use]
+    #[must_use = "the returned builder owns the updated retry count"]
     fn retries(mut self, retries: usize) -> Self {
         self.retries = retries;
         self
@@ -126,9 +126,11 @@ Builder frameworks may already annotate generated types/methods. Check generated
 [lints.clippy]
 must_use_candidate = "warn"
 return_self_not_must_use = "warn"
+# Nightly Clippy, when supported by the selected compiler:
+must_use_without_reason = "deny"
 ```
 
-These are review aids, not substitutes for deciding whether ignoring the value is actually erroneous for that API.
+The shared gate already enables these lints. The restriction checks function attributes on the reviewed nightly; a bare struct attribute is not necessarily diagnosed. Supply meaningful reasons on builder types too, and decide whether ignoring the value is genuinely erroneous.
 
 ## See Also
 

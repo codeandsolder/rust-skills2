@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="${1:?root required}"
+TARGET="${2:?target required}"
+FIXTURE="$ROOT/checks/fixtures/ambient-config-advisory"
+TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/checks/target}/ambient-config-advisory"
+
+# No execution of the fixture: the compiler resolves each actual Rust path.
+# Do not bypass or replace the caller's managed compiler wrapper.
+bash "$ROOT/scripts/audit_ambient_config.sh" \
+    --manifest-path "$FIXTURE/Cargo.toml" --locked --target "$TARGET" \
+    --target-dir "$TARGET_DIR" --message-format=json |
+    "${3:?Rust CI tool required}" "$ROOT" ambient
