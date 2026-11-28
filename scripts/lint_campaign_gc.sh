@@ -137,7 +137,9 @@ reconcile_campaign_refs() (
         [[ -n "$local_sha" ]] || continue
         # Git branch -d would compare against a potentially unrelated HEAD;
         # explicit ancestry and checked-out-branch protection are stronger.
-        if git_repo worktree list --porcelain | rg -Fxq "branch refs/heads/$branch"; then continue; fi
+        local worktrees
+        worktrees=$(git_repo worktree list --porcelain) || die "cannot inspect worktrees"
+        if [[ $'\n'"$worktrees"$'\n' == *$'\n'"branch refs/heads/$branch"$'\n'* ]]; then continue; fi
         if git_repo merge-base --is-ancestor "$local_sha" "$tip" || { [[ -n "$archive_sha" ]] && git_repo merge-base --is-ancestor "$local_sha" "$archive_sha"; }; then
             git_repo update-ref -d "refs/heads/$branch" "$local_sha" || true
         fi

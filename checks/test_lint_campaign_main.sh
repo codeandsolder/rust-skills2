@@ -41,12 +41,13 @@ run status >/dev/null
 run gc campaign
 refs=$(git -C "$repo" ls-remote --heads origin)
 for removed in "$arch" "$merged" campaign; do
-    if rg -q -F "refs/heads/$removed" <<< "$refs"; then echo "obsolete ref survived: $removed" >&2; exit 1; fi
+    if [[ $'\n'"$refs"$'\n' == *$'\t'"refs/heads/$removed"$'\n'* ]]; then echo "obsolete ref survived: $removed" >&2; exit 1; fi
 done
-rg -q -F "refs/heads/$active" <<< "$refs"
+[[ $'\n'"$refs"$'\n' == *$'\t'"refs/heads/$active"$'\n'* ]]
 archive=$(git -C "$repo" rev-parse origin/archive/campaign-checkpoints)
 git -C "$repo" merge-base --is-ancestor "$sha" "$archive"
-git -C "$repo" show "$archive:checkpoints.tsv" | rg -q -F "$arch"
+manifest=$(git -C "$repo" show "$archive:checkpoints.tsv")
+[[ $'\n'"$manifest"$'\n' == *$'\t'"$arch"$'\n'* ]]
 run gc
 [[ $(git -C "$repo" rev-parse origin/archive/campaign-checkpoints) == "$archive" ]]
 printf 'Direct-main campaign lifecycle passed\n'
