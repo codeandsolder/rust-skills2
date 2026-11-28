@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { dirname } from 'node:path';
 
 // This is a GPL-family policy, not a general SPDX approval list. A license
 // outside the GPL family is not thereby certified as suitable for distribution.
@@ -90,16 +91,33 @@ export function treeSelectors(cargoArgs) {
     return selectors;
 }
 
-export function inspectTree(output) {
+// Compare exact Cargo package display identities, including the canonical
+// source path. A registry/Git dependency with the same name and version,
+// or a local path dependency outside the selected workspace, is external.
+export function workspacePackages(metadata) {
+    if (!Array.isArray(metadata.workspace_members) || !Array.isArray(metadata.packages)) {
+        throw new Error('invalid Cargo workspace metadata');
+    }
+    const ids = new Set(metadata.workspace_members);
+    const members = metadata.packages.filter(pkg => ids.has(pkg.id));
+    if (members.length !== ids.size || !members.length ||
+        members.some(pkg => pkg.source !== null || typeof pkg.manifest_path !== 'string' ||
+            typeof pkg.name !== 'string' || typeof pkg.version !== 'string')) {
+        throw new Error('invalid Cargo workspace member identities');
+    }
+    return new Set(members.map(pkg => pkg.name + ' v' + pkg.version + ' (' + dirname(pkg.manifest_path) + ')'));
+}
+
+export function inspectTree(output, ownPackages) {
     const packages = new Map();
     for (const line of output.split(/\r?\n/)) {
         if (!line.trim()) continue;
         const match = /^(\d+)([^\t]+)\t(.*)$/.exec(line);
         if (!match) throw new Error('unexpected cargo tree row: ' + line);
         const [, depth, packageName, rawLicense] = match;
-        // A repository's own declared license is not a dependency. A
-        // workspace member encountered at depth > 0 is still a dependency.
-        if (Number(depth) === 0) continue;
+        // Workspace membership, not a package name or an arbitrary path,
+        // determines whether this is the project's own code.
+        if (Number(depth) === 0 || ownPackages.has(packageName)) continue;
         const license = rawLicense.replace(/ \(\*\)$/, '').trim();
         packages.set(packageName + '\t' + license, { packageName, license, classification: classifyLicense(license) });
     }
@@ -109,12 +127,20 @@ export function inspectTree(output) {
 function main() {
     const [toolchain, cwd, cargoArgs = '--locked --workspace --all-targets'] = process.argv.slice(2);
     if (!toolchain || !cwd) throw new Error('usage: release-licenses.mjs TOOLCHAIN WORKSPACE CARGO_ARGS');
-    const args = ['+' + toolchain, 'tree', ...treeSelectors(cargoArgs), '--edges', 'normal,no-proc-macro', '--prefix', 'depth', '--format', '{p}\t{l}', '--color', 'never'];
+    const selectors = treeSelectors(cargoArgs);
+    const metadata = spawnSync('cargo', ['+' + toolchain, 'metadata', '--no-deps', '--format-version', '1',
+        ...selectors.filter(arg => ['--locked', '--offline', '--frozen'].includes(arg))],
+        { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    if (metadata.error) throw metadata.error;
+    if (metadata.stderr) process.stderr.write(metadata.stderr);
+    if (metadata.status !== 0) throw new Error('cargo workspace metadata failed: ' + metadata.status);
+    const ownPackages = workspacePackages(JSON.parse(metadata.stdout));
+    const args = ['+' + toolchain, 'tree', ...selectors, '--edges', 'normal,no-proc-macro', '--prefix', 'depth', '--format', '{p}\t{l}', '--color', 'never'];
     const result = spawnSync('cargo', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
     if (result.error) throw result.error;
     if (result.stderr) process.stderr.write(result.stderr);
     if (result.status !== 0) throw new Error('cargo tree failed: ' + result.status);
-    const packages = inspectTree(result.stdout);
+    const packages = inspectTree(result.stdout, ownPackages);
     let failed = false;
     for (const { packageName, license, classification } of packages) {
         if (classification === 'strong' || classification === 'invalid-copyleft') {
@@ -124,7 +150,7 @@ function main() {
             console.warn('Release license review (' + classification + '): ' + packageName + ' — ' + (license || '(undeclared)'));
         }
     }
-    console.log('Checked ' + packages.length + ' normal dependency identities (excluding build, dev and proc-macro edges).');
+    console.log('Checked ' + packages.length + ' external normal dependency identities (excluding workspace members, build, dev and proc-macro edges).');
     if (failed) process.exitCode = 1;
 }
 
