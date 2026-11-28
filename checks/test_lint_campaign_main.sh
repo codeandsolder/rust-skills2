@@ -53,9 +53,16 @@ run gc
 # A direct-main issue can be published with focused evidence even if the
 # project has no Rust workspace at all; the canonical hosted gate owns global
 # policy. A failed focused command must still retain the submission.
-run publish active false
+# Collection must also run before a busy queue's next validation, not
+# only after the queue is empty. The running submission stays protected.
+busy="lint-campaign/${id:0:12}/busy-abandoned"
+git -C "$repo" push -q origin "$sha:refs/heads/$busy"
+rm -f -- "$state/lifecycle-last"
+run publish active "test -z \"\$(git ls-remote --heads origin refs/heads/$busy)\" && touch \"$tmp/collected-before-validation\"; false"
 run drain
+[[ -f "$tmp/collected-before-validation" ]]
 [[ $(jq -er .status "$state/queue/000000001.json") == failed ]]
+[[ -n $(git -C "$repo" ls-remote --heads origin "refs/heads/$active") ]]
 run recover 000000001 active
 run publish active 'test -f README.md'
 run drain

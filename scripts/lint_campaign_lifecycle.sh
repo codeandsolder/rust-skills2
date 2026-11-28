@@ -82,7 +82,7 @@ reconcile_main_issues() {
     return "$rc"
 }
 
-reconcile_when_idle() {
+reconcile_periodically() {
     local stamp="$state/lifecycle-last" now
     [[ "$direct_default" == true ]] || return 0
     now=$(date +%s)
