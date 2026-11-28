@@ -14,4 +14,4 @@ permissions:
 
 jobs:
   source-quality:
-    uses: codeandsolder/ci-workflows/.github/workflows/source-quality.yml@9c14ef2d72423958c56944febc620ec50f01d65a # main
+    uses: codeandsolder/ci-workflows/.github/workflows/source-quality.yml@62de20788574448141d7dff9be5c4e3224d8912c # main

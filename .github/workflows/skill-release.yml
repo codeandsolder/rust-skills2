@@ -37,14 +37,14 @@ jobs:
           persist-credentials: false
       - name: Resolve one quarantined compiler
         id: compiler
-        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@9c14ef2d72423958c56944febc620ec50f01d65a # main
+        uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@62de20788574448141d7dff9be5c4e3224d8912c # main
       - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
           toolchain: ${{ steps.compiler.outputs.channel }}
           targets: wasm32-wasip1
           components: clippy,rustfmt
       - name: Setup mandatory sccache
-        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@9c14ef2d72423958c56944febc620ec50f01d65a # main
+        uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@62de20788574448141d7dff9be5c4e3224d8912c # main
         with:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
           rustflags: ""
@@ -81,7 +81,7 @@ jobs:
 
       - name: Finalize mandatory sccache
         if: always()
-        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@9c14ef2d72423958c56944febc620ec50f01d65a # main
+        uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@62de20788574448141d7dff9be5c4e3224d8912c # main
 
   portable:
     name: Portable skill package (${{ matrix.os }})
