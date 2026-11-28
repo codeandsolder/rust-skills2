@@ -58,11 +58,25 @@ permissions:
   contents: read
 
 jobs:
+  dependency-scan:
+    if: inputs.dependency-quality
+    uses: codeandsolder/ci-workflows/.github/workflows/rust-dependency-gate.yml@9e8949b7d1e3ee4b56ee30d605bba849d90260b7 # pending ci-workflows #243
+    with:
+      working-directories: ${{ format('[{0}]', toJSON(inputs.working-directory)) }}
+      checkout-submodules: ${{ inputs.checkout-submodules }}
+
   strict-rust:
+    needs: dependency-scan
+    if: ${{ always() && !cancelled() }}
     name: Strict Rust + Python policy
     runs-on: ${{ github.event.repository.private && fromJSON('["self-hosted","Linux","X64","local-ci"]') || 'ubuntu-24.04' }}
     timeout-minutes: 45
     steps:
+      - name: Require independent dependency scan
+        if: inputs.dependency-quality && needs.dependency-scan.result != 'success'
+        shell: bash
+        run: exit 1
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
@@ -123,6 +137,7 @@ jobs:
           targets: ${{ inputs.rust-targets }}
 
       - name: Setup mandatory sccache
+        id: cache
         uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@5635824a189d1a1d80b2834a08f8b8fbb9452186 # main
         with:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
@@ -151,14 +166,8 @@ jobs:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
           install-toolchain: "false"
 
-      - name: Enforce dependency consolidation and report advisories
-        if: inputs.dependency-quality
-        uses: codeandsolder/ci-workflows/.github/actions/rust-dependency-quality@5635824a189d1a1d80b2834a08f8b8fbb9452186 # main
-        with:
-          working-directories: ${{ format('[{0}]', toJSON(inputs.working-directory)) }}
-
       - name: Show Cargo future-incompatibility report
-        if: failure()
+        if: failure() && steps.compiler.outcome == 'success'
         working-directory: ${{ inputs.working-directory }}
         shell: bash
         env:
@@ -168,5 +177,5 @@ jobs:
 
 
       - name: Finalize mandatory sccache
-        if: always()
+        if: always() && steps.cache.outcome == 'success'
         uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@5635824a189d1a1d80b2834a08f8b8fbb9452186 # main
