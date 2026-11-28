@@ -37,7 +37,7 @@ case "$PHASE" in
         [[ "$PLAN" == /* ]] || { echo "split strict phases require an absolute plan path" >&2; exit 2; } ;;
     *) echo "unknown strict phase: $PHASE" >&2; exit 2 ;;
 esac
-[[ "$TOOLCHAIN" =~ ^nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}$ || ( "$INVENTORY" == true && "$TOOLCHAIN" == nightly ) ]] || {
+[[ "$TOOLCHAIN" =~ ^nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || {
     echo "rust-skills2: expected a nightly toolchain" >&2
     exit 2
 }

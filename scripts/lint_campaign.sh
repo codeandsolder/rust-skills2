@@ -125,6 +125,20 @@ check_compilers() {
        "$(rustc +nightly --version)" == "$nightly_version" ]] ||
         die "nightly compiler drift; start a new campaign"
 }
+dated_campaign_toolchain() {
+    local channel
+    if [[ "$nightly" =~ ^nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        printf '%s\n' "$nightly"
+        return
+    fi
+    while IFS= read -r channel; do
+        if [[ "$(rustc "+$channel" --version)" == "$nightly_version" ]]; then
+            printf '%s\n' "$channel"
+            return
+        fi
+    done < <(rustup toolchain list | sed -nE 's/^(nightly-[0-9]{4}-[0-9]{2}-[0-9]{2})-.*$/\1/p' | sort -u)
+    die 'no installed dated nightly matches campaign compiler'
+}
 check_tools() {
     need_cache
     check_compilers
@@ -179,7 +193,7 @@ inventory() {
             export RUST_SKILLS2_ACTION_DIR="$SKILLS/.github/actions/rust-strict"
             export RUST_SKILLS2_CARGO_ARGS="--locked --workspace --all-targets"
             export RUST_SKILLS2_ALLOW_TEST_PANICS="$allow_test_panics"
-            bash "$SKILLS/scripts/strict_clippy.sh" --toolchain "$nightly" --inventory
+            bash "$SKILLS/scripts/strict_clippy.sh" --toolchain "$(dated_campaign_toolchain)" --inventory
         ) >"$state/logs/$revision.clippy.jsonl" 2>"$state/logs/$revision.clippy.stderr" ||
             die "inventory failed; see $state/logs/$revision.clippy.stderr and .jsonl"
         clean_at "$checkout"
@@ -756,7 +770,7 @@ case "$action" in
             # For final qualification, use the actual pinned repository
             # compiler, not a moving nightly selection.
             final_channel=$(sed -nE 's/^channel[[:space:]]*=[[:space:]]*"(nightly-[0-9]{4}-[0-9]{2}-[0-9]{2})"[[:space:]]*$/\1/p' rust-toolchain.toml 2>/dev/null || true)
-            final_channel=${final_channel:-$(bash "$SKILLS/scripts/toolchain-pin.sh")}
+            final_channel=${final_channel:-$(dated_campaign_toolchain)}
             bash "$SKILLS/scripts/strict_clippy.sh" --toolchain "$final_channel" || exit
             bash -euo pipefail -c "${1:-cargo +nightly test --workspace --locked}"
         ) >"$state/logs/$tip.final.log" 2>&1 || die "final strict gate failed: $state/logs/$tip.final.log"

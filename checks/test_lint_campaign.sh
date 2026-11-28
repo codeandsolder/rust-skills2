@@ -72,7 +72,7 @@ baseline=$(jq -er .base "$state/config.json")
 host=$(rustc +nightly -vV | sed -n 's/^host: //p')
 pinned="$tmp/pinned-rustup"
 mkdir -p "$pinned/toolchains"
-for channel in nightly; do
+for channel in nightly $(rustup toolchain list | sed -nE 's/^(nightly-[0-9]{4}-[0-9]{2}-[0-9]{2})-.*$/\1/p' | sort -u); do
     compiler=$(rustup which --toolchain "$channel" rustc)
     ln -s "$(dirname "$(dirname "$compiler")")" "$pinned/toolchains/$channel-$host"
 done
