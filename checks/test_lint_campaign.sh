@@ -4,8 +4,13 @@ set -euo pipefail
 SKILLS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 tool="$SKILLS/scripts/lint_campaign.sh"
 tmp=$(mktemp -d "${LINT_CAMPAIGN_TEST_ROOT:-${RUNNER_TEMP:-/tmp}}/lint-campaign-test.XXXXXX")
+drain_pid=''
 cleanup() {
     local rc=$?
+    if [[ -n "$drain_pid" ]]; then
+        touch "$tmp/release-validation"
+        wait "$drain_pid" || true
+    fi
     if ((rc!=0)); then
         find "$tmp" -type f \( -name '*.stderr' -o -name 'queue-*.log' -o -name '*.gate.log' -o -name 'drain.log' \) -print |
             while IFS= read -r log; do printf '\n== %s ==\n' "$log"; tail -40 "$log"; done
@@ -135,20 +140,22 @@ cargo +nightly test --locked --lib --no-run --message-format=json | jq -se 'any(
 SH
 )
 run publish one "$reuse_check
-touch '$tmp/validation-started'; while ! test -e '$tmp/release-validation'; do sleep 0.1; done"
+while ! test -e '$tmp/release-validation'; do sleep 0.1; done"
 run publish two
 [[ "$(git -C "$tmp/repo" ls-remote --heads origin campaign | cut -f1)" == "$baseline" ]]
 [[ "$(jq -rs '[.[]|select(.status=="pending")]|length' "$state"/queue/*.json)" == 2 ]]
 if run claim other 1 "$one_file" 1; then echo "queued file claimed" >&2; exit 1; fi
 run drain >"$tmp/drain.log" 2>&1 &
 drain_pid=$!
-# While the first validator is running, the same editor can claim fresh files.
-for ((i=0;i<1800;i++)); do
-    [[ -e "$tmp/validation-started" ]] && break
+# Synchronize with the actual queue transition under the validator lock,
+# not the completion time of an unrelated Cargo inventory or smoke build.
+# The focused gate cannot finish until release-validation exists.
+for ((i=0;i<300;i++)); do
+    [[ "$(jq -r .status "$state/queue/000000001.json")" == running ]] && break
     if ! kill -0 "$drain_pid" 2>/dev/null; then cat "$tmp/drain.log"; exit 1; fi
     sleep 0.1
 done
-[[ -e "$tmp/validation-started" ]] || { cat "$tmp/drain.log"; touch "$tmp/release-validation"; exit 1; }
+[[ "$(jq -r .status "$state/queue/000000001.json")" == running ]] || { cat "$tmp/drain.log"; exit 1; }
 if run drain; then echo "second validator started" >&2; touch "$tmp/release-validation"; exit 1; fi
 run claim one 1 src/gamma.rs 1 >"$tmp/next-claim.log"
 [[ "$(jq -r .status "$state/queue/000000001.json")" == running ]]
@@ -156,6 +163,7 @@ run claim one 1 src/gamma.rs 1 >"$tmp/next-claim.log"
 if run extend one "$two_file"; then echo "queued overlap accepted" >&2; touch "$tmp/release-validation"; exit 1; fi
 touch "$tmp/release-validation"
 wait "$drain_pid" || { cat "$tmp/drain.log"; exit 1; }
+drain_pid=''
 [[ "$(jq -rs '[.[]|select(.status=="published")]|length' "$state"/queue/*.json)" == 2 ]]
 [[ ! -e "$state/build/validator" ]]
 # Failure retains the source and reservation, but never blocks later jobs.
