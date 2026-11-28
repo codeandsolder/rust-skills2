@@ -38,17 +38,21 @@ retarget_campaign() {
 # Close only the issue explicitly represented by a successfully published
 # queue record, and only when its accepted commit is reachable from main.
 # Failed API calls remain retryable without changing validation acceptance.
-close_published_issue() {
-    local record=$1 tip=$2 issue job accepted url remote slug ledger
+close_published_issue() (
+    local record=$1 tip=$2 issue job accepted url remote slug ledger close_fd
     [[ "$direct_default" == true && -f "$state/issues.json" ]] || return 0
     issue=$(jq -r '.issue // empty' "$record")
     [[ -n "$issue" ]] || return 0
+    ledger="$state/closed-issues/$issue"
+    [[ ! -f "$ledger" ]] || return 0
+    mkdir -p "$state/closed-issues"
+    exec {close_fd}>"$state/locks/close-issue-$issue.lock"
+    flock -x "$close_fd"
+    [[ ! -f "$ledger" ]] || return 0
     job=$(jq -er .job "$record")
     [[ -f "$state/queue/$job.merged" ]] || return 0
     read -r accepted <"$state/queue/$job.merged"
     git_repo merge-base --is-ancestor "$accepted" "$tip" || return 0
-    ledger="$state/closed-issues/$issue"
-    [[ ! -f "$ledger" ]] || return 0
     url=$(jq -r --arg issue "$issue" '.[]|select(.id==$issue)|.url // empty' "$state/issues.json")
     remote=$(git_repo remote get-url origin)
     case "$remote" in
@@ -58,7 +62,6 @@ close_published_issue() {
     esac
     slug=${slug%.git}
     [[ "$url" == "https://github.com/$slug/issues/$issue" ]] || return 0
-    mkdir -p "$state/closed-issues"
     if gh issue close "$url" --reason completed --comment "Accepted into $target at https://github.com/$slug/commit/$accepted."; then
         printf '%s\n' "$accepted" >"$ledger.tmp"
         mv -- "$ledger.tmp" "$ledger"
@@ -66,7 +69,7 @@ close_published_issue() {
         say "issue $issue closure failed; run reconcile to retry"
         return 1
     fi
-}
+)
 reconcile_main_issues() {
     local tip record rc=0
     [[ "$direct_default" == true ]] || die "issue closure requires the default target"

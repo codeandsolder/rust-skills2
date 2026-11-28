@@ -21,7 +21,7 @@ campaign_pr_refs() {
 # Explicit extra branches are for coordinator-reviewed historical references.
 # Ordinary sweeps only collect the namespace owned by this campaign.
 reconcile_campaign_refs() (
-    local tip archive_ref archive_tip archive_local archive_sha archive_tree blob ref branch sha line local_sha gc_fd
+    local tip archive_ref archive_tip archive_remote archive_local archive_sha archive_tree blob ref branch sha line local_sha gc_fd
     local protected remote_snapshot archive_manifest changed=false
     local -a parents=() deletions=() leases=() local_refs=() extras=("$@")
     local -A seen=() remote_refs=() eligible=() selected=() protected_refs=()
@@ -30,7 +30,7 @@ reconcile_campaign_refs() (
     tip=$(remote_tip)
     archive_ref=refs/heads/archive/campaign-checkpoints
     remote_snapshot=$(git_repo ls-remote --heads origin)
-    protected=$(campaign_active_refs; campaign_pr_refs) || die "cannot inspect active branches"
+    protected=$(campaign_active_refs && campaign_pr_refs) || die "cannot inspect active branches"
     while IFS= read -r branch; do [[ -z "$branch" ]] || protected_refs["$branch"]=1; done <<<"$protected"
     for branch in "${extras[@]}"; do
         git check-ref-format "refs/heads/$branch" >/dev/null || die "invalid explicit branch: $branch"
@@ -59,6 +59,7 @@ reconcile_campaign_refs() (
             eligible["$branch@local"]=$sha
         fi
     done < <(git_repo for-each-ref --format='%(objectname)%09%(refname)' "refs/heads/lint-campaign/${id:0:12}/")
+    archive_remote=$archive_tip
     archive_local=$(git_repo rev-parse --verify "$archive_ref" 2>/dev/null || true)
     if [[ -n "$archive_tip" ]]; then
         git_repo cat-file -e "$archive_tip^{commit}" 2>/dev/null || git_repo fetch --quiet --no-tags origin "$archive_ref"
@@ -90,7 +91,7 @@ reconcile_campaign_refs() (
     # Publish the single recovery reference before deleting any divergent
     # remote checkpoints, including a prior locally retained archive.
     if [[ -n "$archive_sha" ]]; then
-        if ! git_repo push origin "$archive_sha:$archive_ref"; then
+        if [[ "$archive_sha" != "$archive_remote" ]] && ! git_repo push origin "$archive_sha:$archive_ref"; then
             say "archive publication failed; divergent checkpoints retained"
             archive_sha=''
         else
@@ -98,7 +99,7 @@ reconcile_campaign_refs() (
         fi
     fi
     lock_claims
-    protected=$(campaign_active_refs; campaign_pr_refs) || die "cannot recheck active branches"
+    protected=$(campaign_active_refs && campaign_pr_refs) || die "cannot recheck active branches"
     protected_refs=()
     while IFS= read -r branch; do [[ -z "$branch" ]] || protected_refs["$branch"]=1; done <<<"$protected"
     for branch in "${!remote_refs[@]}"; do

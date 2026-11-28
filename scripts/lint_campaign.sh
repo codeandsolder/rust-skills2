@@ -434,8 +434,10 @@ case "$action" in
         ;;
     reconcile)
         [[ $# == 0 ]] || die "reconcile takes no arguments"
-        reconcile_main_issues
-        reconcile_campaign_refs
+        rc=0
+        reconcile_main_issues || rc=1
+        reconcile_campaign_refs || rc=1
+        exit "$rc"
         ;;
     gc)
         reconcile_campaign_refs "$@"
@@ -561,10 +563,15 @@ case "$action" in
         [[ $# -eq 0 ]] || die "unexpected arguments"
         check_tools
         tip=$(remote_tip)
-        [[ -f "$state/inventory/$tip.json" ]] || die "target inventory not cached; serial validator will refresh it"
-        printf 'Target %s at %s: %s distinct findings\n' "$target" "$tip" "$(jq length "$state/inventory/$tip.json")"
-        jq 'group_by(.file) | map({file:.[0].file,findings:length}) |
-            sort_by(-.findings,.file)' "$state/inventory/$tip.json"
+        if [[ -f "$state/inventory/$tip.json" ]]; then
+            printf 'Target %s at %s: %s distinct findings\n' "$target" "$tip" "$(jq length "$state/inventory/$tip.json")"
+            jq 'group_by(.file) | map({file:.[0].file,findings:length}) |
+                sort_by(-.findings,.file)' "$state/inventory/$tip.json"
+        elif [[ "$direct_default" == true && -f "$state/issues.json" ]]; then
+            printf 'Target %s at %s: no cached inventory required for issue claims\n' "$target" "$tip"
+        else
+            die "target inventory not cached; serial validator will refresh it"
+        fi
         lock_claims
         expire_claims
         shopt -s nullglob
