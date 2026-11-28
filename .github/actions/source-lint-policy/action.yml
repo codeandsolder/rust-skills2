@@ -16,7 +16,7 @@ runs:
   steps:
     - name: Resolve one quarantined compiler
       id: compiler
-      uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@4c7fc62a9f9ec37aaa7c155d263cd5025e446a53 # main
+      uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@9c14ef2d72423958c56944febc620ec50f01d65a # main
 
     - name: Install pinned nightly Rust tools
       if: ${{ inputs.install-toolchain == 'true' }}

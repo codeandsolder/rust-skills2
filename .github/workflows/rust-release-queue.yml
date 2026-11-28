@@ -15,4 +15,4 @@ permissions:
 
 jobs:
   queue:
-    uses: codeandsolder/ci-workflows/.github/workflows/rust-release-review.yml@4c7fc62a9f9ec37aaa7c155d263cd5025e446a53 # main
+    uses: codeandsolder/ci-workflows/.github/workflows/rust-release-review.yml@9c14ef2d72423958c56944febc620ec50f01d65a # main
