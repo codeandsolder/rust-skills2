@@ -1,4 +1,6 @@
 # shellcheck shell=bash
+# These functions are sourced by lint_campaign.sh; its shared state is initialized there.
+# shellcheck disable=SC2154
 # shellcheck disable=SC2034 # Shared state belongs to the calling campaign.
 # Issue-driven selection uses the existing durable queue/claims/validator.
 # Ordered DAG; started tasks retain their definitions.

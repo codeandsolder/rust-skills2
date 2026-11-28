@@ -712,7 +712,7 @@ jobs:
 
 
       - name: Temporary lint campaign concurrency and gate self-test
-        run: bash checks/test_lint_campaign.sh
+        run: bash checks/test_lint_campaign.sh "${{ steps.compiler.outputs.channel }}"
 
       - name: Finalize mandatory sccache
         if: always()

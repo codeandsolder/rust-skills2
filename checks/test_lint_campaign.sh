@@ -3,9 +3,6 @@
 set -euo pipefail
 SKILLS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 tool="$SKILLS/scripts/lint_campaign.sh"
-bash "$SKILLS/checks/test_lint_campaign_leases.sh"
-bash "$SKILLS/checks/test_lint_campaign_priority.sh"
-bash "$SKILLS/checks/test_lint_campaign_main.sh"
 tmp=$(mktemp -d "${LINT_CAMPAIGN_TEST_ROOT:-${RUNNER_TEMP:-/tmp}}/lint-campaign-test.XXXXXX")
 cleanup() {
     local rc=$?
@@ -16,7 +13,20 @@ cleanup() {
     rm -rf -- "$tmp"
 }
 trap cleanup EXIT
-export LINT_CAMPAIGN_NIGHTLY=nightly
+# Exercise the campaign's legacy +nightly command spelling using the exact
+# installed, dated compiler selected by CI, never a downloaded moving nightly.
+channel=$(bash "$SKILLS/scripts/toolchain-pin.sh" "${1:-}")
+compiler=$(rustup which --toolchain "$channel" rustc)
+host=$(rustc "+$channel" -vV | sed -n 's/^host: //p')
+mkdir -p "$tmp/rustup/toolchains"
+for alias in nightly "$channel"; do
+    ln -s "$(dirname "$(dirname "$compiler")")" "$tmp/rustup/toolchains/$alias-$host"
+done
+export RUSTUP_HOME="$tmp/rustup" RUSTUP_AUTO_INSTALL=0
+export LINT_CAMPAIGN_NIGHTLY="$channel"
+bash "$SKILLS/checks/test_lint_campaign_leases.sh"
+bash "$SKILLS/checks/test_lint_campaign_priority.sh"
+bash "$SKILLS/checks/test_lint_campaign_main.sh"
 export RUST_SKILLS2_ALLOW_TEST_PANICS=true
 # Deliberately supply an undersized inherited value: the campaign must clamp it.
 export CARGO_BUILD_JOBS=1

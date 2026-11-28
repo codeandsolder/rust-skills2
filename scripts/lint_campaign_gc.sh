@@ -2,6 +2,8 @@
 # validation and never removes a checkpoint unless main or a durable archive
 # contains it. An archive is evidence, not an integration target.
 # shellcheck shell=bash
+# These functions are sourced by lint_campaign.sh; its shared state is initialized there.
+# shellcheck disable=SC2154
 campaign_active_refs() {
     {
         issue_claims | jq -r '.[]|[.branch,.cleanup_refs[]?][]|select(.!=null)'

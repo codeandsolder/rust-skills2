@@ -1,5 +1,7 @@
 # Sourced by lint_campaign.sh. Preserve the campaign identity across retargeting.
 # shellcheck shell=bash
+# These functions are sourced by lint_campaign.sh; its shared state is initialized there.
+# shellcheck disable=SC2154
 # shellcheck disable=SC2034
 retarget_campaign() {
     local destination=$1 old_tip new_tip new_registry new_id default_ref migration reg_fd

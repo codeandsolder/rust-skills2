@@ -1,5 +1,7 @@
 # Sourced by lint_campaign.sh. All paths/configuration belong to its campaign.
 # shellcheck shell=bash
+# These functions are sourced by lint_campaign.sh; its shared state is initialized there.
+# shellcheck disable=SC2154
 queue_records() {
     local -a records
     shopt -s nullglob
@@ -232,6 +234,8 @@ drain_queue() {
         set +e
         (
             set -e
+            # Used by the EXIT trap below.
+            # shellcheck disable=SC2034
             started=$SECONDS
             # The validator lock is held here. No other job can use this
             # directory; discard any leftovers from an interrupted job.

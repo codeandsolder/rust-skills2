@@ -1,4 +1,6 @@
 # shellcheck shell=bash
+# These functions are sourced by lint_campaign.sh; its shared state is initialized there.
+# shellcheck disable=SC2154
 # Claims are editor leases, not submission leases. The caller holds claims.lock
 # and the relevant worker lock (sweeps acquire worker locks non-blockingly).
 expire_claim() {
