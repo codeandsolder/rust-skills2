@@ -6,6 +6,33 @@ queue_records() {
     records=("$state/queue/"*.json)
     if (("${#records[@]}")); then jq -s '.' "${records[@]}"; else printf '[]\n'; fi
 }
+# Caller holds claims.lock. Retry an interrupted running job first.
+# In issue campaigns rank pending jobs by unique unfinished transitive
+# dependants, then FIFO. Lint-only campaigns retain their FIFO policy.
+next_validation_job() {
+    if [[ ! -f "$state/issues.json" ]]; then
+        queue_records | jq -r '
+          map(select(.status=="pending" or .status=="running"))
+          | sort_by((.status!="running"),.job) | .[0].job // empty'
+        return
+    fi
+    queue_records | jq -r --slurpfile tasks "$state/issues.json" '
+      . as $queue |
+      [$queue[] | select(.status=="published") | .issue] as $done |
+      # The validated manifest is topologically ordered. Deduplicate each
+      # ancestor set so diamonds are not counted multiple times.
+      (reduce $tasks[0][] as $task ({};
+        . as $known | .[$task.id] =
+          ([$task.depends[] as $dep | $dep, $known[$dep][]] | unique)
+      )) as $ancestors |
+      (reduce ($tasks[0][] | select(.id as $id | ($done|index($id))==null)) as $task ({};
+        reduce $ancestors[$task.id][] as $ancestor (.;
+          .[$ancestor] = ((.[$ancestor] // 0) + 1))
+      )) as $impact |
+      map(select(.status=="pending" or .status=="running")) |
+      sort_by((.status!="running"), -($impact[.issue] // 0), .job) |
+      .[0].job // empty'
+}
 reserved_queue() {
     queue_records | jq -c '[.[] | select(.status=="staging" or .status=="pending" or .status=="running" or .status=="failed") | .files[]]'
 }
@@ -122,16 +149,40 @@ validate_job() {
         validator_checkout "$tip"
         shared=$(git_repo merge-base "$tip" "$source")
         scope_diff "$shared" "$source"
-        inventory "$work" "$tip" "$state/build/validator"
-        git_work merge --no-edit "$source"
+        if [[ "$direct_default" != true || ! -f "$state/issues.json" ]]; then
+            inventory "$work" "$tip" "$state/build/validator"
+        fi
+        if ! git_work merge --no-edit "$source"; then
+            if [[ -f "$state/issues.json" ]]; then
+                git_work diff --name-only --diff-filter=U -z |
+                    jq -Rs --arg tip "$tip" --arg source "$source" \
+                        '{target:$tip,source:$source,paths:(split("\u0000")|map(select(length>0)))}' \
+                        >"$state/logs/queue-$job.conflict.tmp"
+                if jq -e '.paths|length>0' "$state/logs/queue-$job.conflict.tmp" >/dev/null; then
+                    mv "$state/logs/queue-$job.conflict.tmp" "$state/logs/queue-$job.conflict.json"
+                else
+                    rm -f "$state/logs/queue-$job.conflict.tmp"
+                fi
+            fi
+            die "merge failed; recover job $job to reconcile against current target"
+        fi
         revision=$(git_work rev-parse HEAD)
         scope_diff "$tip" "$revision"
         inventory "$work" "$revision" "$state/build/validator"
-        compare_inventory "$tip" "$revision"
+        if [[ "$direct_default" == true && -f "$state/issues.json" ]]; then
+            [[ "$(jq length "$state/inventory/$revision.json")" == 0 ]] || die "candidate has strict diagnostics"
+        else
+            compare_inventory "$tip" "$revision"
+        fi
         git_work diff --no-color -U0 "$tip" "$revision" >"$state/logs/$revision.patch"
         validate "$revision"
         # The sole validator is the only campaign writer. Never force-push.
-        git_work push origin "$revision:refs/heads/$target"
+        if ! git_work push origin "$revision:refs/heads/$target"; then
+            if [[ "$(remote_tip)" != "$tip" ]]; then
+                touch "$state/logs/queue-$job.retry"
+            fi
+            die "target publication failed"
+        fi
     fi
     printf '%s\n' "$revision" >"$state/queue/$job.merged.tmp"
     mv "$state/queue/$job.merged.tmp" "$state/queue/$job.merged"
@@ -141,6 +192,7 @@ drain_queue() {
     local job record rc tip staged old_claim original workpath source queue_ref
     while [[ -f "$registry" && ! -e "$state/migrating" ]]; do
         lock_claims
+        expire_claims
         # Recover a crash after removing the editor worktree but before
         # marking its durable submission pending.
         while IFS= read -r staged; do
@@ -159,33 +211,51 @@ drain_queue() {
             queue_update "$record" pending "recovered interrupted submission"
         done < <(queue_records | jq -r '.[]|select(.status=="staging")|.job')
         # A crashed running job is retried, checking ancestry before rebuilding.
-        job=$(queue_records | jq -r 'map(select(.status=="pending" or .status=="running"))|sort_by(.job)|.[0].job // empty')
+        job=$(next_validation_job)
         if [[ -z "$job" ]]; then
             unlock_claims
             tip=$(git_repo rev-parse "refs/remotes/origin/$target")
-            if [[ ! -f "$state/inventory/$tip.json" ]]; then
-                validator_checkout "$tip"
-                inventory "$work" "$tip" "$state/build/validator"
+            if [[ ( "$direct_default" != true || ! -f "$state/issues.json" ) && ! -f "$state/inventory/$tip.json" ]]; then
+                inventory_tip "$tip"
             fi
+            reconcile_when_idle
             return
         fi
         record="$state/queue/$job.json"
+        rm -f "$state/logs/queue-$job.conflict.json" "$state/logs/queue-$job.retry"
         queue_update "$record" running "validating against latest target"
         unlock_claims
         say "validating queue job $job"
         # An if-condition would disable errexit throughout the function.
         set +e
-        (set -e; validate_job "$record") >>"$state/logs/queue-$job.log" 2>&1
+        (
+            set -e
+            started=$SECONDS
+            # The validator lock is held here. No other job can use this
+            # directory; discard any leftovers from an interrupted job.
+            build="$state/build/validator"
+            rm -rf -- "$build"
+            mkdir -p "$build"
+            trap 'rc=$?; rm -rf -- "$build"; printf "Timing: validation transaction %ss (exit %s)\n" "$((SECONDS-started))" "$rc"' EXIT
+            validate_job "$record"
+        ) >>"$state/logs/queue-$job.log" 2>&1
         rc=$?
         set -e
         lock_claims
         if ((rc==0)); then
             queue_update "$record" published "$(cat "$state/queue/$job.merged")"
+        elif [[ -f "$state/logs/queue-$job.retry" ]]; then
+            queue_update "$record" pending "target advanced during publication; retry on latest main"
+        elif [[ -f "$state/logs/queue-$job.conflict.json" ]]; then
+            queue_update "$record" failed "merge conflict; recover $job to reconcile against current target"
         else
             queue_update "$record" failed "exit $rc; see $state/logs/queue-$job.log"
         fi
         unlock_claims
         say "queue job $job $(jq -r .status "$record")"
+        if ((rc==0)); then
+            close_published_issue "$record" "$(cat "$state/queue/$job.merged")" || true
+        fi
     done
 }
 require_empty_queue() {

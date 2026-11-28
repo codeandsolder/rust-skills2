@@ -8,12 +8,29 @@ branch. The default branch is never a campaign target.
 
 ## Start once
 
-Requirements: Bash, Git, jq, flock (Linux), uv, the installed stable/nightly
+Requirements: Bash, Git, jq, flock (Linux), uv, the installed nightly
 Rust tools, and the existing managed sccache wrapper. All participating agents
 must use the same Git common directory on the same host and the same
 rust-skills2 revision. The tool is not a distributed lease service for separate
 clones. Keep that pinned rust-skills2 checkout available throughout a campaign.
 Do not use a moving toolchain or modify compiler flags during a campaign.
+
+For a long-lived campaign, provision a dedicated Rustup home with its
+`toolchains/nightly-<host>` alias pointing to the installed dated nightly.
+Do not point these aliases at the host's moving toolchains. Keep the
+installation available until the campaign is finished. Initialize with
+`LINT_CAMPAIGN_RUSTUP_HOME=/absolute/path/to/pinned-rustup`; the campaign
+persists that home and exports it for workers, validation and focused tests.
+
+To adopt the same isolation in an existing campaign, pause new commands
+with the state's `migrating` marker, stop the sole validator, and wait
+for any in-flight worker commands to exit. Run
+`lint_campaign.sh upgrade STATE /absolute/path/to/pinned-rustup` from the
+updated clean policy checkout, then restart the existing validator service.
+Upgrade checks both pinned compiler versions and preserves the lint policy,
+claims, and inventories. If a validator was interrupted while using a
+different compiler, discard any inventory computed with that compiler
+before restarting; the durable running queue job is retried automatically.
 
 From the **target repository**, with a published temporary branch:
 
@@ -26,7 +43,7 @@ worktrees=/absolute/projects/repo-lint-campaign
 export RUST_SKILLS2_ALLOW_TEST_PANICS=true
 # RUSTC_WRAPPER already points at the managed cache; never start another.
 "$tool" init "$state" chore/strict-cleanup "$worktrees" \
-  'cargo +stable test --locked --lib'
+  'cargo +nightly test --locked --lib'
 ```
 
 The last argument is a required shared regression command for every
@@ -63,6 +80,18 @@ subsystem. The state registry uses short flock critical sections for claims,
 not a global build lock. Inventories are cached by commit and deduplicated by
 primary source location, lint code and diagnostic message.
 
+Claims expire after 15 minutes without worker activity. Campaign commands that
+use the claim renew its lease; direct worktree and linked Git metadata edits
+also count as activity. Use `heartbeat STATE WORKER` during read-only
+investigation or long external tests (at least every 10 minutes). Active
+campaign commands holding the worker lock are not expired. The validator and
+claim/status commands sweep expired claims; queued submissions do not expire.
+Expired reservations become available again, but their JSON records remain in
+`STATE/expired` and their worktrees and Git refs are preserved. A new claim may
+return a different worktree path; never assume it from the worker ID.
+An expired claim cannot publish; obtain a new claim before resuming work,
+and inspect/cherry-pick or copy any needed edits from the archived worktree.
+
 Work inside the returned worktree. Fix the root cause, preserve project
 semantics, add regression tests when appropriate and commit. If a change
 legitimately needs another exact Rust file (including a test or a new module),
@@ -71,7 +100,7 @@ claim it **before** changing it:
 ```bash
 "$tool" extend "$state" agent-1 src/shared_helper.rs tests/regression.rs
 "$tool" checkpoint "$state" agent-1  # optional: save committed work remotely
-"$tool" publish "$state" agent-1 'cargo +stable test --locked --test regression'
+"$tool" publish "$state" agent-1 'cargo +nightly test --locked --test regression'
 ```
 
 Publication is now **submission**, not synchronous validation. It checks
@@ -96,11 +125,30 @@ its environment. For finite manual processing, use
 `"$tool" drain "$state"`; both commands share the same exclusive
 validator lock.
 
-The validator processes FIFO jobs in a dedicated reusable detached
-worktree. It incorporates the latest target, reuses the accepted tip's
+The validator processes jobs in a dedicated reusable detached worktree.
+Within one candidate's transaction, all Cargo invocations share an explicit
+campaign-owned target/build directory (Cargo's supported build-dir override).
+This preserves fingerprints, test binaries and dependency artifacts across
+nightly inventory, smoke and focused commands, without
+disabling the host's ephemeral mode globally or bypassing managed sccache.
+The transaction deletes build output when it finishes, including failures;
+an interrupted transaction's leftover output is removed before retry.
+Diagnostic logs and inventory receipts remain in STATE. Disposable baseline
+and final-validation directories use the same build-dir setup and cleanup.
+Stage timings are recorded in the existing gate logs. On upgrade from a
+two-compiler campaign, queued Cargo +stable commands are migrated once to
++nightly, with original records archived under STATE/migrations/nightly-only.
+New submissions must use nightly.
+Lint-only jobs are FIFO. Issue-mode pending jobs are ranked by the number
+of distinct unfinished transitive dependants, with FIFO ties. An interrupted
+running job is retried first; an active validation is never preempted.
+Priorities are recomputed from the live DAG and published receipts at each
+job boundary, so recovering a key prerequisite does not send it to the
+back of an unrelated queue. It incorporates the latest target, reuses the accepted tip's
 cached lint inventory, scans the exact candidate once, checks scope and
-lint delta, and runs formatting, stable all-target Clippy, source policy,
-shared and focused regressions. It alone pushes accepted candidates
+lint delta, and runs the authoritative nightly formatting/Clippy/source-policy
+inventory followed by nightly shared and focused regressions. No duplicate
+compiler or source-policy pass. It alone pushes accepted candidates
 directly to the target. There is no designated integration agent, no
 competing validation loop, and no per-worker revalidation on each merge.
 A non-campaign external target update may cause a non-fast-forward push
@@ -134,8 +182,8 @@ different free worker ID.
 
 Status uses the latest cached accepted inventory and shows file counts,
 active claims, queued submissions and deferred files. Only the serial
-validator refreshes a missing target inventory. Claims are never silently stolen or timed
-out: release/defer require an unchanged or already published clean checkout.
+validator refreshes a missing target inventory. Inactive claims expire as described above; explicit release/defer require
+an unchanged or already published clean checkout.
 Deferral is keyed to file content, so editing that file makes it eligible
 again; `retry` clears the deferral explicitly. Deferral does not make the
 strict gate pass. For interrupted work, resume the existing claim or publish
@@ -157,7 +205,7 @@ when idle, fetch and fast-forward it to the target.
 When claims are released and the target is ready:
 
 ```bash
-"$tool" finish "$state" 'cargo +stable test --workspace --locked'
+"$tool" finish "$state" 'cargo +nightly test --workspace --locked'
 ```
 
 When the queue is empty, the final command excludes the validator and runs the real, normal strict CI gate and the complete
@@ -174,3 +222,49 @@ real Git/Cargo fixture, exclusive serial validation, immediate reassignment
 while an earlier job is running, queued-file reservations, stale-base merge,
 no-progress and failed focused-check recovery, deferral, final strict
 rejection and final successful completion.
+
+## Issue queues after strict cleanup
+
+The same validator can coordinate larger, dependency-ordered refactors
+without requiring a lint count reduction. Initialize a fresh campaign only
+after the lint campaign has finished and the target inventory is empty:
+
+```bash
+"$tool" init-issues "$state" "$target" "$worktrees" /absolute/issue-plan.json \
+  'cargo +nightly test --workspace --locked'
+"$tool" serve "$state"
+```
+
+The manifest is an ordered JSON array (dependencies must precede dependants).
+Each task has a unique string issue number, title, dependencies and starting
+scope. Exact repository-relative paths may include new files; directory
+prefixes ending in / expand to tracked files at claim time.
+
+```json
+[
+  {"id":"10","title":"Introduce checked handles","depends":[],"paths":["src/index.rs"]},
+  {"id":"11","title":"Use checked handles in solver","depends":["10"],"paths":["src/solver/"]}
+]
+```
+
+Workers use `issues STATE` to inspect readiness and `claim-issue STATE WORKER
+[ISSUE_ID]` to take the first ready task or an explicitly requested ready task.
+Only successfully published prerequisites unblock dependants. Issue IDs
+are exclusive, but file scopes may overlap; the scheduler prefers ready work
+without overlap, falling back to overlapping tasks. Extend a claim before
+editing additional files to retain scope auditing. The
+same publish/results/recover protocol applies; issue submissions require a
+focused regression command. Give the issue's acceptance evidence in the
+commits and link the accepted revision on GitHub after publication. A
+published receipt means the declared work passed the gates, not that the
+tool independently judged the entire issue's design complete. Do not close
+a GitHub issue merely because a partial implementation passed.
+
+Every accepted issue revision must keep the strict inventory empty; the
+shared and focused gates still run on the merged candidate. Finish refuses
+while any task remains unpublished. Use `amend-issues STATE MANIFEST` to add tasks or revise unstarted tasks.
+All existing IDs and started task definitions are retained, the DAG is validated,
+and manifest snapshots are preserved. Merge conflicts are recorded with their
+paths and target revision. `recover` merges the latest target into the recovered
+worker checkout, leaving conflicts for the worker to resolve and commit.
+Publication still checks the exact merged candidate. Lint mode remains file-exclusive.
