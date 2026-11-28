@@ -147,7 +147,7 @@ jobs:
       checkout-submodules: "true"
 ```
 
-## Informational dependency checks
+## Mandatory dependency consolidation
 
 After a successful strict Rust lint/build pass, the reusable workflow calls
 the pinned shared [dependency-quality action](https://github.com/codeandsolder/ci-workflows/blob/main/.github/actions/rust-dependency-quality/action.yml).
@@ -158,8 +158,10 @@ possibly unused direct dependencies using Cargo metadata. The checksum-pinned
 prebuilt `cargo-anoint` scanner reports overlapping providers, duplicate versions,
 obsolete dependencies and preferred organization forks across the all-feature,
 all-role platform union. Check feature and target exclusivity before acting.
-These reports add no mandatory pass threshold; tool failures are marked
-*unavailable* rather than presented as clean scans. Summaries are written to
+Cargo-anoint fails the job on unavailable or malformed scans, unexempted
+focused provider conflicts, or explicit repository failure policy. Other
+recommendations and cargo-deny/cargo-machete findings are advisory. Review
+intentional overlaps using exact package/provider-pair exceptions in anoint.toml. Summaries are written to
 GitHub Actions; JSON diagnostics are uploaded as short-lived public artifacts
 or logged in private jobs.
 

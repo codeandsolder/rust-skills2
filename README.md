@@ -38,10 +38,9 @@ and stale lint expectations. Checked-in generated Rust can opt into an exact-fil
 lint boundary via package metadata; the generated file still runs through strict
 Clippy. See [docs/strict-ci.md](./docs/strict-ci.md) for the policy and
 customization points.
+\nFor parallel implementation or lint-debt work, see [campaign coordination](./docs/lint-campaign.md).
 
-For parallel implementation or lint-debt work, see [campaign coordination](./docs/lint-campaign.md).
-
-The reusable gate also publishes a **non-blocking RustSec, unused-dependency and consolidation report** using the shared `cargo-deny`, `cargo-machete` and checksum-pinned prebuilt `cargo-anoint` scanners, without a second compilation pass. Set `dependency-quality: false` on redundant target-matrix legs to avoid duplicate scanning.
+The reusable gate also publishes a **mandatory dependency-consolidation check** and advisory RustSec and unused-dependency reports using the shared `cargo-deny`, `cargo-machete` and checksum-pinned prebuilt `cargo-anoint` scanners, without a second compilation pass. Set `dependency-quality: false` on redundant target-matrix legs to avoid duplicate scanning.
 
 The blocking release-license check is separate from that informational report. It
 rejects unavoidable GPL or AGPL licenses in the normal Cargo dependency graph
