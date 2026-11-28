@@ -65,7 +65,37 @@ run drain
 [[ -n $(git -C "$repo" ls-remote --heads origin "refs/heads/$active") ]]
 run recover 000000001 active
 run publish active 'test -f README.md'
-run drain
+# Simulate an out-of-band invalid manifest: preserve the pending queue and
+# report failure from a one-shot drain. A serving validator must retry.
+cp "$state/issues.json" "$tmp/valid-manifest.json"
+jq '.[0].depends = ["999"]' "$state/issues.json" > "$state/issues.json.tmp"
+mv "$state/issues.json.tmp" "$state/issues.json"
+if run drain > "$tmp/drain.log" 2>&1; then
+    echo 'invalid manifest unexpectedly drained' >&2; exit 1
+fi
+grep -q 'cannot schedule validation' "$tmp/drain.log"
+[[ $(jq -er .status "$state/queue/000000002.json") == pending ]]
+mkdir "$tmp/caller"
+(cd "$tmp/caller"; run serve) > "$tmp/serve.log" 2>&1 &
+server=$!
+trap 'kill "$server" 2>/dev/null || true; wait "$server" 2>/dev/null || true; rm -rf -- "$tmp"' EXIT
+for _ in {1..100}; do
+    if grep -q 'cannot schedule validation' "$tmp/serve.log"; then break; fi
+    kill -0 "$server"
+    sleep 0.1
+done
+grep -q 'cannot schedule validation' "$tmp/serve.log"
+rmdir "$tmp/caller"
+mv "$tmp/valid-manifest.json" "$state/issues.json"
+for _ in {1..200}; do
+    if [[ $(jq -er .status "$state/queue/000000002.json") == published ]]; then break; fi
+    kill -0 "$server"
+    sleep 0.1
+done
+touch "$state/migrating"
+wait "$server"
+trap 'rm -rf -- "$tmp"' EXIT
 [[ $(jq -er .status "$state/queue/000000002.json") == published ]]
+! grep -q 'error retrieving current directory' "$tmp/serve.log"
 [[ $(git -C "$repo" show origin/main:README.md) == $'initial\nworker change' ]]
 printf 'Direct-main campaign lifecycle passed\n'
