@@ -28,7 +28,7 @@ runs:
   steps:
     - name: Resolve one quarantined compiler
       id: compiler
-      uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@5991b873ab28ec8fae36c2c8ef944a3f67f5f9b3 # main
+      uses: codeandsolder/ci-workflows/.github/actions/resolve-rust-toolchain@1ef8b180d04fbeb8c095e8d701f8a5107472370e # main
       with:
         rust-toolchain: ${{ inputs.rust-toolchain }}
 
