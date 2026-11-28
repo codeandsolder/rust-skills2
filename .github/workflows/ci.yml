@@ -13,10 +13,22 @@ permissions:
   contents: read
 
 jobs:
+  dependency-scan:
+    uses: codeandsolder/ci-workflows/.github/workflows/rust-dependency-gate.yml@9e8949b7d1e3ee4b56ee30d605bba849d90260b7 # pending ci-workflows #243
+    with:
+      working-directories: '["checks","checks/ci-tool","checks/nightly","policy-wasm","skill-pack"]'
+
   checks:
+    needs: dependency-scan
+    if: ${{ always() && !cancelled() }}
     name: Validate & compile-check
     runs-on: ubuntu-latest
     steps:
+      - name: Require own workspace dependency scan
+        if: needs.dependency-scan.result != 'success'
+        shell: bash
+        run: exit 1
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Enforce PR workflow supersession across all caller workflows
         uses: codeandsolder/ci-workflows/.github/actions/workflow-concurrency-policy@1293f1c247f07a14a85859f908b4f6b7e2553922 # main
@@ -30,6 +42,7 @@ jobs:
           targets: x86_64-unknown-linux-gnu,wasm32-wasip1
           components: clippy,rustfmt
       - name: Setup mandatory sccache
+        id: cache
         uses: codeandsolder/ci-workflows/.github/actions/setup-sccache@1293f1c247f07a14a85859f908b4f6b7e2553922 # main
         with:
           rust-toolchain: ${{ steps.compiler.outputs.channel }}
@@ -79,7 +92,7 @@ jobs:
         run: bash scripts/strict_clippy.sh --toolchain "${{ steps.compiler.outputs.channel }}"
 
       - name: Finalize mandatory sccache
-        if: always()
+        if: always() && steps.cache.outcome == 'success'
         uses: codeandsolder/ci-workflows/.github/actions/finalize-sccache@1293f1c247f07a14a85859f908b4f6b7e2553922 # main
 
   cargo-release-age:
