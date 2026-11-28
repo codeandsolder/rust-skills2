@@ -218,6 +218,7 @@ drain_queue() {
             if [[ ( "$direct_default" != true || ! -f "$state/issues.json" ) && ! -f "$state/inventory/$tip.json" ]]; then
                 inventory_tip "$tip"
             fi
+            reconcile_when_idle
             return
         fi
         record="$state/queue/$job.json"

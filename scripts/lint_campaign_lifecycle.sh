@@ -76,3 +76,13 @@ reconcile_main_issues() {
     done < <(queue_records | jq -r '.[]|select(.status=="published")|.job')
     return "$rc"
 }
+
+reconcile_when_idle() {
+    local stamp="$state/lifecycle-last" now
+    [[ "$direct_default" == true ]] || return 0
+    now=$(date +%s)
+    if [[ -f "$stamp" ]] && (( now - $(stat -c %Y "$stamp") < 300 )); then return 0; fi
+    touch "$stamp"
+    reconcile_main_issues || true
+    reconcile_campaign_refs || true
+}

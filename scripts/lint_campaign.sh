@@ -27,6 +27,7 @@ Usage:
   lint_campaign.sh upgrade STATE [RUSTUP_HOME]
   lint_campaign.sh retarget STATE TARGET
   lint_campaign.sh reconcile STATE
+  lint_campaign.sh gc STATE [REVIEWED_BRANCH...]
   lint_campaign.sh release STATE WORKER
   lint_campaign.sh defer STATE WORKER REASON
   lint_campaign.sh retry STATE FILE...
@@ -108,7 +109,7 @@ clean_at() {
 clean_policy() {
     local status
     status=$(git -C "$SKILLS" status --porcelain --untracked-files=all -- \
-        scripts/lint_campaign.sh scripts/lint_campaign_queue.sh scripts/lint_campaign_issues.sh scripts/lint_campaign_leases.sh scripts/lint_campaign_lifecycle.sh scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
+        scripts/lint_campaign.sh scripts/lint_campaign_queue.sh scripts/lint_campaign_issues.sh scripts/lint_campaign_leases.sh scripts/lint_campaign_lifecycle.sh scripts/lint_campaign_gc.sh scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
         scripts/workspace_test_policy.py .github/actions/rust-strict) || die "cannot inspect policy checkout"
     [[ -z "$status" ]] || die "campaign tool or policy files have uncommitted edits"
 }
@@ -331,6 +332,8 @@ source "$SKILLS/scripts/lint_campaign_issues.sh"
 source "$SKILLS/scripts/lint_campaign_leases.sh"
 # shellcheck source=scripts/lint_campaign_lifecycle.sh
 source "$SKILLS/scripts/lint_campaign_lifecycle.sh"
+# shellcheck source=scripts/lint_campaign_gc.sh
+source "$SKILLS/scripts/lint_campaign_gc.sh"
 if [[ "$action" == init || "$action" == init-issues ]]; then
     manifest=''
     if [[ "$action" == init-issues ]]; then
@@ -394,16 +397,17 @@ if [[ "$action" == init || "$action" == init-issues ]]; then
           nightly_version:$nv,allow_test_panics:$test_panics,direct_default:$direct}' >"$state/config.json"
     if [[ -n "$manifest" ]]; then
         cp -- "$manifest" "$state/issues.json"
-        # Do not register an issue campaign on a nonzero strict baseline.
-        inventory_tip "$base"
-        if [[ "$(jq length "$state/inventory/$base.json")" != 0 ]]; then
-            printf '%s\n' "$base" >"$state/stopped"
-            die "issue campaign requires a clean strict baseline; retained diagnostic evidence in $state"
+        if [[ "$direct_default" != true ]]; then
+            inventory_tip "$base"
+            if [[ "$(jq length "$state/inventory/$base.json")" != 0 ]]; then
+                printf '%s\n' "$base" >"$state/stopped"
+                die "issue campaign requires a clean strict baseline; retained diagnostic evidence in $state"
+            fi
         fi
     fi
     printf '%s\n' "$state" >"$registry"
     flock -u "$reg_fd"; exec {reg_fd}>&-
-    inventory_tip "$base"
+    if [[ "$direct_default" != true || -z "$manifest" ]]; then inventory_tip "$base"; fi
     say "campaign initialized at $base"
     exit 0
 fi
@@ -431,6 +435,10 @@ case "$action" in
     reconcile)
         [[ $# == 0 ]] || die "reconcile takes no arguments"
         reconcile_main_issues
+        reconcile_campaign_refs
+        ;;
+    gc)
+        reconcile_campaign_refs "$@"
         ;;
     upgrade)
         [[ $# -le 1 ]] || die "upgrade accepts an optional isolated Rustup home"
