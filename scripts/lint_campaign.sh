@@ -25,6 +25,8 @@ Usage:
   lint_campaign.sh results STATE [WORKER]
   lint_campaign.sh recover STATE JOB WORKER
   lint_campaign.sh upgrade STATE [RUSTUP_HOME]
+  lint_campaign.sh retarget STATE TARGET
+  lint_campaign.sh reconcile STATE
   lint_campaign.sh release STATE WORKER
   lint_campaign.sh defer STATE WORKER REASON
   lint_campaign.sh retry STATE FILE...
@@ -34,7 +36,7 @@ Usage:
 STATE and WORKTREE_ROOT must be absolute, outside repository worktrees.
 init runs inside the target Git repository. All workers use the same local
 Git common directory and STATE. Remote is origin; TARGET is an existing
-temporary topic branch, not main/master. Require the managed RUSTC_WRAPPER.
+branch, including the default branch. Require the managed RUSTC_WRAPPER.
 LINT_CAMPAIGN_NIGHTLY (default nightly) is fixed at init, including the
 actual rustc version. Use nightly for every campaign build and test.
 Set LINT_CAMPAIGN_RUSTUP_HOME to an isolated Rustup home to persist the
@@ -106,7 +108,7 @@ clean_at() {
 clean_policy() {
     local status
     status=$(git -C "$SKILLS" status --porcelain --untracked-files=all -- \
-        scripts/lint_campaign.sh scripts/lint_campaign_queue.sh scripts/lint_campaign_issues.sh scripts/lint_campaign_leases.sh scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
+        scripts/lint_campaign.sh scripts/lint_campaign_queue.sh scripts/lint_campaign_issues.sh scripts/lint_campaign_leases.sh scripts/lint_campaign_lifecycle.sh scripts/strict_clippy.sh scripts/check_source_lint_policy.py \
         scripts/workspace_test_policy.py .github/actions/rust-strict) || die "cannot inspect policy checkout"
     [[ -z "$status" ]] || die "campaign tool or policy files have uncommitted edits"
 }
@@ -276,10 +278,12 @@ validate() {
         cd "$work" || exit
         configure_campaign_build "$dir"
         local started=$SECONDS
-        printf 'Shared smoke command: %s\n' "$smoke"
-        started=$SECONDS
-        bash -euo pipefail -c "$smoke" || exit
-        printf 'Timing: shared smoke %ss\n' "$((SECONDS-started))"
+        if [[ "$direct_default" != true || ! -f "$state/issues.json" ]]; then
+            printf 'Shared smoke command: %s\n' "$smoke"
+            started=$SECONDS
+            bash -euo pipefail -c "$smoke" || exit
+            printf 'Timing: shared smoke %ss\n' "$((SECONDS-started))"
+        fi
         printf 'Worker focused command: %s\n' "$focused"
         started=$SECONDS
         bash -euo pipefail -c "$focused" || exit
@@ -325,6 +329,8 @@ source "$SKILLS/scripts/lint_campaign_queue.sh"
 source "$SKILLS/scripts/lint_campaign_issues.sh"
 # shellcheck source=scripts/lint_campaign_leases.sh
 source "$SKILLS/scripts/lint_campaign_leases.sh"
+# shellcheck source=scripts/lint_campaign_lifecycle.sh
+source "$SKILLS/scripts/lint_campaign_lifecycle.sh"
 if [[ "$action" == init || "$action" == init-issues ]]; then
     manifest=''
     if [[ "$action" == init-issues ]]; then
@@ -338,13 +344,11 @@ if [[ "$action" == init || "$action" == init-issues ]]; then
     [[ "$smoke" != *"cargo +stable"* ]] || die "campaign requires nightly: use cargo +nightly for smoke tests"
     repo=$(git rev-parse --show-toplevel)
     repo=$(realpath "$repo")
-    [[ "$target" != main && "$target" != master && "$target" != HEAD ]] ||
-        die "use a temporary integration/topic branch"
+    [[ "$target" != HEAD ]] || die "use a named target branch"
     git check-ref-format "refs/heads/$target" >/dev/null || die "invalid target branch"
     default_ref=$(git_repo ls-remote --symref origin HEAD) || die "cannot inspect remote default"
-    if [[ "$default_ref" == "ref: refs/heads/$target"$'\t'HEAD* ]]; then
-        die "use a temporary integration/topic branch, not the remote default"
-    fi
+    direct_default=false
+    if [[ "$default_ref" == "ref: refs/heads/$target"$'\t'HEAD* || "$target" == main || "$target" == master ]]; then direct_default=true; fi
     [[ "$workroot" == /* ]] || die "WORKTREE_ROOT must be absolute"
     state=$(realpath -m "$state"); workroot=$(realpath -m "$workroot")
     if ! outside "$state" "$repo" || ! outside "$workroot" "$repo" || ! outside "$workroot" "$state" ||
@@ -384,10 +388,10 @@ if [[ "$action" == init || "$action" == init-issues ]]; then
         --arg workroot "$workroot" --arg id "$id" --arg registry "$registry" \
         --arg smoke "$smoke" --arg skills "$skills_revision" \
         --arg nightly "$nightly" --arg test_panics "$allow_test_panics" \
-        --arg nv "$nightly_version" --arg home "$rustup_home" \
+        --arg nv "$nightly_version" --arg home "$rustup_home" --argjson direct "$direct_default" \
         '{repo:$repo,target:$target,base:$base,workroot:$workroot,id:$id,registry:$registry,
           smoke:$smoke,skills_revision:$skills,nightly:$nightly,rustup_home:$home,
-          nightly_version:$nv,allow_test_panics:$test_panics}' >"$state/config.json"
+          nightly_version:$nv,allow_test_panics:$test_panics,direct_default:$direct}' >"$state/config.json"
     if [[ -n "$manifest" ]]; then
         cp -- "$manifest" "$state/issues.json"
         # Do not register an issue campaign on a nonzero strict baseline.
@@ -414,11 +418,20 @@ nightly_version=$(jq -er .nightly_version "$config")
 skills_revision=$(jq -er .skills_revision "$config")
 allow_test_panics=$(jq -er .allow_test_panics "$config")
 rustup_home=$(jq -r '.rustup_home // ""' "$config")
+direct_default=$(jq -r '.direct_default // false' "$config")
 if [[ "$action" == serve && ! -e "$registry" && ( -f "$state/finished" || -f "$state/stopped" ) ]]; then exit 0; fi
 [[ -f "$registry" && "$(cat "$registry")" == "$state" ]] || die "campaign not active"
-if [[ "$action" != upgrade && -e "$state/migrating" ]]; then die "campaign migration in progress"; fi
+if [[ "$action" != upgrade && "$action" != retarget && -e "$state/migrating" ]]; then die "campaign migration in progress"; fi
 if [[ "$action" != upgrade ]]; then use_campaign_rustup; fi
 case "$action" in
+    retarget)
+        [[ $# == 1 ]] || die "retarget requires TARGET"
+        retarget_campaign "$1"
+        ;;
+    reconcile)
+        [[ $# == 0 ]] || die "reconcile takes no arguments"
+        reconcile_main_issues
+        ;;
     upgrade)
         [[ $# -le 1 ]] || die "upgrade accepts an optional isolated Rustup home"
         if [[ $# -eq 1 ]]; then

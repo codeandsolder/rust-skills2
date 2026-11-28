@@ -66,8 +66,10 @@ claim_issue() {
     [[ -f "$state/issues.json" ]] || die "not an issue campaign"
     for i in 1 2 3 4; do
         tip=$(remote_tip)
-        [[ -f "$state/inventory/$tip.json" ]] || die "target inventory not cached yet"
-        [[ "$(jq length "$state/inventory/$tip.json")" == 0 ]] || die "issue campaign target has strict debt"
+        if [[ "$direct_default" != true ]]; then
+            [[ -f "$state/inventory/$tip.json" ]] || die "target inventory not cached yet"
+            [[ "$(jq length "$state/inventory/$tip.json")" == 0 ]] || die "issue campaign target has strict debt"
+        fi
         lock_claims
         [[ -f "$registry" && "$(cat "$registry")" == "$state" ]] || die "campaign closed during claim"
         [[ "$(git_repo rev-parse "refs/remotes/origin/$target")" != "$tip" ]] || break

@@ -149,7 +149,9 @@ validate_job() {
         validator_checkout "$tip"
         shared=$(git_repo merge-base "$tip" "$source")
         scope_diff "$shared" "$source"
-        inventory "$work" "$tip" "$state/build/validator"
+        if [[ "$direct_default" != true || ! -f "$state/issues.json" ]]; then
+            inventory "$work" "$tip" "$state/build/validator"
+        fi
         if ! git_work merge --no-edit "$source"; then
             if [[ -f "$state/issues.json" ]]; then
                 git_work diff --name-only --diff-filter=U -z |
@@ -167,11 +169,20 @@ validate_job() {
         revision=$(git_work rev-parse HEAD)
         scope_diff "$tip" "$revision"
         inventory "$work" "$revision" "$state/build/validator"
-        compare_inventory "$tip" "$revision"
+        if [[ "$direct_default" == true && -f "$state/issues.json" ]]; then
+            [[ "$(jq length "$state/inventory/$revision.json")" == 0 ]] || die "candidate has strict diagnostics"
+        else
+            compare_inventory "$tip" "$revision"
+        fi
         git_work diff --no-color -U0 "$tip" "$revision" >"$state/logs/$revision.patch"
         validate "$revision"
         # The sole validator is the only campaign writer. Never force-push.
-        git_work push origin "$revision:refs/heads/$target"
+        if ! git_work push origin "$revision:refs/heads/$target"; then
+            if [[ "$(remote_tip)" != "$tip" ]]; then
+                touch "$state/logs/queue-$job.retry"
+            fi
+            die "target publication failed"
+        fi
     fi
     printf '%s\n' "$revision" >"$state/queue/$job.merged.tmp"
     mv "$state/queue/$job.merged.tmp" "$state/queue/$job.merged"
@@ -204,13 +215,13 @@ drain_queue() {
         if [[ -z "$job" ]]; then
             unlock_claims
             tip=$(git_repo rev-parse "refs/remotes/origin/$target")
-            if [[ ! -f "$state/inventory/$tip.json" ]]; then
+            if [[ ( "$direct_default" != true || ! -f "$state/issues.json" ) && ! -f "$state/inventory/$tip.json" ]]; then
                 inventory_tip "$tip"
             fi
             return
         fi
         record="$state/queue/$job.json"
-        rm -f "$state/logs/queue-$job.conflict.json"
+        rm -f "$state/logs/queue-$job.conflict.json" "$state/logs/queue-$job.retry"
         queue_update "$record" running "validating against latest target"
         unlock_claims
         say "validating queue job $job"
@@ -232,6 +243,8 @@ drain_queue() {
         lock_claims
         if ((rc==0)); then
             queue_update "$record" published "$(cat "$state/queue/$job.merged")"
+        elif [[ -f "$state/logs/queue-$job.retry" ]]; then
+            queue_update "$record" pending "target advanced during publication; retry on latest main"
         elif [[ -f "$state/logs/queue-$job.conflict.json" ]]; then
             queue_update "$record" failed "merge conflict; recover $job to reconcile against current target"
         else
@@ -239,6 +252,9 @@ drain_queue() {
         fi
         unlock_claims
         say "queue job $job $(jq -r .status "$record")"
+        if ((rc==0)); then
+            close_published_issue "$record" "$(cat "$state/queue/$job.merged")" || true
+        fi
     done
 }
 require_empty_queue() {
