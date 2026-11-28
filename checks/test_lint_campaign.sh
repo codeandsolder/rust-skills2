@@ -5,6 +5,7 @@ SKILLS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 tool="$SKILLS/scripts/lint_campaign.sh"
 bash "$SKILLS/checks/test_lint_campaign_leases.sh"
 bash "$SKILLS/checks/test_lint_campaign_priority.sh"
+bash "$SKILLS/checks/test_lint_campaign_main.sh"
 tmp=$(mktemp -d "${LINT_CAMPAIGN_TEST_ROOT:-${RUNNER_TEMP:-/tmp}}/lint-campaign-test.XXXXXX")
 cleanup() {
     local rc=$?
