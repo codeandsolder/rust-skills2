@@ -222,13 +222,17 @@ drain_queue() {
             if [[ ( "$direct_default" != true || ! -f "$state/issues.json" ) && ! -f "$state/inventory/$tip.json" ]]; then
                 inventory_tip "$tip"
             fi
-            reconcile_when_idle
+            reconcile_periodically
             return
         fi
         record="$state/queue/$job.json"
         rm -f "$state/logs/queue-$job.conflict.json" "$state/logs/queue-$job.retry"
         queue_update "$record" running "validating against latest target"
         unlock_claims
+        # A continuously populated queue must not starve issue closure or
+        # obsolete-ref collection. The running record protects this job's
+        # refs while lifecycle reconciliation takes its own locks.
+        reconcile_periodically
         say "validating queue job $job"
         # An if-condition would disable errexit throughout the function.
         set +e
