@@ -22,6 +22,8 @@ id=$(jq -er .id "$state/config.json")
 old_registry=$(jq -er .registry "$state/config.json")
 run claim-issue active 1 >/dev/null
 active=$(jq -er .branch "$state/claims/active.json")
+printf "worker change\n" >> "$tmp/worktrees/active/README.md"
+git -C "$tmp/worktrees/active" commit -qam worker
 run checkpoint active
 base=$(git -C "$repo" rev-parse HEAD)
 arch="lint-campaign/${id:0:12}/abandoned"
